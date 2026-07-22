@@ -48,7 +48,8 @@ git ls-files | grep -Ei '(^|/)\.env$|connections.*\.csv|secret|credential|\.pem$
 
 # 3. No obvious secrets or personal emails in tracked content
 git grep -nIE '(api[_-]?key|token|password)\s*[:=]\s*["'"'"'][A-Za-z0-9_\-]{16,}' -- . && echo "FAIL" || echo "OK"
-git grep -nIE '[A-Za-z0-9._%+-]+@(?!example\.com|example\.org|users\.noreply\.github\.com)[A-Za-z0-9.-]+\.[A-Za-z]{2,}' -- . && echo "CHECK MATCHES" || echo "OK"
+# (-P is required: the negative lookahead is PCRE, not POSIX ERE)
+git grep -nIP '[A-Za-z0-9._%+-]+@(?!example\.com|example\.org|users\.noreply\.github\.com)[A-Za-z0-9.-]+\.[A-Za-z]{2,}' -- . && echo "CHECK MATCHES" || echo "OK"
 
 # 4. Quality gates
 pytest -q && ruff check . && mypy src

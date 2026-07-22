@@ -53,7 +53,7 @@ content-machine version
 content-machine demo
 
 content-machine audience validate <file.csv>
-content-machine audience anonymize <file.csv> [-o out.json]
+content-machine audience anonymize <file.csv> -o out.json
 content-machine audience report <file.csv> [-o report.md] [--json report.json]
 ```
 
