@@ -60,8 +60,10 @@ content-machine audience report <file.csv> [-o report.md] [--json report.json]
 All commands run fully offline and require no API key. `content-machine demo`
 runs the full validate → anonymize → report flow against a synthetic example
 CSV so you can see the pipeline without touching any real data. To use your
-own export, place it in `data/private/` (git-ignored, never committed — see
-[`data/README.md`](data/README.md)) and point the commands at it.
+own export, keep it outside the repository (or in the git-ignored
+`data/private/` — see [`data/README.md`](data/README.md)) and point the
+commands at its path; nothing is ever copied into the project. Details in
+[`docs/private-workspace.md`](docs/private-workspace.md).
 
 ## Project structure
 
@@ -71,7 +73,7 @@ src/content_machine/
 ├── ingestion/   # reading external exports (CSV) safely
 ├── privacy/     # PII detection/stripping, deterministic pseudonymization
 ├── audience/    # normalization, statistics, report generation
-├── providers/   # ModelProvider interface + Mock/Anthropic/OpenAI implementations
+├── providers/   # ModelProvider interface + offline Mock (Anthropic/OpenAI are inert stubs)
 └── cli/         # Typer app: `content-machine` and its subcommands
 
 docs/            # architecture, privacy, threat model, ADRs, vision
