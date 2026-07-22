@@ -47,14 +47,17 @@ marcada). Nenhum dado real foi processado.
 ## Fontes privadas (biografia)
 
 - ✅ Inventário metadata-safe com gate de aprovação (Sprint 1.2, Fase 1)
+- ✅ Inventário real executado (outputs privados fora do repo; agregados apenas)
+- 🔒 Triagem do Founder no CSV de revisão privado → Fase 2 (análise de corpo, por arquivo aprovado)
 
 ## Próximo gate
 
 > Sprint 1 ✅ → run local real ✅ → hardening do classificador ✅ (Sprint 1.1:
 > precisão high 100%, unknown sintético 9,6%) →
-> **➡️ ESTAMOS AQUI: inventário seguro (somente metadados) da pasta de
-> biografia do Founder (Sprint 1.2, Fase 1)** → inventário do archive
-> LinkedIn → 2º run real (aprovado pelo Fable) → **v0.1.0**
+> inventário da pasta de biografia ✅ (Fase 1, somente metadados) →
+> **➡️ ESTAMOS AQUI: triagem do Founder no inventário privado** →
+> inventário do archive LinkedIn → 2º run real (aprovado pelo Fable) →
+> **v0.1.0**
 >
 > Nota: a revisão manual dos 100 títulos está pausada por decisão do Founder
 > (arquivo preservado em ambiente privado); será substituída por uma amostra
