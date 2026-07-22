@@ -75,6 +75,11 @@ content-machine audience inspect <file.csv> --dry-run
 # Sprint 1: sanitize a private report.json into a shareable artifact
 # (suppresses any group under 10; adds privacy_label="sanitized-aggregate").
 content-machine audience export-public <report.json> -o public.json [--md public.md]
+
+# Sprint 1.2: metadata-safe inventory of a private source folder (Phase 1 —
+# triage only, no content is read). --output-dir must be OUTSIDE the repo.
+content-machine source inspect ~/private/biography-material --dry-run \
+  --output-dir ~/private/biography-material/_inventory
 ```
 
 All commands run fully offline and require no API key. `content-machine demo`
@@ -153,6 +158,11 @@ Full trust-boundary details: [`docs/architecture.md`](docs/architecture.md).
 - `content-machine audience export-public REPORT.json -o OUT.json [--md OUT.md]`
   — sanitizes a private report into a shareable artifact (suppresses groups
   under 10)
+- `content-machine source inspect FOLDER --dry-run --output-dir DIR` —
+  metadata-safe inventory of a private source folder (Phase 1: file bodies
+  are never read); writes three private outputs (Markdown, JSON, review CSV)
+  whose approval fields start empty — see
+  [`docs/source-approval-gate.md`](docs/source-approval-gate.md)
 - Deterministic, explainable role-family classification
   (`content_machine/audience/classify.py`): a seven-tier precedence engine
   with independent family (function) and seniority (level) inference, broad

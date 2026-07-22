@@ -9,6 +9,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Sprint 1.2 (Phase 1, ticket SONNET-1.2) — `content-machine source inspect
+  FOLDER --dry-run --output-dir DIR` CLI command
+  (`src/content_machine/cli/main.py`): wires the metadata-safe source
+  inventory module up to a Typer sub-app. Requires `--dry-run` (refuses
+  otherwise, exit 1) and a required `--output-dir`; both `FOLDER` and
+  `--output-dir` are rejected (exit 1) if they resolve inside the repository
+  tree. Writes `source-inventory-private.md`, `source-inventory-private.json`,
+  and `source-review-private.csv` to `--output-dir` (dir mode `0700`, file
+  mode `0600`) using the fixed sanitized `root_label="<private-source>"` —
+  never the real path. Stdout prints AGGREGATE counts only (totals,
+  by-category, by-status, duplicates, human-readable bytes) plus explicit
+  "no network", "not copied/modified", and Founder-approval-gate reminders;
+  no individual file name or ref is ever printed. `SourceScanError` is
+  reported as a friendly message with no traceback. 18 new tests
+  (`tests/test_cli_source_inspect.py`) cover: source folder never
+  copied/modified (before/after snapshot), no network calls, no absolute
+  path or sentinel file-body content leaking into any of the three
+  artifacts or stdout, symlink-escape/archive/hidden/encrypted-suspected
+  files reported only as counts, missing-flag and inside-repo rejections,
+  and review-CSV approval columns empty for every row (including category-C
+  rows, which are never auto-approved).
+- Sprint 1.2 (Phase 1, ticket OPUS-1.2) — new private source-folder
+  inventory module (`src/content_machine/sources/inventory.py`,
+  `tests/test_source_inventory.py`): a metadata-only scanner for a
+  creator's private biography folder. Never reads a file's body beyond a
+  bounded 512-byte magic-number sniff and a streaming SHA-256 for exact-
+  duplicate detection; symlinks are never followed (including path-
+  traversal escapes), archives are never extracted, hidden files/dirs are
+  recorded but never descended, and unreadable files degrade to a status
+  code with no path or errno leaking. Assigns a provisional, explainable
+  A/B/C/D/unknown privacy category (most-restrictive-wins lattice,
+  PT/EN-aware) via `categorize()`, and renders three deterministic outputs
+  (`to_markdown`, `to_json`, `to_review_csv`) — the review CSV's
+  `approved_for_analysis`, `intended_use`, and `founder_notes` columns are
+  intentionally empty on every row; no inventory model has an approval
+  field. Also adds the frozen Phase-2 provenance draft contracts
+  (`src/content_machine/sources/contracts.py`) and their JSON schemas. See
+  [`docs/source-approval-gate.md`](docs/source-approval-gate.md) for the
+  binding approval rules this module exists to feed.
 - Sprint 1.1 — classifier rebuilt as a seven-tier precedence engine
   (`src/content_machine/audience/classify.py`, ticket OPUS-1.1): ownership
   overrides, exact/phrase functional matches, strong domain keywords,
