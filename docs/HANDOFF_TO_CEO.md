@@ -17,8 +17,10 @@ issued **APPROVED FOR PUBLIC PUSH** before publication.
 ## Repository
 
 - URL: https://github.com/samuel3ssilva/open-content-machine
-- Branch: `main` · Release: `v0.0.1` (bootstrap)
-- 73 tracked files, 19 commits (Conventional Commits, model attribution in each)
+- Branch: `main` · Release: `v0.0.1` (bootstrap), tagged at commit `1bf4dbb`
+- 73 tracked files; 20 commits at sprint close — HEAD `1bf4dbb`, which is this
+  handoff itself (the earlier figure of 19 was counted before this commit
+  existed; corrected for accuracy, history unchanged)
 
 ## Model allocation
 
@@ -74,7 +76,8 @@ small networks can identify (reports stay private by default).
 Key paths: `src/content_machine/` (6 modules), `tests/` (84 tests),
 `schemas/`, `examples/`, `docs/` (architecture, ADRs, privacy, threat model,
 incident, private-workspace), `.github/workflows/ci.yml`.
-Final commit of the sprint: `be34a5e` (see `git log` for the full trail; every
+Final commit of the sprint: `1bf4dbb` (the handoff commit; `be34a5e` was the
+last code/docs commit before it — see `git log` for the full trail; every
 commit names the responsible model).
 
 ## Demo
