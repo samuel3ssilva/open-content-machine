@@ -219,6 +219,9 @@ _T1_FUNCTIONAL_PHRASES: tuple[_Rule, ...] = (
     (_F.engineering_data_ai, "data engineer", _C.high),
     (_F.engineering_data_ai, "data scientist", _C.high),
     (_F.engineering_data_ai, "data analyst", _C.high),
+    # Phrase-level BI evidence (bare "bi" stays unmapped -- too ambiguous):
+    (_F.engineering_data_ai, "analista de bi", _C.high),
+    (_F.engineering_data_ai, "bi analyst", _C.high),
     (_F.engineering_data_ai, "analytics engineer", _C.high),
     (_F.engineering_data_ai, "machine learning engineer", _C.high),
     (_F.engineering_data_ai, "machine learning", _C.high),
@@ -632,8 +635,12 @@ _T5_WEAK: tuple[_Rule, ...] = (
     (_F.other, "socio", _C.low),
     (_F.operations_people_finance_legal, "risk", _C.low),
     (_F.operations_people_finance_legal, "risco", _C.low),
-    (_F.operations_people_finance_legal, "coordinator", _C.low),
-    (_F.operations_people_finance_legal, "coordenador", _C.low),
+    # NOTE (Fable review, Sprint 1.1): bare "coordinator/coordenador" is a
+    # seniority word, not a function, and bare "analyst/analista" is
+    # cross-domain (finance/ops/marketing as often as data). Mapping them to a
+    # family here was unjustified inference; they now fall through to unknown.
+    # Seniority extraction still buckets them (manager_lead /
+    # individual_contributor) independently.
     (_F.operations_people_finance_legal, "administrator", _C.low),
     (_F.operations_people_finance_legal, "administrador", _C.low),
     (_F.marketing_growth_content, "writer", _C.low),
@@ -642,8 +649,6 @@ _T5_WEAK: tuple[_Rule, ...] = (
     (_F.engineering_data_ai, "engineer", _C.low),
     (_F.engineering_data_ai, "engenheiro", _C.low),
     (_F.engineering_data_ai, "engenheira", _C.low),
-    (_F.engineering_data_ai, "analyst", _C.low),
-    (_F.engineering_data_ai, "analista", _C.low),
 )
 
 

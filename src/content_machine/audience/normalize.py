@@ -71,6 +71,25 @@ _LEGAL_SUFFIXES: tuple[str, ...] = (
 #      engineering);
 #   6. expand a small, safe set of single-token abbreviations.
 _COMPANY_SUFFIX_RE = re.compile(r"\s*(?:@\s*|\bat\s+)\S.*$")
+
+# Enthusiasm/self-description clauses carry no functional evidence: being
+# "passionate about technology" is not employment in technology. The clause and
+# everything after it is discarded BEFORE matching, so a bare enthusiasm title
+# classifies as unknown while "engenheira de software apaixonada por dados"
+# still classifies through its real function. Fable ruling, Sprint 1.1
+# (anti-forced-classification review); applied on accent-stripped text.
+_ENTHUSIASM_CLAUSE_RE = re.compile(
+    r"\s*\b(?:"
+    r"apaixonad[oa]s?\s+(?:por|pel[oa])"
+    r"|passionate\s+about"
+    r"|entusiasta\s+(?:de|da|do|em|por)"
+    r"|enthusiast\s+(?:of|about|in)"
+    r"|amante\s+(?:de|da|do)"
+    r"|fa\s+(?:de|da|do)"
+    r"|aficionad[oa]\s+(?:por|em)"
+    r"|lover\s+of"
+    r")\b.*$"
+)
 _SEPARATORS_RE = re.compile(r"[\/,|·–—\-]+")
 
 # Phrase-level normalizations applied before token expansion. Each maps a
@@ -114,6 +133,7 @@ def normalize_title(raw: str | None) -> str:
     if not raw or not raw.strip():
         return ""
     text = strip_accents(raw.casefold())
+    text = _ENTHUSIASM_CLAUSE_RE.sub("", text)
     text = _COMPANY_SUFFIX_RE.sub("", text)
     text = _SEPARATORS_RE.sub(" ", text)
     text = " ".join(text.split())

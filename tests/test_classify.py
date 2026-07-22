@@ -103,10 +103,12 @@ def test_empty_or_garbage_is_unknown_never_forced(title: str | None) -> None:
 
 
 def test_ambiguous_lone_token_is_low() -> None:
-    # A bare generic token with no domain -> weak evidence.
-    result = classify_role("Analyst")
+    # A bare family-specific token with no qualifier -> weak evidence, low
+    # confidence. (Bare "Analyst" is cross-domain and stays unknown -- see
+    # test_bare_analyst_and_coordinator_are_unknown_family.)
+    result = classify_role("Engineer")
     assert result.confidence is Confidence.low
-    assert result.family is not RoleFamily.unknown
+    assert result.family is RoleFamily.engineering_data_ai
     assert result.matched_evidence
 
 
@@ -415,12 +417,13 @@ def test_qa_engineer_still_engineering_despite_qualidade_decision() -> None:
 
 
 def test_bare_bi_abbreviation_is_not_expanded() -> None:
-    # "BI" is deliberately left unmapped (too ambiguous as a bare token);
-    # "Analista de BI" falls to the generic low "analista" rule rather than
-    # a forced high "business intelligence" match.
+    # Bare "BI" stays unmapped (too ambiguous as a lone token), but the full
+    # phrase "analista de bi" is unambiguous BI-analyst evidence (T1 phrase
+    # rule) -- phrase-level context, not blind abbreviation expansion.
+    assert classify_role("BI").family is RoleFamily.unknown
     result = classify_role("Analista de BI")
     assert result.family is RoleFamily.engineering_data_ai
-    assert result.confidence is Confidence.low
+    assert result.confidence is Confidence.high
 
 
 def test_fiscal_is_left_unknown() -> None:
@@ -437,13 +440,24 @@ def test_bare_especialista_is_left_unknown() -> None:
     assert result.family is RoleFamily.unknown
 
 
-def test_apaixonado_por_tecnologia_is_not_unknown() -> None:
-    # Unlike a truly domain-empty non-conventional title, this one contains
-    # genuine evidence ("tecnologia") and correctly resolves at T2 -- not a
-    # bug, see docs/classification.md.
-    result = classify_role("Apaixonado por Tecnologia")
-    assert result.family is RoleFamily.engineering_data_ai
-    assert result.confidence is Confidence.high
+def test_enthusiasm_clause_is_not_functional_evidence() -> None:
+    # Fable ruling (Sprint 1.1): "passionate about X" describes enthusiasm,
+    # not employment -- the clause is discarded before matching. A bare
+    # enthusiasm title is unknown; a real function ahead of the clause still
+    # classifies normally. See docs/classification.md.
+    assert classify_role("Apaixonado por Tecnologia").family is RoleFamily.unknown
+    assert classify_role("Passionate about Technology").family is RoleFamily.unknown
+    kept = classify_role("Engenheira de Software apaixonada por dados")
+    assert kept.family is RoleFamily.engineering_data_ai
+    assert kept.confidence is Confidence.high
+
+
+def test_bare_analyst_and_coordinator_are_unknown_family() -> None:
+    # Fable ruling (Sprint 1.1): bare analyst/analista is cross-domain and
+    # bare coordenador/coordinator is a seniority word; neither may map to a
+    # family. Seniority still buckets them independently.
+    for title in ("Analyst", "Analista", "Coordenador", "Coordinator"):
+        assert classify_role(title).family is RoleFamily.unknown
 
 
 @pytest.mark.parametrize(

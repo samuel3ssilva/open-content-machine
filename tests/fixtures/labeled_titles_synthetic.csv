@@ -117,12 +117,12 @@ Consultant,other,individual_contributor
 Consultor,other,individual_contributor
 Partner,other,unknown
 Sócio,other,unknown
-Analyst,engineering_data_ai,individual_contributor
+Analyst,unknown,individual_contributor
 Director,unknown,vp_head_director
 Head,unknown,vp_head_director
 Gerente,unknown,manager_lead
 VP,unknown,vp_head_director
-Coordinator,operations_people_finance_legal,manager_lead
+Coordinator,unknown,manager_lead
 Manager,unknown,manager_lead
 Estagiário,unknown,entry_student
 Engenheira de Software,engineering_data_ai,individual_contributor
@@ -145,7 +145,7 @@ Information Security Analyst,engineering_data_ai,individual_contributor
 Cybersecurity Specialist,engineering_data_ai,individual_contributor
 Analista de TI,engineering_data_ai,individual_contributor
 Gerente de TI,engineering_data_ai,manager_lead
-Coordenador de Infraestrutura,operations_people_finance_legal,manager_lead
+Coordenador de Infraestrutura,unknown,manager_lead
 Cloud Solutions Architect,engineering_data_ai,unknown
 Business Intelligence Analyst,engineering_data_ai,individual_contributor
 Head de Produto,product,vp_head_director
@@ -232,16 +232,16 @@ Software Engineer at Northwind Labs,engineering_data_ai,individual_contributor
 Data Scientist @ Globex,engineering_data_ai,unknown
 Analista Financeiro na ExemploCorp,operations_people_finance_legal,individual_contributor
 Consultora,other,individual_contributor
-Analista,engineering_data_ai,individual_contributor
+Analista,unknown,individual_contributor
 Especialista,unknown,individual_contributor
 Diretor,unknown,vp_head_director
 Diretora,unknown,vp_head_director
-Coordenador,operations_people_finance_legal,manager_lead
+Coordenador,unknown,manager_lead
 Resolvedor de Problemas,unknown,unknown
 Fazedor de Coisas,unknown,unknown
 Curioso Nato,unknown,unknown
 Amante de Café e Código,unknown,unknown
-Apaixonado por Tecnologia,engineering_data_ai,unknown
+Apaixonado por Tecnologia,unknown,unknown
 Servidor Público,unknown,unknown
 Fiscal,unknown,unknown
 Analista de Risco,operations_people_finance_legal,individual_contributor
@@ -258,3 +258,5 @@ Growth Marketing Manager,marketing_growth_content,manager_lead
 Founder da Fictícia Ventures,founder_executive,founder_owner
 Diretor de Segurança da Informação,engineering_data_ai,vp_head_director
 Analista de Compras,operations_people_finance_legal,individual_contributor
+Engenheira de Software apaixonada por dados,engineering_data_ai,individual_contributor
+Passionate about Technology,unknown,unknown
