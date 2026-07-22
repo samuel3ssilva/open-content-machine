@@ -33,9 +33,9 @@ classification and handling rules).
 
 ## Status
 
-Bootstrap sprint — Audience Intelligence MVP. See [`ROADMAP.md`](ROADMAP.md)
-for the full build order and [`CHANGELOG.md`](CHANGELOG.md) for what has
-landed so far.
+Bootstrap sprint — Audience Intelligence MVP. Live one-page dashboard:
+[MVP Status](docs/MVP_STATUS.md). See [`ROADMAP.md`](ROADMAP.md) for the full
+build order and [`CHANGELOG.md`](CHANGELOG.md) for what has landed so far.
 
 ## Install
 
