@@ -45,6 +45,43 @@ fields (ADR 0003). Still, treat generated reports as sensitive-by-default and
 keep them in your private workspace — aggregates over a small network can be
 identifying.
 
+## Private source folders (Phase 1)
+
+`content-machine source inspect` builds a metadata-safe inventory of a
+private source folder (e.g. the Founder's biography material) *without ever
+reading a file's body*. It only records file names, sizes, dates, a MIME
+guess, a SHA-256 (for duplicate detection), and a provisional privacy
+category — see [`docs/source-approval-gate.md`](docs/source-approval-gate.md)
+for the full category lattice and gate.
+
+```bash
+content-machine source inspect ~/private/biography-material --dry-run \
+  --output-dir ~/private/biography-material/_inventory
+```
+
+- `--dry-run` is required (this version only supports the safe, read-only
+  scan).
+- `--output-dir` is required and, like the source `FOLDER` itself, must be
+  **outside the repository tree** — the command refuses to run otherwise.
+- The scan never copies, extracts, or modifies anything under `FOLDER`;
+  archives are never opened, symlinks are never followed, and hidden
+  directories are never descended.
+- Three private files are written to `--output-dir` (mode `0700` dir,
+  `0600` files): `source-inventory-private.md`, `source-inventory-private.json`,
+  and `source-review-private.csv`. None of the three ever contains the real
+  filesystem path.
+- Terminal output is **aggregate counts only** (totals, by-category,
+  by-status, duplicates, bytes) — never an individual file name.
+
+**Approval fields start empty by design.** `source-review-private.csv` has
+`approved_for_analysis`, `intended_use`, and `founder_notes` columns that are
+blank for every row. Nothing in this phase approves a file for anything.
+Analysis of any file requires the Founder to set `approved_for_analysis`
+explicitly, per file, in that private CSV — the full gate (including why
+category D files can never be approved, and why category C needs a written
+note) is defined in
+[`docs/source-approval-gate.md`](docs/source-approval-gate.md).
+
 ## Deleting everything
 
 All state is local files. Deleting your private workspace (and any reports you

@@ -44,6 +44,10 @@ marcada). Nenhum dado real foi processado.
 - ✅ Revisão Fable das fronteiras do dry-run e da supressão pública
 - ✅ Parecer **APPROVED FOR REAL LOCAL RUN** emitido (2026-07-22)
 
+## Fontes privadas (biografia)
+
+- ✅ Inventário metadata-safe com gate de aprovação (Sprint 1.2, Fase 1)
+
 ## Próximo gate
 
 > Sprint 1 ✅ → run local real ✅ → hardening do classificador ✅ (Sprint 1.1:

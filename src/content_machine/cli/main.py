@@ -7,7 +7,9 @@ rows by index and columns by name, never personal field values.
 
 from __future__ import annotations
 
+import os
 from collections import Counter
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -38,6 +40,15 @@ from content_machine.audience.report import AudienceReport, analyze, to_json, to
 from content_machine.config.settings import get_settings
 from content_machine.ingestion.csv_loader import CsvLoadError, LoadResult, load_csv
 from content_machine.privacy.anonymizer import anonymize
+from content_machine.sources.inventory import (
+    FileStatus,
+    PrivacyCategory,
+    SourceScanError,
+    scan_source_folder,
+)
+from content_machine.sources.inventory import to_json as source_to_json
+from content_machine.sources.inventory import to_markdown as source_to_markdown
+from content_machine.sources.inventory import to_review_csv as source_to_review_csv
 
 app = typer.Typer(
     help="Open Content Machine: local-first, privacy-by-design audience intelligence.",
@@ -50,6 +61,12 @@ audience_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(audience_app, name="audience")
+
+source_app = typer.Typer(
+    help="Private source folder commands (Phase 1: metadata-safe inventory).",
+    no_args_is_help=True,
+)
+app.add_typer(source_app, name="source")
 
 # The repo root, used both to locate the shipped example and to warn when a
 # private review file is (mis)placed inside the version-controlled tree.
@@ -75,6 +92,28 @@ def _warn_if_in_repo(file: Path) -> None:
         fg=typer.colors.YELLOW,
         err=True,
     )
+
+
+def _reject_if_in_repo(path: Path, *, what: str) -> None:
+    """Hard-fail (exit 1) if ``path`` resolves inside the repository tree.
+
+    Unlike :func:`_warn_if_in_repo`, this is used where a private source
+    folder or its outputs must NEVER live inside the version-controlled
+    checkout — a warning is not enough. The path is echoed back because it is
+    user-supplied CLI input, not a data value.
+    """
+    try:
+        path.resolve().relative_to(_REPO_ROOT)
+    except ValueError:
+        return
+    typer.secho(
+        f"Error: {what} ({path}) is inside the repository tree. Private source "
+        "material and its outputs must stay outside the repo — choose a path "
+        f"outside {_REPO_ROOT}.",
+        fg=typer.colors.RED,
+        err=True,
+    )
+    raise typer.Exit(code=1)
 
 
 @app.command()
@@ -453,6 +492,125 @@ def audience_compare_classifiers(
         raise typer.Exit(code=1) from None
 
     typer.echo(render_comparison(report))
+    raise typer.Exit(code=0)
+
+
+# Category letters shown alongside each PrivacyCategory enum name in the
+# aggregate stdout summary (docs/source-approval-gate.md lattice).
+_CATEGORY_LABELS: dict[PrivacyCategory, str] = {
+    PrivacyCategory.creator_public: "creator_public (A)",
+    PrivacyCategory.creator_private: "creator_private (B)",
+    PrivacyCategory.third_party_confidential: "third_party_confidential (C)",
+    PrivacyCategory.restricted: "restricted (D)",
+    PrivacyCategory.unknown: "unknown",
+}
+
+
+def _write_private(path: Path, content: str) -> None:
+    """Write a private artifact and lock it down to owner-only (mode 0o600)."""
+    path.write_text(content, encoding="utf-8")
+    os.chmod(path, 0o600)
+
+
+@source_app.command("inspect")
+def source_inspect(
+    folder: Annotated[
+        Path, typer.Argument(help="Path to a PRIVATE source folder to inventory.")
+    ],
+    output_dir: Annotated[
+        Path,
+        typer.Option(
+            "--output-dir",
+            help="Where to write the three private outputs (must be outside the repo).",
+        ),
+    ],
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run", help="Required: perform a read-only, metadata-safe inventory."
+        ),
+    ] = False,
+) -> None:
+    """Phase-1 metadata-safe inventory of a private source folder (dry-run only).
+
+    Never reads a file's body. Writes three PRIVATE outputs (Markdown, JSON,
+    review CSV) to ``--output-dir``, which -- like ``folder`` -- must be
+    outside the repository tree. Prints AGGREGATE counts only; individual
+    file names/refs never reach stdout. See docs/source-approval-gate.md:
+    approval fields in the review CSV start empty and analysis of any file
+    requires the Founder's explicit, per-file approval.
+    """
+    if not dry_run:
+        typer.secho(
+            "Error: 'source inspect' only supports the read-only --dry-run mode "
+            "in this version (metadata-safe inventory only). Re-run with "
+            "--dry-run to scan the folder safely.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    _reject_if_in_repo(folder, what="the source folder")
+    _reject_if_in_repo(output_dir, what="--output-dir")
+
+    scanned_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        inventory = scan_source_folder(
+            folder, root_label="<private-source>", scanned_at=scanned_at
+        )
+    except SourceScanError as exc:
+        typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from None
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    os.chmod(output_dir, 0o700)
+
+    md_path = output_dir / "source-inventory-private.md"
+    json_path = output_dir / "source-inventory-private.json"
+    csv_path = output_dir / "source-review-private.csv"
+    _write_private(md_path, source_to_markdown(inventory))
+    _write_private(json_path, source_to_json(inventory))
+    _write_private(csv_path, source_to_review_csv(inventory))
+
+    totals = inventory.totals
+    lines: list[str] = []
+    lines.append(
+        "Open Content Machine — source inspect (dry run, Phase 1: "
+        "metadata-safe inventory)"
+    )
+    lines.append("")
+    lines.append(f"Scanning private source folder: {folder}")
+    lines.append("")
+    lines.append(f"Total files: {totals.files}")
+    lines.append(f"Total directories: {totals.dirs}")
+    lines.append("")
+    lines.append("By category:")
+    for category in PrivacyCategory:
+        count = totals.by_category.get(category.value, 0)
+        lines.append(f"  {_CATEGORY_LABELS[category]}: {count}")
+    lines.append("")
+    lines.append("By status:")
+    for status in FileStatus:
+        count = totals.by_status.get(status.value, 0)
+        lines.append(f"  {status.name}: {count}")
+    lines.append("")
+    lines.append(f"Duplicate files: {totals.duplicate_count}")
+    lines.append(
+        f"Total bytes (ok files): {_human_size(totals.total_bytes)} "
+        f"({totals.total_bytes} bytes)"
+    )
+    lines.append("")
+    lines.append("Network access: none (offline by design)")
+    lines.append("Source files copied or modified: no")
+    lines.append(f"Wrote 3 private outputs to {output_dir}")
+    lines.append("")
+    lines.append(
+        "Reminder: approval fields in the review CSV start EMPTY. No file may "
+        "be analyzed until the Founder sets approved_for_analysis per file — "
+        "see docs/source-approval-gate.md."
+    )
+
+    typer.echo("\n".join(lines))
     raise typer.Exit(code=0)
 
 
