@@ -48,11 +48,22 @@ identifying.
 ## Private source folders (Phase 1)
 
 `content-machine source inspect` builds a metadata-safe inventory of a
-private source folder (e.g. the Founder's biography material) *without ever
-reading a file's body*. It only records file names, sizes, dates, a MIME
-guess, a SHA-256 (for duplicate detection), and a provisional privacy
-category — see [`docs/source-approval-gate.md`](docs/source-approval-gate.md)
-for the full category lattice and gate.
+private source folder (e.g. the Founder's biography material). To be precise
+about what "metadata-safe" means at the byte level:
+
+- **no semantic parsing, summarization, or editorial extraction occurs** —
+  no text is interpreted, indexed, or excerpted;
+- up to 512 bytes may be inspected for safe file-type detection (magic
+  bytes);
+- complete file bytes may be read locally, once, to compute the SHA-256 used
+  for duplicate detection;
+- **no content is ever displayed, written to any output, uploaded, or sent
+  to a model.**
+
+The inventory records file names, sizes, dates, a MIME guess, the duplicate
+hash, and a provisional privacy category — see
+[`docs/source-approval-gate.md`](docs/source-approval-gate.md) for the full
+category lattice and gate.
 
 ```bash
 content-machine source inspect ~/private/biography-material --dry-run \
