@@ -1,0 +1,52 @@
+# === PRIVACY-CRITICAL: real personal data must NEVER be committed ===
+# Everything under data/private/ is ignored except the .gitkeep marker.
+data/private/*
+!data/private/.gitkeep
+# Any real LinkedIn/network exports, anywhere in the tree
+*connections*.csv
+!examples/synthetic-connections.csv
+*.export.csv
+Connections.csv
+Contacts.csv
+
+# Secrets and environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials*.json
+secrets*
+
+# Local outputs that may contain derived personal data
+output/
+reports/
+*.local.md
+*.local.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.python-version
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Claude Code local settings (may contain machine-specific paths)
+.claude/settings.local.json
