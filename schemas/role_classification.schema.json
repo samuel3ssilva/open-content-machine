@@ -12,7 +12,7 @@
       "type": "string"
     },
     "RoleFamily": {
-      "description": "Coarse professional family a title maps to. String-valued.",
+      "description": "Coarse professional family (FUNCTION) a title maps to. String-valued.",
       "enum": [
         "founder_executive",
         "engineering_data_ai",
@@ -30,7 +30,7 @@
     }
   },
   "additionalProperties": false,
-  "description": "Result of classifying one job title. ``matched_evidence`` is always a\nrule/keyword name (never personal data) and is non-empty whenever\n``family`` is not ``unknown``.",
+  "description": "Result of classifying one job title. ``matched_evidence`` names the tier\nand rule that fired (never personal data) and is non-empty whenever\n``family`` is not ``unknown``.",
   "properties": {
     "family": {
       "$ref": "#/$defs/RoleFamily",

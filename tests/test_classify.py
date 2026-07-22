@@ -10,10 +10,14 @@ from content_machine.audience.classify import (
     RoleFamily,
     classify_role,
 )
+from content_machine.audience.normalize import infer_seniority
 
-# At least three positive, unambiguous (HIGH) cases per listed family.
+# At least three positive, unambiguous (HIGH) cases per listed family. NOTE:
+# founder_executive is RESERVED for general leadership/ownership (ticket
+# OPUS-1.1 §1) -- functional C-suite titles like CFO/CTO/CMO map to their
+# FUNCTION, not here.
 _FAMILY_POSITIVE_CASES: dict[RoleFamily, list[str]] = {
-    RoleFamily.founder_executive: ["Founder", "CFO", "Chief Executive Officer"],
+    RoleFamily.founder_executive: ["Founder", "Chief Executive Officer", "CEO"],
     RoleFamily.engineering_data_ai: [
         "Software Engineer",
         "Data Engineer",
@@ -106,10 +110,118 @@ def test_ambiguous_lone_token_is_low() -> None:
     assert result.matched_evidence
 
 
-def test_generic_leadership_token_is_medium() -> None:
-    result = classify_role("Director")
+@pytest.mark.parametrize("title", ["Director", "Head", "Gerente", "VP", "Vice President"])
+def test_seniority_only_title_has_unknown_family(title: str) -> None:
+    # A bare seniority word is a LEVEL, not a FUNCTION -- family must be unknown
+    # (ticket OPUS-1.1 §1/§5). The seniority itself is still extractable.
+    result = classify_role(title)
+    assert result.family is RoleFamily.unknown
+    assert result.confidence is Confidence.unknown
+    assert result.matched_evidence == ""
+    assert infer_seniority(title) != "unknown"
+
+
+# --- Family / seniority independence: the core CEO-mandated correction ------
+# family = FUNCTION, seniority = LEVEL, parsed independently from one title.
+_INDEPENDENCE_CASES: list[tuple[str, RoleFamily, str]] = [
+    ("Director of Engineering", RoleFamily.engineering_data_ai, "vp_head_director"),
+    ("Head of Product", RoleFamily.product, "vp_head_director"),
+    ("Marketing Director", RoleFamily.marketing_growth_content, "vp_head_director"),
+    ("Sales Manager", RoleFamily.sales_bd_partnerships, "manager_lead"),
+    ("CTO", RoleFamily.engineering_data_ai, "c_level"),
+    ("Chief Technology Officer", RoleFamily.engineering_data_ai, "c_level"),
+    ("CMO", RoleFamily.marketing_growth_content, "c_level"),
+    ("CFO", RoleFamily.operations_people_finance_legal, "c_level"),
+    ("CEO", RoleFamily.founder_executive, "c_level"),
+    ("Chief Executive Officer", RoleFamily.founder_executive, "c_level"),
+    ("Diretor de Engenharia", RoleFamily.engineering_data_ai, "vp_head_director"),
+    ("Diretor de Marketing", RoleFamily.marketing_growth_content, "vp_head_director"),
+    ("Gerente de Vendas", RoleFamily.sales_bd_partnerships, "manager_lead"),
+]
+
+
+@pytest.mark.parametrize(("title", "family", "seniority"), _INDEPENDENCE_CASES)
+def test_family_and_seniority_are_independent(
+    title: str, family: RoleFamily, seniority: str
+) -> None:
+    result = classify_role(title)
+    assert result.family is family, f"{title!r} -> {result.family}"
+    assert infer_seniority(title) == seniority, title
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Director of Engineering",
+        "Head of Product",
+        "Marketing Director",
+        "Diretor de Tecnologia",
+        "Head of Data",
+        "VP of Marketing",
+        "Managing Director, Technology",
+    ],
+)
+def test_functional_leadership_never_founder_executive(title: str) -> None:
+    # The canonical cross-domain error: a functional director/head/VP title must
+    # NEVER be classified as founder_executive.
+    assert classify_role(title).family is not RoleFamily.founder_executive
+
+
+# --- §5 negative & ambiguity rules, each with a dedicated assertion ---------
+
+
+def test_product_designer_is_design_not_product() -> None:
+    # "designer" outranks the "product" modifier.
+    assert classify_role("Product Designer").family is RoleFamily.design_ux
+
+
+def test_sales_engineer_is_sales_medium() -> None:
+    result = classify_role("Sales Engineer")
+    assert result.family is RoleFamily.sales_bd_partnerships
     assert result.confidence is Confidence.medium
-    assert result.family is RoleFamily.founder_executive
+
+
+def test_people_operations_is_ops_with_people_ops_evidence() -> None:
+    result = classify_role("People Operations")
+    assert result.family is RoleFamily.operations_people_finance_legal
+    assert "people operations" in result.matched_evidence
+
+
+def test_managing_director_with_functional_qualifier_wins() -> None:
+    assert (
+        classify_role("Managing Director, Technology").family
+        is RoleFamily.engineering_data_ai
+    )
+
+
+def test_consultant_without_domain_is_other_low() -> None:
+    result = classify_role("Consultant")
+    assert result.family is RoleFamily.other
+    assert result.confidence is Confidence.low
+
+
+def test_bare_partner_is_not_founder_executive() -> None:
+    result = classify_role("Partner")
+    assert result.family is not RoleFamily.founder_executive
+    assert result.family is RoleFamily.other
+    assert result.confidence is Confidence.low
+
+
+def test_managing_partner_is_founder_executive() -> None:
+    assert classify_role("Managing Partner").family is RoleFamily.founder_executive
+
+
+def test_product_owner_is_product_not_ownership() -> None:
+    # "owner" here is role stewardship, not company ownership.
+    result = classify_role("Product Owner")
+    assert result.family is RoleFamily.product
+
+
+@pytest.mark.parametrize("title", ["Founder & CTO", "CTO & Co-founder"])
+def test_founder_plus_function_is_founder_executive(title: str) -> None:
+    # Ownership dominates BOTH family and seniority in a founder+function compound.
+    assert classify_role(title).family is RoleFamily.founder_executive
+    assert infer_seniority(title) == "founder_owner"
 
 
 def test_compound_title_two_families_is_medium_first_by_priority() -> None:
@@ -134,12 +246,13 @@ def test_evidence_nonempty_whenever_family_known() -> None:
             assert result.matched_evidence, title
 
 
-def test_evidence_is_rule_not_personal_data() -> None:
-    # Evidence names a keyword/rule from the tables, never the input verbatim in
-    # a way that could carry a value -- here the input has no personal data, but
-    # the format is asserted: "keyword '<kw>' -> <family>".
+def test_evidence_names_tier_and_rule_not_personal_data() -> None:
+    # Evidence names the TIER + keyword/rule from the tables, never the input
+    # verbatim in a way that could carry a value. Format: "tier<N>_<name>:
+    # '<kw>' -> <family>".
     result = classify_role("Senior Software Engineer")
-    assert result.matched_evidence.startswith("keyword '")
+    assert result.matched_evidence.startswith("tier")
+    assert "software engineer" in result.matched_evidence
     assert "->" in result.matched_evidence
 
 

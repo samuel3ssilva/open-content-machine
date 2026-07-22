@@ -10,6 +10,7 @@ duplicate people. Every derived/inferred field is explicitly marked.
 from __future__ import annotations
 
 import re
+import unicodedata
 from datetime import date, datetime
 
 from pydantic import BaseModel, Field
@@ -47,45 +48,229 @@ _LEGAL_SUFFIXES: tuple[str, ...] = (
     "pte",
 )
 
+# --- Title normalization pre-pass (shared with audience.classify) -----------
+#
+# ``normalize_title`` produces the single canonical string that BOTH role-family
+# classification (audience.classify) and seniority extraction (below) match
+# against, so the two never disagree about what the title says (ticket OPUS-1.1
+# §3/§6). It is used only for *matching*; the raw ``position`` is still stored
+# verbatim on the working record for private display. Steps, in order:
+#
+#   1. casefold;
+#   2. strip accents (Unicode NFD, drop combining marks) so PT/ES variants like
+#      "operações"/"diretor" match their accent-free rule tokens;
+#   3. strip a trailing "@ Company" or " at Company" employer suffix (family is
+#      a function, not an employer). We deliberately do NOT strip PT " na " / ES
+#      " en " here: "en" is also the Spanish preposition "in" ("Ingeniero en
+#      Sistemas") and stripping it would truncate real functional titles. Sonnet
+#      may extend this with a company-name-aware rule later.
+#   4. collapse separators (/ , | · – —) and hyphens to spaces;
+#   5. fold known ambiguous abbreviations via *phrase* rules BEFORE token
+#      expansion (esp. "biz dev"/"business dev" -> "business development", so the
+#      "dev" -> "developer" expansion below cannot mis-route BD titles to
+#      engineering);
+#   6. expand a small, safe set of single-token abbreviations.
+_COMPANY_SUFFIX_RE = re.compile(r"\s*(?:@\s*|\bat\s+)\S.*$")
+_SEPARATORS_RE = re.compile(r"[\/,|·–—\-]+")
+
+# Phrase-level normalizations applied before token expansion. Each maps a
+# compiled pattern to its replacement. Order does not matter (disjoint inputs).
+_PHRASE_NORMALIZATIONS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"\b(?:biz|business)\s+dev\b"), "business development"),
+    (re.compile(r"\bbizdev\b"), "business development"),
+)
+
+# Single-token abbreviation expansions (token compared with trailing dots
+# stripped). Values may be multi-word; they are re-joined afterwards. "bd" is
+# intentionally absent -- it is handled by the phrase rules above, never blindly
+# expanded (BD = business development only in the right context).
+_ABBREV_EXPANSIONS: dict[str, str] = {
+    "eng": "engineering",
+    "dev": "developer",
+    "mkt": "marketing",
+    "rh": "recursos humanos",
+    "ti": "tecnologia da informacao",
+    "ml": "machine learning",
+    "ia": "ai",
+    "sr": "senior",
+    "jr": "junior",
+}
+
+
+def strip_accents(value: str) -> str:
+    """Return ``value`` with combining accent marks removed (Unicode NFD)."""
+    decomposed = unicodedata.normalize("NFD", value)
+    return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+
+
+def normalize_title(raw: str | None) -> str:
+    """Canonicalize a job title for family/seniority matching.
+
+    Pure and deterministic. Returns ``""`` for an empty/whitespace title. See the
+    module-level comment above for the exact, ordered transformation. The output
+    is accent-free, employer-suffix-free, separator-collapsed and abbreviation-
+    expanded, so downstream keyword tables can stay explicit and explainable.
+    """
+    if not raw or not raw.strip():
+        return ""
+    text = strip_accents(raw.casefold())
+    text = _COMPANY_SUFFIX_RE.sub("", text)
+    text = _SEPARATORS_RE.sub(" ", text)
+    text = " ".join(text.split())
+    for pattern, replacement in _PHRASE_NORMALIZATIONS:
+        text = pattern.sub(replacement, text)
+    tokens = [_ABBREV_EXPANSIONS.get(tok.rstrip("."), tok) for tok in text.split()]
+    return " ".join(" ".join(tokens).split())
+
+
 # Seniority keyword rules, evaluated top to bottom; first match wins. Each rule
-# is (bucket, tuple of lowercase substrings matched against the title). These
-# are heuristics only and always carry seniority_inferred=True.
+# is (bucket, tuple of accent-free tokens matched against ``normalize_title``).
+# These are heuristics only and always carry seniority_inferred=True.
 #
 # Buckets (exactly seven, plus "unknown"): founder_owner, c_level,
 # vp_head_director, manager_lead, individual_contributor, entry_student,
 # unknown. The former "senior_ic" and "ic" buckets are merged into
 # individual_contributor.
+#
+# LEVEL is independent of FAMILY (ticket OPUS-1.1 §1): this table only decides
+# seniority; it never assigns a role family. Documented tie-breaks:
+#   * founder_owner is checked first, so ownership wins the level even in a
+#     compound like "Founder & CTO" (-> founder_owner), matching the family
+#     rule that ownership dominates (see audience.classify §6).
+#   * vp_head_director is checked before c_level so "Vice President" resolves to
+#     vp_head_director rather than matching "president" at the c_level tier;
+#     a bare "President" (no "vice") still falls through to c_level.
+#   * a bare "Partner"/"Sócio" matches NO rule (only "managing partner" ->
+#     founder_owner), so an ownership-less partner has unknown seniority rather
+#     than being over-promoted.
 _SENIORITY_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("founder_owner", ("founder", "co-founder", "cofounder", "owner")),
+    (
+        "founder_owner",
+        (
+            "founder",
+            "co founder",
+            "cofounder",
+            "fundador",
+            "fundadora",
+            "cofundador",
+            "cofundadora",
+            "co fundador",
+            "owner",
+            "proprietor",
+            "proprietario",
+            "proprietaria",
+            "managing partner",
+            "socio gerente",
+            "socio fundador",
+        ),
+    ),
+    (
+        "vp_head_director",
+        (
+            "vp",
+            "vice president",
+            "vice presidente",
+            "head",
+            "director",
+            "diretor",
+            "diretora",
+        ),
+    ),
     (
         "c_level",
-        ("ceo", "cto", "cfo", "coo", "cmo", "ciso", "cio", "chief", "president"),
+        (
+            "ceo",
+            "cto",
+            "cfo",
+            "coo",
+            "cmo",
+            "ciso",
+            "cio",
+            "chro",
+            "cro",
+            "cpo",
+            "cxo",
+            "chief",
+            "c level",
+            "president",
+            "presidente",
+        ),
     ),
-    ("vp_head_director", ("vp", "vice president", "director", "head of", "partner")),
-    ("manager_lead", ("manager", "lead", "supervisor", "principal")),
-    ("entry_student", ("student", "intern", "trainee", "apprentice", "graduate")),
+    (
+        "manager_lead",
+        (
+            "manager",
+            "gerente",
+            "lead",
+            "leader",
+            "lider",
+            "supervisor",
+            "supervisora",
+            "coordinator",
+            "coordenador",
+            "coordenadora",
+            "principal",
+        ),
+    ),
+    (
+        "entry_student",
+        (
+            "intern",
+            "estagiario",
+            "estagiaria",
+            "trainee",
+            "junior",
+            "student",
+            "estudante",
+            "graduate",
+            "apprentice",
+            "aprendiz",
+            "bolsista",
+        ),
+    ),
     (
         "individual_contributor",
         (
             "senior",
-            "sr",
             "staff",
+            "pleno",
             "specialist",
+            "especialista",
             "engineer",
+            "engenheiro",
+            "engenheira",
             "developer",
+            "desenvolvedor",
+            "desenvolvedora",
             "analyst",
+            "analista",
             "designer",
             "consultant",
+            "consultor",
+            "consultora",
             "associate",
-            "coordinator",
             "assistant",
+            "assistente",
             "representative",
+            "representante",
             "accountant",
+            "contador",
+            "contadora",
         ),
     ),
 )
 
 # LinkedIn's default connection-date format, e.g. "18 Apr 2024".
+# Functional "X owner" titles where "owner" denotes role stewardship, not company
+# ownership -- the founder_owner seniority (and the classifier's ownership tier)
+# must NOT fire on these. Kept in sync with audience.classify's T0 guard.
+_OWNER_FALSE_FRIENDS: tuple[str, ...] = (
+    "product owner",
+    "process owner",
+    "service owner",
+    "scrum owner",
+)
+
 _LINKEDIN_DATE = "%d %b %Y"
 
 # Localized month-abbreviation -> month number, for tolerant parsing of dates
@@ -181,12 +366,17 @@ def infer_seniority(position: str | None) -> str:
     must treat the result as an inference (``seniority_inferred=True``), never as
     ground truth. Returns "unknown" when no rule matches or the title is absent.
     """
-    if not position:
+    title = normalize_title(position)
+    if not title:
         return "unknown"
-    title = position.lower()
-    # Use word-ish boundaries for short tokens to avoid false hits inside words.
+    # Match against the shared normalized title so seniority is parsed from the
+    # SAME string the family classifier sees (ticket OPUS-1.1 §6). Multi-word
+    # tokens match as substrings; single tokens match on word-ish boundaries so
+    # "lead" does not fire inside "leadership".
     for bucket, keywords in _SENIORITY_RULES:
         for kw in keywords:
+            if kw == "owner" and any(ff in title for ff in _OWNER_FALSE_FRIENDS):
+                continue
             if " " in kw:
                 if kw in title:
                     return bucket

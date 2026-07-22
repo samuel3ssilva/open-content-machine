@@ -1,0 +1,103 @@
+{
+  "$defs": {
+    "ConfusionCell": {
+      "additionalProperties": false,
+      "description": "A single (expected, predicted) cell of a confusion matrix with its count.",
+      "properties": {
+        "expected": {
+          "title": "Expected",
+          "type": "string"
+        },
+        "predicted": {
+          "title": "Predicted",
+          "type": "string"
+        },
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "expected",
+        "predicted",
+        "count"
+      ],
+      "title": "ConfusionCell",
+      "type": "object"
+    },
+    "ErrorPattern": {
+      "additionalProperties": false,
+      "description": "An aggregated expected->predicted family error and how often it occurs.\n\nHolds only family labels and a count -- never a raw title -- so it is safe to\ncommit and to surface in reports.",
+      "properties": {
+        "expected": {
+          "title": "Expected",
+          "type": "string"
+        },
+        "predicted": {
+          "title": "Predicted",
+          "type": "string"
+        },
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "expected",
+        "predicted",
+        "count"
+      ],
+      "title": "ErrorPattern",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Aggregate quality metrics over a labeled set. No raw titles by design.",
+  "properties": {
+    "n": {
+      "title": "N",
+      "type": "integer"
+    },
+    "high_confidence_precision": {
+      "title": "High Confidence Precision",
+      "type": "number"
+    },
+    "overall_classified_precision": {
+      "title": "Overall Classified Precision",
+      "type": "number"
+    },
+    "unknown_rate": {
+      "title": "Unknown Rate",
+      "type": "number"
+    },
+    "family_confusion": {
+      "items": {
+        "$ref": "#/$defs/ConfusionCell"
+      },
+      "title": "Family Confusion",
+      "type": "array"
+    },
+    "seniority_confusion": {
+      "items": {
+        "$ref": "#/$defs/ConfusionCell"
+      },
+      "title": "Seniority Confusion",
+      "type": "array"
+    },
+    "top_error_patterns": {
+      "items": {
+        "$ref": "#/$defs/ErrorPattern"
+      },
+      "title": "Top Error Patterns",
+      "type": "array"
+    }
+  },
+  "required": [
+    "n",
+    "high_confidence_precision",
+    "overall_classified_precision",
+    "unknown_rate"
+  ],
+  "title": "EvaluationReport",
+  "type": "object"
+}

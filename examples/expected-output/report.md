@@ -53,12 +53,13 @@ _Heuristic keyword classification; see confidence below._
 
 | Family | Count |
 | --- | --- |
-| founder_executive | 8 |
-| engineering_data_ai | 7 |
-| unknown | 5 |
+| engineering_data_ai | 11 |
+| founder_executive | 4 |
+| operations_people_finance_legal | 4 |
 | design_ux | 3 |
-| operations_people_finance_legal | 3 |
+| unknown | 3 |
 | marketing_growth_content | 2 |
+| other | 1 |
 | product | 1 |
 | sales_bd_partnerships | 1 |
 
@@ -66,23 +67,23 @@ _Heuristic keyword classification; see confidence below._
 
 | Bucket | Count |
 | --- | --- |
-| individual_contributor | 13 |
-| c_level | 5 |
+| individual_contributor | 12 |
+| c_level | 4 |
+| vp_head_director | 4 |
+| entry_student | 3 |
 | manager_lead | 3 |
-| vp_head_director | 3 |
-| entry_student | 2 |
 | founder_owner | 2 |
 | unknown | 2 |
 
 ## Classification confidence
 
-- Unclassified (unknown family) share: 16.7%
+- Unclassified (unknown family) share: 10.0%
 
 | Confidence | Count |
 | --- | --- |
-| high | 22 |
-| unknown | 5 |
-| medium | 3 |
+| high | 25 |
+| unknown | 3 |
+| low | 2 |
 
 ## Candidate segments
 
@@ -96,16 +97,6 @@ _Heuristic keyword classification; see confidence below._
   - title 'backend developer' (1)
   - title 'data analyst' (1)
 
-### Founders & Executives — C-level
-
-- Size: 4 (13.3%)
-- Rationale: 4 connections (13%) cluster in Founders & Executives at the C-level level.
-- Evidence:
-  - role_family=founder_executive x seniority=c_level: 4 connections
-  - title 'chief executive officer' (2)
-  - title 'chief financial officer' (1)
-  - title 'chief technology officer' (1)
-
 ### Design & UX — individual contributors
 
 - Size: 3 (10.0%)
@@ -115,6 +106,15 @@ _Heuristic keyword classification; see confidence below._
   - title 'graphic designer' (1)
   - title 'senior product designer' (1)
   - title 'ux designer' (1)
+
+### Engineering, Data & AI — VPs, heads & directors
+
+- Size: 2 (6.7%)
+- Rationale: 2 connections (7%) cluster in Engineering, Data & AI at the VPs, heads & directors level.
+- Evidence:
+  - role_family=engineering_data_ai x seniority=vp_head_director: 2 connections
+  - title 'director of engineering' (1)
+  - title 'head of data' (1)
 
 ## Connections per year
 
@@ -138,3 +138,4 @@ _Heuristic keyword classification; see confidence below._
 ## Notes
 
 - Connection presence does not imply interest in your content. Seniority buckets are heuristic inferences.
+- The most recent year on the timeline (2026) may be a partial, year-to-date count and is likely lower than a full year; do not read it as a completed-year total.

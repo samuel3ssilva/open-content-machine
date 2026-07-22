@@ -90,23 +90,23 @@
   "seniority_distribution": [
     {
       "label": "individual_contributor",
-      "count": 13
+      "count": 12
     },
     {
       "label": "c_level",
-      "count": 5
+      "count": 4
+    },
+    {
+      "label": "vp_head_director",
+      "count": 4
+    },
+    {
+      "label": "entry_student",
+      "count": 3
     },
     {
       "label": "manager_lead",
       "count": 3
-    },
-    {
-      "label": "vp_head_director",
-      "count": 3
-    },
-    {
-      "label": "entry_student",
-      "count": 2
     },
     {
       "label": "founder_owner",
@@ -120,28 +120,32 @@
   "seniority_inferred": true,
   "role_family_distribution": [
     {
-      "label": "founder_executive",
-      "count": 8
-    },
-    {
       "label": "engineering_data_ai",
-      "count": 7
+      "count": 11
     },
     {
-      "label": "unknown",
-      "count": 5
+      "label": "founder_executive",
+      "count": 4
+    },
+    {
+      "label": "operations_people_finance_legal",
+      "count": 4
     },
     {
       "label": "design_ux",
       "count": 3
     },
     {
-      "label": "operations_people_finance_legal",
+      "label": "unknown",
       "count": 3
     },
     {
       "label": "marketing_growth_content",
       "count": 2
+    },
+    {
+      "label": "other",
+      "count": 1
     },
     {
       "label": "product",
@@ -155,18 +159,18 @@
   "confidence_distribution": [
     {
       "label": "high",
-      "count": 22
+      "count": 25
     },
     {
       "label": "unknown",
-      "count": 5
+      "count": 3
     },
     {
-      "label": "medium",
-      "count": 3
+      "label": "low",
+      "count": 2
     }
   ],
-  "unknown_share": 0.1667,
+  "unknown_share": 0.1,
   "connections_per_year": [
     {
       "label": "2019",
@@ -215,18 +219,6 @@
       "rationale": "7 connections (23%) cluster in Engineering, Data & AI at the individual contributors level."
     },
     {
-      "name": "Founders & Executives — C-level",
-      "size": 4,
-      "share": 0.1333,
-      "evidence": [
-        "role_family=founder_executive x seniority=c_level: 4 connections",
-        "title 'chief executive officer' (2)",
-        "title 'chief financial officer' (1)",
-        "title 'chief technology officer' (1)"
-      ],
-      "rationale": "4 connections (13%) cluster in Founders & Executives at the C-level level."
-    },
-    {
       "name": "Design & UX — individual contributors",
       "size": 3,
       "share": 0.1,
@@ -237,6 +229,17 @@
         "title 'ux designer' (1)"
       ],
       "rationale": "3 connections (10%) cluster in Design & UX at the individual contributors level."
+    },
+    {
+      "name": "Engineering, Data & AI — VPs, heads & directors",
+      "size": 2,
+      "share": 0.0667,
+      "evidence": [
+        "role_family=engineering_data_ai x seniority=vp_head_director: 2 connections",
+        "title 'director of engineering' (1)",
+        "title 'head of data' (1)"
+      ],
+      "rationale": "2 connections (7%) cluster in Engineering, Data & AI at the VPs, heads & directors level."
     }
   ],
   "limitations": [
@@ -245,6 +248,7 @@
     "Company and title data reflect the export snapshot and may be stale."
   ],
   "generated_notes": [
-    "Connection presence does not imply interest in your content. Seniority buckets are heuristic inferences."
+    "Connection presence does not imply interest in your content. Seniority buckets are heuristic inferences.",
+    "The most recent year on the timeline (2026) may be a partial, year-to-date count and is likely lower than a full year; do not read it as a completed-year total."
   ]
 }

@@ -1,0 +1,127 @@
+title,expected_family,expected_seniority
+Founder,founder_executive,founder_owner
+Co-Founder,founder_executive,founder_owner
+Cofounder & CEO,founder_executive,founder_owner
+Fundador,founder_executive,founder_owner
+Fundadora e CEO,founder_executive,founder_owner
+Owner,founder_executive,founder_owner
+Proprietário,founder_executive,founder_owner
+Managing Partner,founder_executive,founder_owner
+CEO,founder_executive,c_level
+Chief Executive Officer,founder_executive,c_level
+President,founder_executive,c_level
+Presidente,founder_executive,c_level
+Managing Director,founder_executive,vp_head_director
+General Manager,founder_executive,manager_lead
+Board Member,founder_executive,unknown
+Founder & CTO,founder_executive,founder_owner
+CTO & Co-founder,founder_executive,founder_owner
+Software Engineer,engineering_data_ai,individual_contributor
+Senior Software Engineer,engineering_data_ai,individual_contributor
+Staff Data Scientist,engineering_data_ai,individual_contributor
+Data Engineer,engineering_data_ai,individual_contributor
+Data Analyst,engineering_data_ai,individual_contributor
+Machine Learning Engineer,engineering_data_ai,individual_contributor
+Backend Developer,engineering_data_ai,individual_contributor
+Full Stack Developer,engineering_data_ai,individual_contributor
+DevOps Engineer,engineering_data_ai,individual_contributor
+Site Reliability Engineer,engineering_data_ai,individual_contributor
+Engineering Manager,engineering_data_ai,manager_lead
+Director of Engineering,engineering_data_ai,vp_head_director
+Head of Data,engineering_data_ai,vp_head_director
+VP of Engineering,engineering_data_ai,vp_head_director
+CTO,engineering_data_ai,c_level
+Chief Technology Officer,engineering_data_ai,c_level
+Engenheiro de Software,engineering_data_ai,individual_contributor
+Engenheira de Dados,engineering_data_ai,individual_contributor
+Desenvolvedor Back-end,engineering_data_ai,individual_contributor
+Cientista de Dados,engineering_data_ai,unknown
+Arquiteto de Soluções,engineering_data_ai,unknown
+Diretor de Tecnologia,engineering_data_ai,vp_head_director
+Diretor de Engenharia,engineering_data_ai,vp_head_director
+Gerente de Engenharia,engineering_data_ai,manager_lead
+Analista de Dados,engineering_data_ai,individual_contributor
+Machine Learning Engineer @ Northwind Labs,engineering_data_ai,individual_contributor
+Data Scientist at Globex,engineering_data_ai,unknown
+Product Manager,product,manager_lead
+Senior Product Manager,product,manager_lead
+Group Product Manager,product,manager_lead
+Product Owner,product,unknown
+Head of Product,product,vp_head_director
+Director of Product,product,vp_head_director
+Chief Product Officer,product,c_level
+Gerente de Produto,product,manager_lead
+Product Lead,product,manager_lead
+Marketing Manager,marketing_growth_content,manager_lead
+Content Strategist,marketing_growth_content,unknown
+Growth Lead,marketing_growth_content,manager_lead
+Marketing Director,marketing_growth_content,vp_head_director
+VP of Marketing,marketing_growth_content,vp_head_director
+CMO,marketing_growth_content,c_level
+Social Media Manager,marketing_growth_content,manager_lead
+Content Creator,marketing_growth_content,unknown
+Diretor de Marketing,marketing_growth_content,vp_head_director
+Gerente de Marketing,marketing_growth_content,manager_lead
+Analista de Marketing,marketing_growth_content,individual_contributor
+SEO Specialist,marketing_growth_content,individual_contributor
+Marketing Intern,marketing_growth_content,entry_student
+Account Executive,sales_bd_partnerships,unknown
+Sales Manager,sales_bd_partnerships,manager_lead
+Business Development Manager,sales_bd_partnerships,manager_lead
+Head of Partnerships,sales_bd_partnerships,vp_head_director
+Sales Director,sales_bd_partnerships,vp_head_director
+Vice President of Sales,sales_bd_partnerships,vp_head_director
+Sales Engineer,sales_bd_partnerships,individual_contributor
+Customer Success Manager,sales_bd_partnerships,manager_lead
+Gerente de Vendas,sales_bd_partnerships,manager_lead
+Executivo de Contas,sales_bd_partnerships,unknown
+Diretor Comercial,sales_bd_partnerships,vp_head_director
+Business Development Representative,sales_bd_partnerships,individual_contributor
+UX Designer,design_ux,individual_contributor
+Product Designer,design_ux,individual_contributor
+Graphic Designer,design_ux,individual_contributor
+Senior Product Designer,design_ux,individual_contributor
+Head of Design,design_ux,vp_head_director
+Design Director,design_ux,vp_head_director
+UX Researcher,design_ux,unknown
+Designer de Produto,design_ux,individual_contributor
+Diretor de Design,design_ux,vp_head_director
+Financial Controller,operations_people_finance_legal,unknown
+Recruiter,operations_people_finance_legal,unknown
+General Counsel,operations_people_finance_legal,unknown
+People Operations Manager,operations_people_finance_legal,manager_lead
+Chief Financial Officer,operations_people_finance_legal,c_level
+CFO,operations_people_finance_legal,c_level
+Head of Operations,operations_people_finance_legal,vp_head_director
+Talent Acquisition Specialist,operations_people_finance_legal,individual_contributor
+Project Manager,operations_people_finance_legal,manager_lead
+Junior Accountant,operations_people_finance_legal,entry_student
+Analista Financeiro,operations_people_finance_legal,individual_contributor
+Advogada,operations_people_finance_legal,unknown
+Gerente de Operações,operations_people_finance_legal,manager_lead
+Diretor Financeiro,operations_people_finance_legal,vp_head_director
+Compliance Officer,operations_people_finance_legal,unknown
+Recrutadora,operations_people_finance_legal,unknown
+Professor,education_research,unknown
+Research Scientist,education_research,unknown
+Lecturer,education_research,unknown
+Professora Universitária,education_research,unknown
+Pesquisador,education_research,unknown
+PhD Candidate,education_research,unknown
+Postdoctoral Researcher,education_research,unknown
+Physician,other,unknown
+Pilot,other,unknown
+Nurse,other,unknown
+Enfermeira,other,unknown
+Consultant,other,individual_contributor
+Consultor,other,individual_contributor
+Partner,other,unknown
+Sócio,other,unknown
+Analyst,engineering_data_ai,individual_contributor
+Director,unknown,vp_head_director
+Head,unknown,vp_head_director
+Gerente,unknown,manager_lead
+VP,unknown,vp_head_director
+Coordinator,operations_people_finance_legal,manager_lead
+Manager,unknown,manager_lead
+Estagiário,unknown,entry_student

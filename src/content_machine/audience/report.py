@@ -318,7 +318,18 @@ def _build_notes(
             f"{unparseable_dates} connection date(s) could not be parsed and are "
             "excluded from the per-year timeline."
         )
-    if not years:
+    if years:
+        # The most recent year on the timeline is very likely a partial,
+        # year-to-date count (the export was taken part-way through it), so it
+        # should not be read as a full-year total. Wording is data-driven -- the
+        # year comes from the data, never hardcoded.
+        latest_year = years[-1].label
+        notes.append(
+            f"The most recent year on the timeline ({latest_year}) may be a "
+            "partial, year-to-date count and is likely lower than a full year; "
+            "do not read it as a completed-year total."
+        )
+    else:
         notes.append("No connection dates were available, so growth-by-year is omitted.")
     return notes
 
