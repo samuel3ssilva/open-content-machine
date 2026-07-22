@@ -1,0 +1,160 @@
+{
+  "totals": {
+    "total_rows": 30,
+    "unique_connections": 28,
+    "duplicates": 2
+  },
+  "completeness_pct": {
+    "company": 96.7,
+    "connected_on": 100.0,
+    "email": 16.7,
+    "first_name": 100.0,
+    "last_name": 100.0,
+    "position": 96.7,
+    "url": 100.0
+  },
+  "top_companies": [
+    {
+      "label": "Acme Analytics",
+      "count": 5
+    },
+    {
+      "label": "Umbrella Robotics",
+      "count": 5
+    },
+    {
+      "label": "DadosCorp",
+      "count": 4
+    },
+    {
+      "label": "Fictional Bank",
+      "count": 4
+    },
+    {
+      "label": "Nimbus Cloud",
+      "count": 4
+    },
+    {
+      "label": "Pixel Forge",
+      "count": 4
+    },
+    {
+      "label": "Quantum Ledger",
+      "count": 3
+    }
+  ],
+  "top_positions": [
+    {
+      "label": "Chief Executive Officer",
+      "count": 2
+    },
+    {
+      "label": "Senior Software Engineer",
+      "count": 2
+    },
+    {
+      "label": "Backend Developer",
+      "count": 1
+    },
+    {
+      "label": "Chief Financial Officer",
+      "count": 1
+    },
+    {
+      "label": "Chief Technology Officer",
+      "count": 1
+    },
+    {
+      "label": "Co-Founder",
+      "count": 1
+    },
+    {
+      "label": "Consultant",
+      "count": 1
+    },
+    {
+      "label": "Data Analyst",
+      "count": 1
+    },
+    {
+      "label": "Data Engineer",
+      "count": 1
+    },
+    {
+      "label": "Director of Engineering",
+      "count": 1
+    }
+  ],
+  "seniority_distribution": [
+    {
+      "label": "ic",
+      "count": 8
+    },
+    {
+      "label": "c_level",
+      "count": 5
+    },
+    {
+      "label": "senior_ic",
+      "count": 5
+    },
+    {
+      "label": "manager_lead",
+      "count": 3
+    },
+    {
+      "label": "vp_director",
+      "count": 3
+    },
+    {
+      "label": "founder",
+      "count": 2
+    },
+    {
+      "label": "student",
+      "count": 2
+    },
+    {
+      "label": "unknown",
+      "count": 2
+    }
+  ],
+  "seniority_inferred": true,
+  "connections_per_year": [
+    {
+      "label": "2019",
+      "count": 4
+    },
+    {
+      "label": "2020",
+      "count": 3
+    },
+    {
+      "label": "2021",
+      "count": 5
+    },
+    {
+      "label": "2022",
+      "count": 5
+    },
+    {
+      "label": "2023",
+      "count": 5
+    },
+    {
+      "label": "2024",
+      "count": 4
+    },
+    {
+      "label": "2025",
+      "count": 3
+    },
+    {
+      "label": "2026",
+      "count": 1
+    }
+  ],
+  "generated_notes": [
+    "Connection presence does not imply interest in your content. Seniority buckets are heuristic inferences."
+  ]
+}

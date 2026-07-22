@@ -1,0 +1,35 @@
+Notes:
+"When exporting your connections, LinkedIn may add a few informational lines like this before the header row. This file is fully synthetic: every person below is invented and matches no real individual."
+
+First Name,Last Name,URL,Email Address,Company,Position,Connected On
+Ana,Exemplo,https://www.linkedin.example/in/ana-exemplo,ana.exemplo@example.com,Acme Analytics,Chief Executive Officer,12 Jan 2023
+Bruno,Ficticio,https://www.linkedin.example/in/bruno-ficticio,,Umbrella Robotics Inc,Senior Software Engineer,03 Mar 2021
+Carla,Sintetica,https://www.linkedin.example/in/carla-sintetica,carla.sintetica@example.com,Fictional Bank S.A.,VP of Marketing,18 Apr 2024
+Diego,Inventado,https://www.linkedin.example/in/diego-inventado,,DadosCorp Ltda,Data Analyst,27 Sep 2020
+Elena,Prototipo,https://www.linkedin.example/in/elena-prototipo,,Acme Analytics,Product Manager,05 Feb 2022
+Fabio,Simulado,https://www.linkedin.example/in/fabio-simulado,,Nimbus Cloud LLC,Founder,14 Jun 2019
+Gabriela,Modelo,https://www.linkedin.example/in/gabriela-modelo,gabriela.modelo@example.com,Umbrella Robotics Inc,Director of Engineering,22 Nov 2023
+Hugo,Amostra,https://www.linkedin.example/in/hugo-amostra,,Pixel Forge Ltd,UX Designer,09 Aug 2021
+Isabela,Placeholder,https://www.linkedin.example/in/isabela-placeholder,,Fictional Bank S.A.,Junior Accountant,30 Jan 2025
+Joao,Generico,https://www.linkedin.example/in/joao-generico,,DadosCorp Ltda,Head of Data,11 Dec 2022
+Karina,Falsa,https://www.linkedin.example/in/karina-falsa,,Nimbus Cloud LLC,Marketing Intern,19 Mar 2024
+Lucas,Demo,https://www.linkedin.example/in/lucas-demo,,Acme Analytics,Staff Data Scientist,02 May 2020
+Mariana,Teste,https://www.linkedin.example/in/mariana-teste,mariana.teste@example.com,Pixel Forge Ltd,Chief Technology Officer,25 Jul 2019
+Nuno,Ilustrativo,https://www.linkedin.example/in/nuno-ilustrativo,,Quantum Ledger Corp,Backend Developer,08 Oct 2023
+Olivia,Hipotetica,https://www.linkedin.example/in/olivia-hipotetica,,Umbrella Robotics Inc,Engineering Manager,16 Apr 2021
+Pedro,Rascunho,https://www.linkedin.example/in/pedro-rascunho,,Quantum Ledger Corp,Student,28 Feb 2026
+Quiteria,Fabricada,https://www.linkedin.example/in/quiteria-fabricada,,Fictional Bank S.A.,Senior Risk Analyst,04 Sep 2022
+Rafael,Suposto,https://www.linkedin.example/in/rafael-suposto,,DadosCorp Ltda,Vice President of Sales,13 Jan 2024
+Sofia,Exemplar,https://www.linkedin.example/in/sofia-exemplar,,Pixel Forge Ltd,Graphic Designer,21 Jun 2020
+Tiago,Nominal,https://www.linkedin.example/in/tiago-nominal,,Nimbus Cloud LLC,Co-Founder,07 Nov 2019
+Ana,Exemplo,https://www.linkedin.example/in/ana-exemplo,ana.exemplo@example.com,Acme Analytics,Chief Executive Officer,12 Jan 2023
+Ursula,Conjectural,https://www.linkedin.example/in/ursula-conjectural,,Quantum Ledger Corp,Consultant,17 Mar 2025
+Vitor,Presumido,https://www.linkedin.example/in/vitor-presumido,,Acme Analytics,Team Lead,29 Aug 2022
+Wanda,Arquetipo,https://www.linkedin.example/in/wanda-arquetipo,,Pixel Forge Ltd,Senior Product Designer,06 Dec 2023
+Xavier,Emulado,https://www.linkedin.example/in/xavier-emulado,,,,10 Jan 2024
+Yara,Postica,https://www.linkedin.example/in/yara-postica,,Umbrella Robotics Inc,Software Engineer,23 May 2021
+Zeca,Impostado,https://www.linkedin.example/in/zeca-impostado,,Nimbus Cloud LLC,Data Engineer,15 Feb 2022
+Bruno,Ficticio,https://www.linkedin.example/in/bruno-ficticio,,Umbrella Robotics Inc,Senior Software Engineer,03 Mar 2021
+Aurora,Ceticia,https://www.linkedin.example/in/aurora-ceticia,,Fictional Bank S.A.,Financial Controller,19 Sep 2025
+Bernardo,Ludico,https://www.linkedin.example/in/bernardo-ludico,,DadosCorp Ltda,Chief Financial Officer,01 Apr 2019
+,,,,,,

@@ -1,0 +1,104 @@
+{
+  "$defs": {
+    "CountItem": {
+      "description": "A label with its count, for top-N tables and distributions.",
+      "properties": {
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "label",
+        "count"
+      ],
+      "title": "CountItem",
+      "type": "object"
+    },
+    "ReportTotals": {
+      "properties": {
+        "total_rows": {
+          "title": "Total Rows",
+          "type": "integer"
+        },
+        "unique_connections": {
+          "title": "Unique Connections",
+          "type": "integer"
+        },
+        "duplicates": {
+          "title": "Duplicates",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total_rows",
+        "unique_connections",
+        "duplicates"
+      ],
+      "title": "ReportTotals",
+      "type": "object"
+    }
+  },
+  "description": "Machine-readable audience report. Aggregates only; no identifiers.",
+  "properties": {
+    "totals": {
+      "$ref": "#/$defs/ReportTotals"
+    },
+    "completeness_pct": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "title": "Completeness Pct",
+      "type": "object"
+    },
+    "top_companies": {
+      "items": {
+        "$ref": "#/$defs/CountItem"
+      },
+      "title": "Top Companies",
+      "type": "array"
+    },
+    "top_positions": {
+      "items": {
+        "$ref": "#/$defs/CountItem"
+      },
+      "title": "Top Positions",
+      "type": "array"
+    },
+    "seniority_distribution": {
+      "items": {
+        "$ref": "#/$defs/CountItem"
+      },
+      "title": "Seniority Distribution",
+      "type": "array"
+    },
+    "seniority_inferred": {
+      "default": true,
+      "title": "Seniority Inferred",
+      "type": "boolean"
+    },
+    "connections_per_year": {
+      "items": {
+        "$ref": "#/$defs/CountItem"
+      },
+      "title": "Connections Per Year",
+      "type": "array"
+    },
+    "generated_notes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Generated Notes",
+      "type": "array"
+    }
+  },
+  "required": [
+    "totals"
+  ],
+  "title": "AudienceReport",
+  "type": "object"
+}

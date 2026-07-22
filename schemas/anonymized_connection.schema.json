@@ -1,0 +1,66 @@
+{
+  "additionalProperties": false,
+  "description": "Safe-zone connection record: the ONLY input allowed into stats/reports.\n\nContains no direct identifiers by construction. ``extra=\"forbid\"`` makes any\naccidental additional field a hard error rather than a silent leak.",
+  "properties": {
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "company": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Company"
+    },
+    "position": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Position"
+    },
+    "seniority_bucket": {
+      "default": "unknown",
+      "title": "Seniority Bucket",
+      "type": "string"
+    },
+    "seniority_inferred": {
+      "default": true,
+      "title": "Seniority Inferred",
+      "type": "boolean"
+    },
+    "connected_year": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Connected Year"
+    },
+    "is_duplicate": {
+      "default": false,
+      "title": "Is Duplicate",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "id"
+  ],
+  "title": "AnonymizedConnection",
+  "type": "object"
+}
