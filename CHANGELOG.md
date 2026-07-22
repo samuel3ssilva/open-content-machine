@@ -9,6 +9,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Sprint 1.1 — classifier rebuilt as a seven-tier precedence engine
+  (`src/content_machine/audience/classify.py`, ticket OPUS-1.1): ownership
+  overrides, exact/phrase functional matches, strong domain keywords,
+  recognized professions, general executive terms, weak/ambiguous tokens,
+  unknown — each tier documented with its precedence and confidence policy.
+  Role *family* (function) and *seniority* (level) are now derived
+  independently from the same normalized title
+  (`content_machine.audience.normalize.infer_seniority`); a seniority word
+  alone (e.g. "Director") never assigns a family, and a functional
+  director/head/VP title (e.g. "Director of Engineering") always keeps its
+  function rather than falling into `founder_executive`.
+- Sprint 1.1 — new evaluation harness (`src/content_machine/audience/evaluate.py`,
+  `tests/test_evaluate.py`): scores the classifier against a hand-labeled
+  synthetic CSV fixture, reporting `high_confidence_precision`,
+  `overall_classified_precision`, `unknown_rate`, and family/seniority
+  confusion matrices. `unknown` predictions are excluded from every
+  precision denominator by design, so forcing an ambiguous title into a
+  family can never inflate precision (metric-integrity rule, audited by
+  Fable). Reports are aggregate-only and never carry a raw title.
+- Sprint 1.1 — substantially broadened PT/EN vocabulary across all tier
+  tables (engineering/data/AI, product, marketing, sales/BD, design/UX,
+  operations/people/finance/legal, education/research, and recognized
+  professions) — 372 total keyword/phrase rules, up from 276. Covers common
+  Brazilian/international LinkedIn title patterns (e.g. "Engenheira de
+  Dados", "Desenvolvedor Full Stack", "Analista de Qualidade", "SDR"/"BDR",
+  "Scrum Master", C-level functional acronyms CTO/CIO/CISO/CDO/CPO/CHRO/CRO)
+  plus a small set of deliberately *undocumented-as-mapped* ambiguous tokens
+  (bare "Cientista", "Especialista", "Fiscal", "BI") that are left `unknown`
+  rather than forced — every non-obvious decision is recorded in the new
+  [`docs/classification.md`](docs/classification.md) decision table with a
+  dedicated regression test.
+- Sprint 1.1 — labeled evaluation fixture
+  (`tests/fixtures/labeled_titles_synthetic.csv`) grown from 126 to 259
+  synthetic rows, covering PT, EN, mixed-language, compound, company-suffix,
+  ambiguous, and deliberately non-conventional titles (expected `unknown`).
+  Measured on the grown fixture: `high_confidence_precision` 1.0,
+  `overall_classified_precision` 1.0, `unknown_rate` 0.0695 (well under the
+  0.25 ceiling), zero functional-leadership→`founder_executive` confusions.
+- Sprint 1.1 — `docs/classification.md`: the seven-tier precedence model,
+  family/seniority independence, confidence semantics, the metric-integrity
+  rule, how to run the evaluation harness, and the full documented
+  edge-case decision table.
 - Sprint 1 — `content-machine audience inspect FILE --dry-run`: privacy-safe,
   read-only structural inspection of an external connections file. Prints
   file/column metadata, row counts, the transformations that would run, and

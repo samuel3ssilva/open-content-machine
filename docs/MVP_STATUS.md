@@ -26,6 +26,7 @@ marcada). Nenhum dado real foi processado.
 - ✅ `audience inspect --dry-run` (inspeção privacy-safe de arquivo externo)
 - ✅ Variações de export (aliases PT/ES, ordem de colunas, falha clara)
 - ✅ Classificação determinística por família de papel + senioridade + confiança
+- ✅ Classificador em camadas com independência família × senioridade (Sprint 1.1)
 - ✅ Relatório privado expandido (distribuições, segmentos candidatos, limitações)
 - ✅ `audience export-public` (supressão de grupos < 10, rótulo "sanitized")
 - ✅ Teste de performance com 8.000 registros sintéticos

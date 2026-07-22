@@ -154,8 +154,11 @@ Full trust-boundary details: [`docs/architecture.md`](docs/architecture.md).
   — sanitizes a private report into a shareable artifact (suppresses groups
   under 10)
 - Deterministic, explainable role-family classification
-  (`content_machine/audience/classify.py`) with an explicit confidence level
-  per title
+  (`content_machine/audience/classify.py`): a seven-tier precedence engine
+  with independent family (function) and seniority (level) inference, broad
+  PT/EN vocabulary coverage, an explicit confidence level per title, and an
+  evaluation harness (`audience/evaluate.py`) that scores it against a
+  labeled synthetic fixture — see [`docs/classification.md`](docs/classification.md)
 - Localized (Portuguese/Spanish) header and connection-date aliases
 - Expanded private report: role/seniority/confidence distributions,
   candidate segments, mandatory limitations
