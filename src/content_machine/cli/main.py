@@ -232,6 +232,18 @@ _TRANSFORMATIONS = ("normalize", "dedup", "pseudonymize", "classify", "aggregate
 _WOULD_CREATE = ("./audience-report.md", "./audience-report.json")
 
 
+def _abbreviate_home(path: Path) -> str:
+    """Render a path with the user's home directory abbreviated to ``~``.
+
+    Terminal echoes of user-supplied paths must not expose the account name
+    (Phase-1 rule: no complete personal paths in output).
+    """
+    try:
+        return "~/" + str(path.resolve().relative_to(Path.home()))
+    except ValueError:
+        return str(path)
+
+
 def _human_size(num_bytes: int) -> str:
     """Human-readable byte size, e.g. ``12.3 KB``."""
     size = float(num_bytes)
@@ -579,7 +591,7 @@ def source_inspect(
         "metadata-safe inventory)"
     )
     lines.append("")
-    lines.append(f"Scanning private source folder: {folder}")
+    lines.append(f"Scanning private source folder: {_abbreviate_home(folder)}")
     lines.append("")
     lines.append(f"Total files: {totals.files}")
     lines.append(f"Total directories: {totals.dirs}")
@@ -602,7 +614,7 @@ def source_inspect(
     lines.append("")
     lines.append("Network access: none (offline by design)")
     lines.append("Source files copied or modified: no")
-    lines.append(f"Wrote 3 private outputs to {output_dir}")
+    lines.append(f"Wrote 3 private outputs to {_abbreviate_home(output_dir)}")
     lines.append("")
     lines.append(
         "Reminder: approval fields in the review CSV start EMPTY. No file may "
