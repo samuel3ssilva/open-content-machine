@@ -48,14 +48,17 @@ marcada). Nenhum dado real foi processado.
 
 - ✅ Inventário metadata-safe com gate de aprovação (Sprint 1.2, Fase 1)
 - ✅ Inventário real executado (outputs privados fora do repo; agregados apenas)
-- 🔒 Triagem do Founder no CSV de revisão privado → Fase 2 (análise de corpo, por arquivo aprovado)
+- ✅ Pacote de triagem (Fase 1.1): 19 textos candidatos aguardando revisão ·
+  14 docs de projeto separados · 14 mídias deferidas (sem OCR) ·
+  158 código/gerados excluídos
+- 🔒 **Fase 2 (análise de corpo) bloqueada** até aprovação por arquivo do Founder
 
 ## Próximo gate
 
 > Sprint 1 ✅ → run local real ✅ → hardening do classificador ✅ (Sprint 1.1:
 > precisão high 100%, unknown sintético 9,6%) →
 > inventário da pasta de biografia ✅ (Fase 1, somente metadados) →
-> **➡️ ESTAMOS AQUI: triagem do Founder no inventário privado** →
+> **➡️ ESTAMOS AQUI: triagem do Founder dos textos candidatos do criador** →
 > inventário do archive LinkedIn → 2º run real (aprovado pelo Fable) →
 > **v0.1.0**
 >
