@@ -45,10 +45,9 @@ marcada). Nenhum dado real foi processado.
 
 ## Próximo gate
 
-> Implementação do Sprint 1 ✅ → gates ✅ → dry-run real ✅ → parecer Fable ✅
-> → autorização do Founder ✅ → run local real ✅ →
-> **➡️ ESTAMOS AQUI: revisão do relatório privado e auditoria manual da
-> classificação** → **v0.1.0**
+> Sprint 1 ✅ → run local real ✅ (unknown 41,7% — bloqueio de qualidade) →
+> **➡️ ESTAMOS AQUI: auditoria manual e hardening determinístico do
+> classificador (Sprint 1.1)** → 2º run real aprovado pelo Fable → **v0.1.0**
 
 ## Backlog principal (fora do sprint)
 
