@@ -8,6 +8,13 @@ data/private/*
 *.export.csv
 Connections.csv
 Contacts.csv
+# Full platform data exports (LinkedIn etc.) dropped anywhere in the tree
+*LinkedInDataExport*
+*DataExport*
+Complete_LinkedInDataExport*
+messages.csv
+Invitations.csv
+Profile.csv
 
 # Secrets and environment
 .env
