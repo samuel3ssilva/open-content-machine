@@ -5,6 +5,8 @@
 - Total rows: 30
 - Unique connections: 28
 - Duplicates: 2
+- Valid rows: 30
+- Invalid rows (empty): 1
 
 ## Data completeness
 
@@ -30,33 +32,89 @@
 | Pixel Forge | 4 |
 | Quantum Ledger | 3 |
 
-## Top positions
+## Top roles
 
-| Position | Count |
+| Role (normalized) | Count |
 | --- | --- |
-| Chief Executive Officer | 2 |
-| Senior Software Engineer | 2 |
-| Backend Developer | 1 |
-| Chief Financial Officer | 1 |
-| Chief Technology Officer | 1 |
-| Co-Founder | 1 |
-| Consultant | 1 |
-| Data Analyst | 1 |
-| Data Engineer | 1 |
-| Director of Engineering | 1 |
+| chief executive officer | 2 |
+| senior software engineer | 2 |
+| backend developer | 1 |
+| chief financial officer | 1 |
+| chief technology officer | 1 |
+| co-founder | 1 |
+| consultant | 1 |
+| data analyst | 1 |
+| data engineer | 1 |
+| director of engineering | 1 |
+
+## Role family distribution (inferred)
+
+_Heuristic keyword classification; see confidence below._
+
+| Family | Count |
+| --- | --- |
+| founder_executive | 8 |
+| engineering_data_ai | 7 |
+| unknown | 5 |
+| design_ux | 3 |
+| operations_people_finance_legal | 3 |
+| marketing_growth_content | 2 |
+| product | 1 |
+| sales_bd_partnerships | 1 |
 
 ## Seniority distribution (inferred)
 
 | Bucket | Count |
 | --- | --- |
-| ic | 8 |
+| individual_contributor | 13 |
 | c_level | 5 |
-| senior_ic | 5 |
 | manager_lead | 3 |
-| vp_director | 3 |
-| founder | 2 |
-| student | 2 |
+| vp_head_director | 3 |
+| entry_student | 2 |
+| founder_owner | 2 |
 | unknown | 2 |
+
+## Classification confidence
+
+- Unclassified (unknown family) share: 16.7%
+
+| Confidence | Count |
+| --- | --- |
+| high | 22 |
+| unknown | 5 |
+| medium | 3 |
+
+## Candidate segments
+
+### Engineering, Data & AI — individual contributors
+
+- Size: 7 (23.3%)
+- Rationale: 7 connections (23%) cluster in Engineering, Data & AI at the individual contributors level.
+- Evidence:
+  - role_family=engineering_data_ai x seniority=individual_contributor: 7 connections
+  - title 'senior software engineer' (2)
+  - title 'backend developer' (1)
+  - title 'data analyst' (1)
+
+### Founders & Executives — C-level
+
+- Size: 4 (13.3%)
+- Rationale: 4 connections (13%) cluster in Founders & Executives at the C-level level.
+- Evidence:
+  - role_family=founder_executive x seniority=c_level: 4 connections
+  - title 'chief executive officer' (2)
+  - title 'chief financial officer' (1)
+  - title 'chief technology officer' (1)
+
+### Design & UX — individual contributors
+
+- Size: 3 (10.0%)
+- Rationale: 3 connections (10%) cluster in Design & UX at the individual contributors level.
+- Evidence:
+  - role_family=design_ux x seniority=individual_contributor: 3 connections
+  - title 'graphic designer' (1)
+  - title 'senior product designer' (1)
+  - title 'ux designer' (1)
 
 ## Connections per year
 
@@ -70,6 +128,12 @@
 | 2024 | 4 |
 | 2025 | 3 |
 | 2026 | 1 |
+
+## Limitations
+
+- Connections are not evidence of interest in your content.
+- Role and family classifications are keyword heuristics with a stated confidence level; treat them as directional, not authoritative.
+- Company and title data reflect the export snapshot and may be stale.
 
 ## Notes
 

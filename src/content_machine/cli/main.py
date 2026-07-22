@@ -15,7 +15,13 @@ import typer
 
 from content_machine import __version__
 from content_machine.audience.normalize import normalize
-from content_machine.audience.report import analyze, to_json, to_markdown
+from content_machine.audience.public_report import (
+    PublicReport,
+    sanitize,
+)
+from content_machine.audience.public_report import to_json as public_to_json
+from content_machine.audience.public_report import to_markdown as public_to_markdown
+from content_machine.audience.report import AudienceReport, analyze, to_json, to_markdown
 from content_machine.config.settings import get_settings
 from content_machine.ingestion.csv_loader import CsvLoadError, LoadResult, load_csv
 from content_machine.privacy.anonymizer import anonymize
@@ -141,6 +147,181 @@ def audience_report(
 
     if not wrote_any:
         typer.echo(markdown)
+    raise typer.Exit(code=0)
+
+
+# Direct identifiers that anonymization always removes (never masks).
+_DIRECT_IDENTIFIERS = ("first_name", "last_name", "email", "url")
+# The fixed set of pipeline transformations, in order.
+_TRANSFORMATIONS = ("normalize", "dedup", "pseudonymize", "classify", "aggregate")
+# Generic output names -- the input path is NEVER echoed into a persisted name.
+_WOULD_CREATE = ("./audience-report.md", "./audience-report.json")
+
+
+def _human_size(num_bytes: int) -> str:
+    """Human-readable byte size, e.g. ``12.3 KB``."""
+    size = float(num_bytes)
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024.0 or unit == "GB":
+            if unit == "B":
+                return f"{int(size)} {unit}"
+            return f"{size:.1f} {unit}"
+        size /= 1024.0
+    return f"{num_bytes} B"  # pragma: no cover
+
+
+@audience_app.command("inspect")
+def audience_inspect(
+    file: Annotated[
+        Path, typer.Argument(help="Path to an EXTERNAL connections CSV to inspect.")
+    ],
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Required: perform a read-only, privacy-safe inspection."),
+    ] = False,
+) -> None:
+    """Privacy-safe, read-only inspection of an external CSV (dry-run only).
+
+    Parses the file in place (never copies it, never persists anything) and
+    prints STRUCTURE ONLY: types, sizes, column names, transformations, and the
+    files that *would* be created. It never prints a single cell value.
+    """
+    if not dry_run:
+        typer.secho(
+            "Error: 'audience inspect' only supports the read-only --dry-run mode "
+            "in this version. Re-run with --dry-run to inspect the file safely.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    result = _load_or_exit(file)
+
+    try:
+        size_bytes = file.stat().st_size
+    except OSError:
+        size_bytes = 0
+
+    accepted = sorted(result.columns_present)
+    ignored = list(result.ignored_headers)
+    empty_rows = sum(1 for i in result.issues if i.kind == "empty_row")
+    unparseable = 0  # dates are parsed downstream; inspect stays load-only.
+
+    identifiers_present = [c for c in _DIRECT_IDENTIFIERS if c in result.columns_present]
+
+    lines: list[str] = []
+    lines.append("Open Content Machine — audience inspect (dry run)")
+    lines.append("")
+    lines.append(f"File: {file}")
+    lines.append("File type: CSV (recognized)")
+    lines.append(f"File size: {_human_size(size_bytes)} ({size_bytes} bytes)")
+    lines.append(f"Encoding detected: {result.encoding_used}")
+    lines.append(f"Skipped preamble lines: {result.skipped_preamble_lines}")
+    lines.append(
+        f"Data rows: {len(result.rows)} (count only; values parsed in memory, never displayed)"
+    )
+    lines.append("")
+    lines.append(
+        "Column names found: " + (", ".join(result.header_fields) or "(none)")
+    )
+    lines.append(
+        "Columns accepted by the pipeline: " + (", ".join(accepted) or "(none)")
+    )
+    lines.append("Columns ignored (unmapped): " + (", ".join(ignored) or "(none)"))
+    lines.append("")
+    lines.append(
+        "Direct identifiers that will be REMOVED at anonymization: "
+        + (", ".join(identifiers_present) or "(none present)")
+    )
+    lines.append("Transformations that would be applied: " + ", ".join(_TRANSFORMATIONS))
+    lines.append("")
+    lines.append("Output files that WOULD be created (nothing written now):")
+    for name in _WOULD_CREATE:
+        lines.append(f"  - {name}")
+    lines.append("")
+    lines.append("Network access: none (offline by design)")
+    lines.append("Source file copied: no")
+    lines.append("")
+
+    warnings: list[str] = []
+    if ignored:
+        warnings.append(f"{len(ignored)} unmapped column(s) will be ignored.")
+    if empty_rows:
+        warnings.append(f"{empty_rows} empty row(s) present; they will be skipped.")
+    missing_core = [
+        c for c in ("first_name", "last_name", "company", "position")
+        if c not in result.columns_present
+    ]
+    if missing_core:
+        warnings.append(
+            "Expected column(s) not found: " + ", ".join(missing_core) + "."
+        )
+    if unparseable:  # pragma: no cover - reserved for future date pre-scan.
+        warnings.append(f"{unparseable} date value(s) may not parse.")
+
+    lines.append("Warnings:")
+    if warnings:
+        for w in warnings:
+            lines.append(f"  - {w}")
+    else:
+        lines.append("  - (none)")
+
+    typer.echo("\n".join(lines))
+    raise typer.Exit(code=0)
+
+
+@audience_app.command("export-public")
+def audience_export_public(
+    private_report: Annotated[
+        Path, typer.Argument(help="Path to a previously generated private report JSON.")
+    ],
+    output: Annotated[
+        Path | None,
+        typer.Option("-o", "--output", help="Where to write the sanitized public JSON."),
+    ] = None,
+    md_output: Annotated[
+        Path | None,
+        typer.Option("--md", help="Also write a sanitized Markdown artifact here."),
+    ] = None,
+) -> None:
+    """Sanitize a private report JSON into a shareable public artifact.
+
+    Suppresses every group under 10. Never runs automatically; requires an
+    explicit ``-o`` output path.
+    """
+    if output is None:
+        typer.secho(
+            "Error: an output path is required. Pass -o/--output to choose where "
+            "the sanitized public report is written.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    try:
+        raw = private_report.read_text(encoding="utf-8")
+    except OSError as exc:
+        typer.secho(f"Error: could not read {private_report}: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from None
+
+    try:
+        report = AudienceReport.model_validate_json(raw)
+    except ValueError:
+        typer.secho(
+            f"Error: {private_report} is not a valid audience report JSON.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1) from None
+
+    public: PublicReport = sanitize(report)
+    output.write_text(public_to_json(public) + "\n", encoding="utf-8")
+    typer.echo(f"Wrote sanitized public report to {output}")
+
+    if md_output is not None:
+        md_output.write_text(public_to_markdown(public), encoding="utf-8")
+        typer.echo(f"Wrote sanitized Markdown report to {md_output}")
+
     raise typer.Exit(code=0)
 
 

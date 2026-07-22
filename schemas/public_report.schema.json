@@ -1,0 +1,128 @@
+{
+  "$defs": {
+    "CountItem": {
+      "description": "A label with its count, for top-N tables and distributions.",
+      "properties": {
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "label",
+        "count"
+      ],
+      "title": "CountItem",
+      "type": "object"
+    },
+    "PublicSegment": {
+      "additionalProperties": false,
+      "description": "A segment safe to share: name, size, and share only (no evidence).",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "size": {
+          "title": "Size",
+          "type": "integer"
+        },
+        "share": {
+          "title": "Share",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "size",
+        "share"
+      ],
+      "title": "PublicSegment",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Minimal, sanitized aggregate contract intended for sharing.",
+  "properties": {
+    "privacy_label": {
+      "const": "sanitized-aggregate",
+      "default": "sanitized-aggregate",
+      "title": "Privacy Label",
+      "type": "string"
+    },
+    "total_connections": {
+      "title": "Total Connections",
+      "type": "integer"
+    },
+    "unique_connections": {
+      "title": "Unique Connections",
+      "type": "integer"
+    },
+    "top_companies": {
+      "items": {
+        "$ref": "#/$defs/CountItem"
+      },
+      "title": "Top Companies",
+      "type": "array"
+    },
+    "top_roles": {
+      "items": {
+        "$ref": "#/$defs/CountItem"
+      },
+      "title": "Top Roles",
+      "type": "array"
+    },
+    "role_family_distribution": {
+      "items": {
+        "$ref": "#/$defs/CountItem"
+      },
+      "title": "Role Family Distribution",
+      "type": "array"
+    },
+    "seniority_distribution": {
+      "items": {
+        "$ref": "#/$defs/CountItem"
+      },
+      "title": "Seniority Distribution",
+      "type": "array"
+    },
+    "confidence_distribution": {
+      "items": {
+        "$ref": "#/$defs/CountItem"
+      },
+      "title": "Confidence Distribution",
+      "type": "array"
+    },
+    "connections_per_year": {
+      "items": {
+        "$ref": "#/$defs/CountItem"
+      },
+      "title": "Connections Per Year",
+      "type": "array"
+    },
+    "segments": {
+      "items": {
+        "$ref": "#/$defs/PublicSegment"
+      },
+      "title": "Segments",
+      "type": "array"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Limitations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "total_connections",
+    "unique_connections"
+  ],
+  "title": "PublicReport",
+  "type": "object"
+}

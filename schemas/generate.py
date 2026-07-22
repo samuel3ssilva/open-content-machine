@@ -17,6 +17,8 @@ _SRC = Path(__file__).resolve().parents[1] / "src"
 if _SRC.exists() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
+from content_machine.audience.classify import RoleClassification  # noqa: E402
+from content_machine.audience.public_report import PublicReport  # noqa: E402
 from content_machine.audience.report import AudienceReport  # noqa: E402
 from content_machine.ingestion.csv_loader import RawConnection  # noqa: E402
 from content_machine.privacy.anonymizer import AnonymizedConnection  # noqa: E402
@@ -26,7 +28,9 @@ _OUT_DIR = Path(__file__).resolve().parent
 _MODELS = {
     "raw_connection.schema.json": RawConnection,
     "anonymized_connection.schema.json": AnonymizedConnection,
+    "role_classification.schema.json": RoleClassification,
     "audience_report.schema.json": AudienceReport,
+    "public_report.schema.json": PublicReport,
 }
 
 

@@ -20,6 +20,7 @@ import secrets
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from content_machine.audience.classify import classify_role
 from content_machine.audience.normalize import NormalizationResult, NormalizedConnection
 
 # Frozen constants of the pseudonym recipe (mirrored in schemas/).
@@ -43,6 +44,11 @@ class AnonymizedConnection(BaseModel):
     position: str | None = None
     seniority_bucket: str = "unknown"
     seniority_inferred: bool = True
+    # Role-family classification (see audience.classify). Derived solely from the
+    # position string. ``role_evidence`` is a rule/keyword name, never a value.
+    role_family: str = "unknown"
+    role_confidence: str = "unknown"
+    role_evidence: str = ""
     connected_year: int | None = None
     is_duplicate: bool = False
 
@@ -98,6 +104,7 @@ def anonymize(normalized: NormalizationResult, salt: str | None) -> Anonymizatio
 
 
 def _anonymize_one(conn: NormalizedConnection, salt: str) -> AnonymizedConnection:
+    role = classify_role(conn.position)
     return AnonymizedConnection(
         id=pseudonym(
             salt,
@@ -110,6 +117,9 @@ def _anonymize_one(conn: NormalizedConnection, salt: str) -> AnonymizedConnectio
         position=conn.position,
         seniority_bucket=conn.seniority_bucket,
         seniority_inferred=conn.seniority_inferred,
+        role_family=role.family.value,
+        role_confidence=role.confidence.value,
+        role_evidence=role.matched_evidence,
         connected_year=conn.connected_year,
         is_duplicate=conn.is_duplicate,
     )

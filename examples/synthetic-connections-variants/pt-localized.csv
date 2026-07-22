@@ -1,0 +1,12 @@
+Notes:
+"Exportação de conexões do LinkedIn (sintética). Cabeçalhos em português; datas com abreviações de mês em pt-BR. Todas as pessoas são inventadas."
+
+Primeiro nome,Sobrenome,URL,Endereço de e-mail,Empresa,Cargo,Conectado em
+Ana,Exemplo,https://www.linkedin.example/in/ana-exemplo,ana.exemplo@example.com,Acme Analytics,Diretora Executiva,12 jan 2023
+Bruno,Ficticio,https://www.linkedin.example/in/bruno-ficticio,,Umbrella Robotics Ltda,Data Engineer,03 mar 2021
+Carla,Sintetica,https://www.linkedin.example/in/carla-sintetica,,Fictional Bank S.A.,Product Manager,14 mai 2019
+Diego,Inventado,https://www.linkedin.example/in/diego-inventado,,DadosCorp Ltda,UX Designer,27 ago 2020
+Elena,Prototipo,https://www.linkedin.example/in/elena-prototipo,,Nimbus Cloud,Software Engineer,05 fev 2022
+Fabio,Simulado,https://www.linkedin.example/in/fabio-simulado,,Pixel Forge,Founder,09 out 2024
+Gabriela,Modelo,https://www.linkedin.example/in/gabriela-modelo,,Quantum Ledger,Marketing Intern,30 dez 2023
+Hugo,Amostra,https://www.linkedin.example/in/hugo-amostra,,Acme Analytics,data pra sempre,not a date

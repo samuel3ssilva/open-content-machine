@@ -41,12 +41,56 @@
       ],
       "title": "ReportTotals",
       "type": "object"
+    },
+    "Segment": {
+      "description": "A candidate audience cluster (role family x seniority).\n\n``evidence`` is deterministic aggregate data only (contributing counts and\ntop normalized titles with their frequencies) -- never a person's data.",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "size": {
+          "title": "Size",
+          "type": "integer"
+        },
+        "share": {
+          "title": "Share",
+          "type": "number"
+        },
+        "evidence": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "rationale": {
+          "title": "Rationale",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "size",
+        "share",
+        "rationale"
+      ],
+      "title": "Segment",
+      "type": "object"
     }
   },
-  "description": "Machine-readable audience report. Aggregates only; no identifiers.",
+  "description": "Machine-readable *private* audience report. Aggregates only; no\nidentifiers. May contain small-group counts -- sanitize before sharing.",
   "properties": {
     "totals": {
       "$ref": "#/$defs/ReportTotals"
+    },
+    "valid_rows": {
+      "title": "Valid Rows",
+      "type": "integer"
+    },
+    "invalid_rows": {
+      "title": "Invalid Rows",
+      "type": "integer"
     },
     "completeness_pct": {
       "additionalProperties": {
@@ -62,11 +106,11 @@
       "title": "Top Companies",
       "type": "array"
     },
-    "top_positions": {
+    "top_roles": {
       "items": {
         "$ref": "#/$defs/CountItem"
       },
-      "title": "Top Positions",
+      "title": "Top Roles",
       "type": "array"
     },
     "seniority_distribution": {
@@ -81,11 +125,44 @@
       "title": "Seniority Inferred",
       "type": "boolean"
     },
+    "role_family_distribution": {
+      "items": {
+        "$ref": "#/$defs/CountItem"
+      },
+      "title": "Role Family Distribution",
+      "type": "array"
+    },
+    "confidence_distribution": {
+      "items": {
+        "$ref": "#/$defs/CountItem"
+      },
+      "title": "Confidence Distribution",
+      "type": "array"
+    },
+    "unknown_share": {
+      "default": 0.0,
+      "title": "Unknown Share",
+      "type": "number"
+    },
     "connections_per_year": {
       "items": {
         "$ref": "#/$defs/CountItem"
       },
       "title": "Connections Per Year",
+      "type": "array"
+    },
+    "candidate_segments": {
+      "items": {
+        "$ref": "#/$defs/Segment"
+      },
+      "title": "Candidate Segments",
+      "type": "array"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Limitations",
       "type": "array"
     },
     "generated_notes": {
@@ -97,7 +174,9 @@
     }
   },
   "required": [
-    "totals"
+    "totals",
+    "valid_rows",
+    "invalid_rows"
   ],
   "title": "AudienceReport",
   "type": "object"

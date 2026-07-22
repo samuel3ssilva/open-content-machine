@@ -1,0 +1,51 @@
+{
+  "$defs": {
+    "Confidence": {
+      "description": "Explicit confidence level attached to a classification. String-valued.",
+      "enum": [
+        "high",
+        "medium",
+        "low",
+        "unknown"
+      ],
+      "title": "Confidence",
+      "type": "string"
+    },
+    "RoleFamily": {
+      "description": "Coarse professional family a title maps to. String-valued.",
+      "enum": [
+        "founder_executive",
+        "engineering_data_ai",
+        "product",
+        "marketing_growth_content",
+        "sales_bd_partnerships",
+        "design_ux",
+        "operations_people_finance_legal",
+        "education_research",
+        "other",
+        "unknown"
+      ],
+      "title": "RoleFamily",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Result of classifying one job title. ``matched_evidence`` is always a\nrule/keyword name (never personal data) and is non-empty whenever\n``family`` is not ``unknown``.",
+  "properties": {
+    "family": {
+      "$ref": "#/$defs/RoleFamily",
+      "default": "unknown"
+    },
+    "confidence": {
+      "$ref": "#/$defs/Confidence",
+      "default": "unknown"
+    },
+    "matched_evidence": {
+      "default": "",
+      "title": "Matched Evidence",
+      "type": "string"
+    }
+  },
+  "title": "RoleClassification",
+  "type": "object"
+}

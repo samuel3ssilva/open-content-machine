@@ -40,6 +40,21 @@
       "title": "Seniority Inferred",
       "type": "boolean"
     },
+    "role_family": {
+      "default": "unknown",
+      "title": "Role Family",
+      "type": "string"
+    },
+    "role_confidence": {
+      "default": "unknown",
+      "title": "Role Confidence",
+      "type": "string"
+    },
+    "role_evidence": {
+      "default": "",
+      "title": "Role Evidence",
+      "type": "string"
+    },
     "connected_year": {
       "anyOf": [
         {

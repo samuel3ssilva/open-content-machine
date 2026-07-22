@@ -27,16 +27,54 @@ from pydantic import BaseModel, Field
 _ENCODING_CHAIN: tuple[str, ...] = ("utf-8-sig", "utf-8", "latin-1")
 
 # Canonical field name -> set of accepted header spellings (already normalized
-# to lowercase with spaces/underscores collapsed; see _normalize_header).
+# to lowercase with spaces/underscores/hyphens collapsed; see _normalize_header).
+# Localized aliases (Portuguese, Spanish) are SAFE header labels only -- they
+# never carry values -- and are kept here in the single data-driven table so a
+# new locale is a one-line addition.
 _HEADER_ALIASES: dict[str, set[str]] = {
-    "first_name": {"first name", "firstname", "first"},
-    "last_name": {"last name", "lastname", "last"},
-    "url": {"url", "profile url", "linkedin url", "public profile url"},
-    "email": {"email address", "email", "e mail", "e-mail", "emailaddress"},
-    "company": {"company", "organization", "organisation"},
-    "position": {"position", "title", "job title", "role"},
-    "connected_on": {"connected on", "connection date", "connected", "date connected"},
+    "first_name": {
+        "first name", "firstname", "first",
+        # pt / es
+        "nome", "primeiro nome", "nombre",
+    },
+    "last_name": {
+        "last name", "lastname", "last",
+        # pt / es
+        "sobrenome", "apelido", "apellidos", "apellido",
+    },
+    "url": {
+        "url", "profile url", "linkedin url", "public profile url",
+        # pt / es
+        "perfil", "url do perfil",
+    },
+    "email": {
+        "email address", "email", "e mail", "e-mail", "emailaddress",
+        # pt / es
+        "endereço de e mail", "endereco de e mail", "endereço de email",
+        "dirección de correo electrónico", "direccion de correo electronico",
+        "correo electrónico", "correo electronico",
+    },
+    "company": {
+        "company", "organization", "organisation",
+        # pt / es
+        "empresa", "companhia", "compañía", "compania",
+    },
+    "position": {
+        "position", "title", "job title", "role",
+        # pt / es
+        "cargo", "posição", "posicao", "puesto",
+    },
+    "connected_on": {
+        "connected on", "connection date", "connected", "date connected",
+        # pt / es
+        "conectado em", "conectado el", "data de conexão", "data de conexao",
+        "fecha de conexión", "fecha de conexion",
+    },
 }
+
+# Magic-byte prefixes for common non-CSV formats we must reject with a clear
+# message rather than a confusing parse failure.
+_ZIP_MAGIC = b"PK\x03\x04"
 
 # A candidate header row must map at least this many recognized columns to be
 # considered "the header" (guards against matching a stray preamble line).
@@ -80,6 +118,10 @@ class LoadResult(BaseModel):
     issues: list[RowIssue] = Field(default_factory=list)
     encoding_used: str
     skipped_preamble_lines: int = 0
+    # Raw header cells exactly as they appeared (safe: headers carry no values),
+    # and the subset of them that mapped to no canonical field and are ignored.
+    header_fields: list[str] = Field(default_factory=list)
+    ignored_headers: list[str] = Field(default_factory=list)
 
 
 class CsvLoadError(Exception):
@@ -109,6 +151,14 @@ def _decode(path: Path) -> tuple[str, str]:
         raise CsvLoadError(f"File not found: {path}") from exc
     except OSError as exc:
         raise CsvLoadError(f"Could not read file: {path}") from exc
+
+    if data.startswith(_ZIP_MAGIC):
+        # LinkedIn ships the export as a .zip; XLSX is also a zip container.
+        raise CsvLoadError(
+            f"File looks like a ZIP/XLSX archive, not a CSV: {path}. "
+            "LinkedIn exports arrive zipped -- unzip it and pass the inner "
+            "'Connections.csv'. A plain-text CSV is expected."
+        )
 
     if b"\x00" in data:
         # NUL bytes indicate a binary file (or UTF-16); we do not support these.
@@ -164,6 +214,14 @@ def load_csv(path: str | Path) -> LoadResult:
     path = Path(path)
     text, encoding = _decode(path)
 
+    # JSON (object or array) is a common wrong-format mistake; reject clearly.
+    stripped = text.lstrip("﻿ \t\r\n")
+    if stripped[:1] in {"{", "["}:
+        raise CsvLoadError(
+            f"File looks like JSON, not a CSV: {path}. Expected a CSV export "
+            "with columns like 'First Name', 'Last Name', 'Company', 'Position'."
+        )
+
     # splitlines handles \n, \r\n and \r uniformly.
     all_lines = text.splitlines()
     if not all_lines:
@@ -173,12 +231,26 @@ def load_csv(path: str | Path) -> LoadResult:
     if found is None:
         raise CsvLoadError(
             f"No recognizable header row found in {path}. Expected columns like "
-            "'First Name', 'Last Name', 'Company', 'Position'."
+            "'First Name', 'Last Name', 'Company', 'Position' (English, "
+            "Portuguese, or Spanish header labels are accepted)."
         )
     header_line_index, column_map = found
     skipped = header_line_index
 
     columns_present = sorted(set(column_map.values()))
+
+    # Capture the raw header cells (safe to keep/show) and which ones mapped to
+    # no canonical field, so callers can report accepted vs. ignored columns.
+    try:
+        header_cells = next(csv.reader([all_lines[header_line_index]]))
+    except csv.Error:
+        header_cells = []
+    header_fields = [cell.strip() for cell in header_cells]
+    ignored_headers = [
+        cell.strip()
+        for idx, cell in enumerate(header_cells)
+        if idx not in column_map and cell.strip()
+    ]
 
     # Re-parse the body (everything after the header line) as CSV so quoted
     # fields spanning commas are handled correctly.
@@ -247,4 +319,6 @@ def load_csv(path: str | Path) -> LoadResult:
         issues=issues,
         encoding_used=encoding,
         skipped_preamble_lines=skipped,
+        header_fields=header_fields,
+        ignored_headers=ignored_headers,
     )

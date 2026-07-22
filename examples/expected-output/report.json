@@ -4,6 +4,8 @@
     "unique_connections": 28,
     "duplicates": 2
   },
+  "valid_rows": 30,
+  "invalid_rows": 1,
   "completeness_pct": {
     "company": 96.7,
     "connected_on": 100.0,
@@ -43,59 +45,55 @@
       "count": 3
     }
   ],
-  "top_positions": [
+  "top_roles": [
     {
-      "label": "Chief Executive Officer",
+      "label": "chief executive officer",
       "count": 2
     },
     {
-      "label": "Senior Software Engineer",
+      "label": "senior software engineer",
       "count": 2
     },
     {
-      "label": "Backend Developer",
+      "label": "backend developer",
       "count": 1
     },
     {
-      "label": "Chief Financial Officer",
+      "label": "chief financial officer",
       "count": 1
     },
     {
-      "label": "Chief Technology Officer",
+      "label": "chief technology officer",
       "count": 1
     },
     {
-      "label": "Co-Founder",
+      "label": "co-founder",
       "count": 1
     },
     {
-      "label": "Consultant",
+      "label": "consultant",
       "count": 1
     },
     {
-      "label": "Data Analyst",
+      "label": "data analyst",
       "count": 1
     },
     {
-      "label": "Data Engineer",
+      "label": "data engineer",
       "count": 1
     },
     {
-      "label": "Director of Engineering",
+      "label": "director of engineering",
       "count": 1
     }
   ],
   "seniority_distribution": [
     {
-      "label": "ic",
-      "count": 8
+      "label": "individual_contributor",
+      "count": 13
     },
     {
       "label": "c_level",
-      "count": 5
-    },
-    {
-      "label": "senior_ic",
       "count": 5
     },
     {
@@ -103,15 +101,15 @@
       "count": 3
     },
     {
-      "label": "vp_director",
+      "label": "vp_head_director",
       "count": 3
     },
     {
-      "label": "founder",
+      "label": "entry_student",
       "count": 2
     },
     {
-      "label": "student",
+      "label": "founder_owner",
       "count": 2
     },
     {
@@ -120,6 +118,55 @@
     }
   ],
   "seniority_inferred": true,
+  "role_family_distribution": [
+    {
+      "label": "founder_executive",
+      "count": 8
+    },
+    {
+      "label": "engineering_data_ai",
+      "count": 7
+    },
+    {
+      "label": "unknown",
+      "count": 5
+    },
+    {
+      "label": "design_ux",
+      "count": 3
+    },
+    {
+      "label": "operations_people_finance_legal",
+      "count": 3
+    },
+    {
+      "label": "marketing_growth_content",
+      "count": 2
+    },
+    {
+      "label": "product",
+      "count": 1
+    },
+    {
+      "label": "sales_bd_partnerships",
+      "count": 1
+    }
+  ],
+  "confidence_distribution": [
+    {
+      "label": "high",
+      "count": 22
+    },
+    {
+      "label": "unknown",
+      "count": 5
+    },
+    {
+      "label": "medium",
+      "count": 3
+    }
+  ],
+  "unknown_share": 0.1667,
   "connections_per_year": [
     {
       "label": "2019",
@@ -153,6 +200,49 @@
       "label": "2026",
       "count": 1
     }
+  ],
+  "candidate_segments": [
+    {
+      "name": "Engineering, Data & AI — individual contributors",
+      "size": 7,
+      "share": 0.2333,
+      "evidence": [
+        "role_family=engineering_data_ai x seniority=individual_contributor: 7 connections",
+        "title 'senior software engineer' (2)",
+        "title 'backend developer' (1)",
+        "title 'data analyst' (1)"
+      ],
+      "rationale": "7 connections (23%) cluster in Engineering, Data & AI at the individual contributors level."
+    },
+    {
+      "name": "Founders & Executives — C-level",
+      "size": 4,
+      "share": 0.1333,
+      "evidence": [
+        "role_family=founder_executive x seniority=c_level: 4 connections",
+        "title 'chief executive officer' (2)",
+        "title 'chief financial officer' (1)",
+        "title 'chief technology officer' (1)"
+      ],
+      "rationale": "4 connections (13%) cluster in Founders & Executives at the C-level level."
+    },
+    {
+      "name": "Design & UX — individual contributors",
+      "size": 3,
+      "share": 0.1,
+      "evidence": [
+        "role_family=design_ux x seniority=individual_contributor: 3 connections",
+        "title 'graphic designer' (1)",
+        "title 'senior product designer' (1)",
+        "title 'ux designer' (1)"
+      ],
+      "rationale": "3 connections (10%) cluster in Design & UX at the individual contributors level."
+    }
+  ],
+  "limitations": [
+    "Connections are not evidence of interest in your content.",
+    "Role and family classifications are keyword heuristics with a stated confidence level; treat them as directional, not authoritative.",
+    "Company and title data reflect the export snapshot and may be stale."
   ],
   "generated_notes": [
     "Connection presence does not imply interest in your content. Seniority buckets are heuristic inferences."

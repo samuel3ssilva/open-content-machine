@@ -14,7 +14,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
-from content_machine.ingestion.csv_loader import LoadResult, RawConnection
+from content_machine.ingestion.csv_loader import LoadResult, RawConnection, RowIssue
 
 # Legal-entity suffixes stripped from company names (case-insensitive). Order
 # does not matter; matching is done on tokenized, punctuation-light forms.
@@ -50,19 +50,27 @@ _LEGAL_SUFFIXES: tuple[str, ...] = (
 # Seniority keyword rules, evaluated top to bottom; first match wins. Each rule
 # is (bucket, tuple of lowercase substrings matched against the title). These
 # are heuristics only and always carry seniority_inferred=True.
+#
+# Buckets (exactly seven, plus "unknown"): founder_owner, c_level,
+# vp_head_director, manager_lead, individual_contributor, entry_student,
+# unknown. The former "senior_ic" and "ic" buckets are merged into
+# individual_contributor.
 _SENIORITY_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("founder", ("founder", "co-founder", "cofounder", "owner")),
+    ("founder_owner", ("founder", "co-founder", "cofounder", "owner")),
     (
         "c_level",
         ("ceo", "cto", "cfo", "coo", "cmo", "ciso", "cio", "chief", "president"),
     ),
-    ("vp_director", ("vp", "vice president", "director", "head of", "partner")),
+    ("vp_head_director", ("vp", "vice president", "director", "head of", "partner")),
     ("manager_lead", ("manager", "lead", "supervisor", "principal")),
-    ("student", ("student", "intern", "trainee", "apprentice", "graduate")),
-    ("senior_ic", ("senior", "sr", "staff", "specialist")),
+    ("entry_student", ("student", "intern", "trainee", "apprentice", "graduate")),
     (
-        "ic",
+        "individual_contributor",
         (
+            "senior",
+            "sr",
+            "staff",
+            "specialist",
             "engineer",
             "developer",
             "analyst",
@@ -79,6 +87,23 @@ _SENIORITY_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
 
 # LinkedIn's default connection-date format, e.g. "18 Apr 2024".
 _LINKEDIN_DATE = "%d %b %Y"
+
+# Localized month-abbreviation -> month number, for tolerant parsing of dates
+# like "12 jan 2023" (Portuguese) or "14 mai 2019". Covers English, Portuguese
+# and Spanish abbreviations. Only the year is used downstream; the map exists to
+# recognize a date shape without a full locale dependency.
+_MONTH_ABBREVS: dict[str, int] = {
+    # English
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "sept": 9, "oct": 10, "nov": 11, "dec": 12,
+    # Portuguese
+    "fev": 2, "abr": 4, "mai": 5, "ago": 8, "set": 9, "out": 10, "dez": 12,
+    # Spanish
+    "ene": 1, "dic": 12,
+}
+
+# "12 jan 2023", "14 mai. 2019" -> day, month token, 4-digit year.
+_LOCALIZED_DATE_RE = re.compile(r"^\s*(\d{1,2})\s+([A-Za-zçÇ.]+)\s+(\d{4})\s*$")
 
 
 class NormalizedConnection(BaseModel):
@@ -102,10 +127,16 @@ class NormalizedConnection(BaseModel):
 
 
 class NormalizationResult(BaseModel):
-    """Normalized rows plus detected duplicate relationships."""
+    """Normalized rows plus detected duplicate relationships.
+
+    ``issues`` collects non-fatal normalization problems (currently: a present
+    connection date that could not be parsed). Messages reference the row/column
+    only, never values.
+    """
 
     connections: list[NormalizedConnection] = Field(default_factory=list)
     duplicate_pairs: list[tuple[int, int]] = Field(default_factory=list)
+    issues: list[RowIssue] = Field(default_factory=list)
 
 
 def _collapse_ws(value: str | None) -> str | None:
@@ -145,10 +176,10 @@ def normalize_company(value: str | None) -> str | None:
 def infer_seniority(position: str | None) -> str:
     """Derive a seniority bucket from a job title using keyword rules.
 
-    Buckets: founder, c_level, vp_director, manager_lead, senior_ic, ic,
-    student, unknown. This is a heuristic; callers must treat the result as an
-    inference (``seniority_inferred=True``), never as ground truth. Returns
-    "unknown" when no rule matches or the title is absent.
+    Buckets: founder_owner, c_level, vp_head_director, manager_lead,
+    individual_contributor, entry_student, unknown. This is a heuristic; callers
+    must treat the result as an inference (``seniority_inferred=True``), never as
+    ground truth. Returns "unknown" when no rule matches or the title is absent.
     """
     if not position:
         return "unknown"
@@ -167,9 +198,11 @@ def infer_seniority(position: str | None) -> str:
 def parse_connected_year(value: str | None) -> int | None:
     """Parse a LinkedIn connection date into a year.
 
-    Accepts the LinkedIn default ("18 Apr 2024") and an ISO fallback
-    ("2024-04-18" / "2024"). Returns ``None`` when the value is absent or
-    unparseable; unparseable dates are not treated as fatal here.
+    Accepts the LinkedIn default ("18 Apr 2024"), localized variants with
+    Portuguese/Spanish month abbreviations ("12 jan 2023", "14 mai 2019"), and
+    an ISO fallback ("2024-04-18" / "2024"). Returns ``None`` when the value is
+    absent or unparseable; unparseable dates are not treated as fatal here (the
+    caller records a normalization issue instead).
     """
     text = _collapse_ws(value)
     if text is None:
@@ -184,6 +217,11 @@ def parse_connected_year(value: str | None) -> int | None:
         pass
     if re.fullmatch(r"\d{4}", text):
         return int(text)
+    match = _LOCALIZED_DATE_RE.match(text)
+    if match:
+        token = match.group(2).casefold().rstrip(".")
+        if token in _MONTH_ABBREVS:
+            return int(match.group(3))
     return None
 
 
@@ -210,8 +248,21 @@ def normalize(load_result: LoadResult) -> NormalizationResult:
     ``(first_row_index, duplicate_row_index)`` pair.
     """
     connections: list[NormalizedConnection] = []
+    issues: list[RowIssue] = []
     for raw in load_result.rows:
-        connections.append(_normalize_one(raw))
+        conn = _normalize_one(raw)
+        connections.append(conn)
+        # A present but unparseable connection date -> connected_year is None
+        # plus a non-fatal issue (references the column, never the value).
+        if conn.connected_on is not None and conn.connected_year is None:
+            issues.append(
+                RowIssue(
+                    row_index=raw.row_index,
+                    column="connected_on",
+                    kind="parse_error",
+                    message="Present column 'connected_on' held an unparseable date.",
+                )
+            )
 
     duplicate_pairs: list[tuple[int, int]] = []
     seen: dict[tuple[str, str, str], int] = {}
@@ -225,7 +276,9 @@ def normalize(load_result: LoadResult) -> NormalizationResult:
         else:
             seen[key] = conn.row_index
 
-    return NormalizationResult(connections=connections, duplicate_pairs=duplicate_pairs)
+    return NormalizationResult(
+        connections=connections, duplicate_pairs=duplicate_pairs, issues=issues
+    )
 
 
 def _normalize_one(raw: RawConnection) -> NormalizedConnection:
