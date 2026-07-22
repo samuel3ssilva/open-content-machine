@@ -7,8 +7,9 @@ Legenda: ✅ concluído · 🔄 em andamento · ⬜ não iniciado · 🔒 aguard
 ## Status geral
 
 **Sprint 1 (Real-Data Audience MVP) em execução.** Fundação e pipeline
-sintético entregues na v0.0.1. Implementação de dry-run, classificação e
-relatório expandido em andamento. Nenhum dado real foi processado.
+sintético entregues na v0.0.1. Dry-run, classificação, relatório expandido e
+`export-public` implementados e testados em `main` (ainda sem release
+marcada). Nenhum dado real foi processado.
 
 ## Fundação (v0.0.1)
 
@@ -22,12 +23,12 @@ relatório expandido em andamento. Nenhum dado real foi processado.
 
 - ✅ Pipeline sintético end-to-end (validate → normalize → anonymize → report)
 - ✅ Anonimização determinística (HMAC + salt privado, allowlist, ADR 0003)
-- 🔄 `audience inspect --dry-run` (inspeção privacy-safe de arquivo externo)
-- 🔄 Variações de export (aliases PT/ES, ordem de colunas, falha clara)
-- 🔄 Classificação determinística por família de papel + senioridade + confiança
-- 🔄 Relatório privado expandido (distribuições, segmentos candidatos, limitações)
-- 🔄 `audience export-public` (supressão de grupos < 10, rótulo "sanitized")
-- ⬜ Teste de performance com 8.000 registros sintéticos
+- ✅ `audience inspect --dry-run` (inspeção privacy-safe de arquivo externo)
+- ✅ Variações de export (aliases PT/ES, ordem de colunas, falha clara)
+- ✅ Classificação determinística por família de papel + senioridade + confiança
+- ✅ Relatório privado expandido (distribuições, segmentos candidatos, limitações)
+- ✅ `audience export-public` (supressão de grupos < 10, rótulo "sanitized")
+- ✅ Teste de performance com 8.000 registros sintéticos
 - ⬜ Dry-run executado contra o export real (somente metadados)
 - 🔒 Processamento completo do export real → **v0.1.0**
 

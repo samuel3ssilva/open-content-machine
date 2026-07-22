@@ -33,9 +33,21 @@ classification and handling rules).
 
 ## Status
 
-Bootstrap sprint — Audience Intelligence MVP. Live one-page dashboard:
-[MVP Status](docs/MVP_STATUS.md). See [`ROADMAP.md`](ROADMAP.md) for the full
-build order and [`CHANGELOG.md`](CHANGELOG.md) for what has landed so far.
+- **v0.0.1** is tagged and released: the bootstrap synthetic pipeline
+  (`validate` → `anonymize` → `report`, fully offline, against the shipped
+  synthetic dataset).
+- Sprint 1 additions — `audience inspect --dry-run`, deterministic role
+  classification, the expanded private report, and `audience export-public`
+  — are merged on `main` but **not yet in a tagged release**.
+- **`v0.1.0` will be tagged only after the pipeline validates a private, real
+  connections export locally** (dry-run first, then explicit Founder
+  authorization for a real run — see
+  [`docs/real-data-runbook.md`](docs/real-data-runbook.md)). No real personal
+  data has been processed by this project yet.
+
+Live one-page dashboard: [MVP Status](docs/MVP_STATUS.md). See
+[`ROADMAP.md`](ROADMAP.md) for the full build order and
+[`CHANGELOG.md`](CHANGELOG.md) for what has landed so far.
 
 ## Install
 
@@ -55,6 +67,14 @@ content-machine demo
 content-machine audience validate <file.csv>
 content-machine audience anonymize <file.csv> -o out.json
 content-machine audience report <file.csv> [-o report.md] [--json report.json]
+
+# Sprint 1: read-only structural inspection of an external file (no cell
+# value, ever — see docs/privacy.md). Always required to pass --dry-run.
+content-machine audience inspect <file.csv> --dry-run
+
+# Sprint 1: sanitize a private report.json into a shareable artifact
+# (suppresses any group under 10; adds privacy_label="sanitized-aggregate").
+content-machine audience export-public <report.json> -o public.json [--md public.md]
 ```
 
 All commands run fully offline and require no API key. `content-machine demo`
@@ -64,6 +84,102 @@ own export, keep it outside the repository (or in the git-ignored
 `data/private/` — see [`data/README.md`](data/README.md)) and point the
 commands at its path; nothing is ever copied into the project. Details in
 [`docs/private-workspace.md`](docs/private-workspace.md).
+
+### Example: `content-machine demo`
+
+Real output (truncated) from running the offline demo against the shipped
+synthetic dataset:
+
+```
+# Audience Report
+
+## Totals
+
+- Total rows: 30
+- Unique connections: 28
+- Duplicates: 2
+- Valid rows: 30
+- Invalid rows (empty): 1
+
+## Data completeness
+
+| Column | Complete |
+| --- | --- |
+| company | 96.7% |
+| connected_on | 100.0% |
+...
+```
+
+## Architecture at a glance
+
+```
+data/private/ (git-ignored, never committed)
+        │
+        ▼  TB-1: read-only, never copied
+   Connections.csv
+        │
+        ▼
+   [ validate ]  → row/column issues, no values
+        │
+        ▼
+   [ normalize ] → whitespace, company suffixes, seniority, year
+        │
+        ▼  TB-2: names / emails / URLs REMOVED here
+   [ anonymize ] → HMAC-SHA256 pseudonym id
+        │
+        ▼
+   [ classify ]  → deterministic role-family + confidence
+        │
+        ▼
+   [ aggregate ] → counts, distributions, candidate segments
+        │
+        ├──▶ report.md / report.json      (private; may have small groups)
+        └──▶ export-public → public.json  (TB-3: groups <10 suppressed)
+```
+
+Full trust-boundary details: [`docs/architecture.md`](docs/architecture.md).
+
+## Features today vs. roadmap
+
+**Implemented today (`main`):**
+
+- `content-machine --help` / `version` / `demo`
+- `content-machine audience validate FILE`
+- `content-machine audience anonymize FILE -o OUT.json`
+- `content-machine audience report FILE [-o OUT.md] [--json OUT.json]`
+- `content-machine audience inspect FILE --dry-run` — privacy-safe structural
+  inspection of an external file; never prints a cell value, makes no network
+  calls, never copies the source
+- `content-machine audience export-public REPORT.json -o OUT.json [--md OUT.md]`
+  — sanitizes a private report into a shareable artifact (suppresses groups
+  under 10)
+- Deterministic, explainable role-family classification
+  (`content_machine/audience/classify.py`) with an explicit confidence level
+  per title
+- Localized (Portuguese/Spanish) header and connection-date aliases
+- Expanded private report: role/seniority/confidence distributions,
+  candidate segments, mandatory limitations
+
+**Planned:** positioning & creator profile, voice vault, oracle, interview
+panel, draft-in-voice, evidence check, writer's council, revision,
+repurpose, analytics — see the full build order in
+[`ROADMAP.md`](ROADMAP.md).
+
+## Engineering trade-offs
+
+- Role and seniority classification are keyword-table heuristics, not ML —
+  explainable and auditable, but will miss or misclassify titles outside the
+  tables (always shipped with an explicit confidence level, never presented
+  as ground truth).
+- Fully offline by design: no network I/O anywhere in this sprint, including
+  the two model-provider stubs (`providers/anthropic_provider.py`,
+  `providers/openai_provider.py`).
+- Flat-file storage only (CSV in, JSON/Markdown out) — no database; fine for
+  a single export, not built for large-scale longitudinal history.
+- Single-user, single-machine execution model; no multi-tenant or server
+  deployment story.
+- The public-export suppression threshold (k=10) is a fixed constant, not a
+  configurable privacy budget.
 
 ## Project structure
 
@@ -113,7 +229,10 @@ offline.
 O primeiro módulo em construção é o de Inteligência de Audiência: validar,
 anonimizar e gerar relatórios a partir de uma exportação de conexões no
 estilo LinkedIn, sem exigir chave de API e sem que nenhum dado pessoal saia
-da máquina. Os módulos seguintes (posicionamento, voz, rascunhos, revisão,
-repropósito de conteúdo) seguem o mesmo roteiro em [`ROADMAP.md`](ROADMAP.md).
-Consulte [`docs/privacy.md`](docs/privacy.md) e [`SECURITY.md`](SECURITY.md)
-para os detalhes de privacidade e segurança.
+da máquina. A Sprint 1 adicionou uma inspeção estrutural somente-leitura
+(`audience inspect --dry-run`) e uma classificação determinística de papéis
+profissionais (`audience/classify.py`), ambas já em `main`, mas ainda sem uma
+release marcada. Os módulos seguintes (posicionamento, voz, rascunhos,
+revisão, repropósito de conteúdo) seguem o mesmo roteiro em
+[`ROADMAP.md`](ROADMAP.md). Consulte [`docs/privacy.md`](docs/privacy.md) e
+[`SECURITY.md`](SECURITY.md) para os detalhes de privacidade e segurança.
