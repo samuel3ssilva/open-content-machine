@@ -46,11 +46,11 @@ marcada). Nenhum dado real foi processado.
 
 ## Próximo gate
 
-> Sprint 1 ✅ → run local real ✅ (unknown 41,7% — bloqueio de qualidade) →
-> hardening do classificador 🔄 →
-> **➡️ ESTAMOS AQUI: aguardando o archive completo do LinkedIn para
-> inventário de criador e audiência** → 2º run real (pós-inventário, aprovado
-> pelo Fable) → **v0.1.0**
+> Sprint 1 ✅ → run local real ✅ → hardening do classificador ✅ (Sprint 1.1:
+> precisão high 100%, unknown sintético 9,6%) →
+> **➡️ ESTAMOS AQUI: inventário seguro (somente metadados) da pasta de
+> biografia do Founder (Sprint 1.2, Fase 1)** → inventário do archive
+> LinkedIn → 2º run real (aprovado pelo Fable) → **v0.1.0**
 >
 > Nota: a revisão manual dos 100 títulos está pausada por decisão do Founder
 > (arquivo preservado em ambiente privado); será substituída por uma amostra
