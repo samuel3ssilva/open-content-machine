@@ -29,7 +29,7 @@ marcada). Nenhum dado real foi processado.
 - ✅ Relatório privado expandido (distribuições, segmentos candidatos, limitações)
 - ✅ `audience export-public` (supressão de grupos < 10, rótulo "sanitized")
 - ✅ Teste de performance com 8.000 registros sintéticos
-- ⬜ Dry-run executado contra o export real (somente metadados)
+- ✅ Dry-run executado contra o export real (somente metadados; 8.204 linhas, zero warnings)
 - 🔒 Processamento completo do export real → **v0.1.0**
 
 ## Segurança e privacidade
@@ -39,15 +39,14 @@ marcada). Nenhum dado real foi processado.
 - ✅ 9 testes dedicados de privacidade + scan de PII/secrets no CI
 - ✅ Runbook de dados reais com gate obrigatório de dry-run
 - ✅ Parecer APPROVED FOR PUBLIC PUSH (bootstrap)
-- ⬜ Revisão Fable das fronteiras do dry-run e da supressão pública (após implementação)
-- ⬜ Parecer APPROVED FOR REAL LOCAL RUN
+- ✅ Revisão Fable das fronteiras do dry-run e da supressão pública
+- ✅ Parecer **APPROVED FOR REAL LOCAL RUN** emitido (2026-07-22)
 
 ## Próximo gate
 
-> **➡️ ESTAMOS AQUI:** concluir implementação do Sprint 1 → gates de qualidade
-> completos → dry-run sanitizado do export real → parecer Fable →
-> **🔒 autorização do Founder** → processamento local do export real →
-> relatório privado → **v0.1.0**
+> Implementação do Sprint 1 ✅ → gates de qualidade ✅ → dry-run do export
+> real ✅ → parecer Fable ✅ → **➡️ ESTAMOS AQUI: 🔒 autorização do Founder**
+> → processamento local do export real → relatório privado → **v0.1.0**
 
 ## Backlog principal (fora do sprint)
 
