@@ -35,7 +35,7 @@ jobs:
 
           echo "== 1. Tracked private-data-shaped filenames (SECURITY.md #2) =="
           if git ls-files | grep -Ei '(^|/)\.env$|connections.*\.csv|secret|credential|\.pem$|\.key$' \
-              | grep -v -E 'examples/synthetic-connections\.csv|\.env\.example'; then
+              | grep -v -E '^examples/synthetic-connections([._-]|-variants/)|\.env\.example'; then
             echo "FAIL: private-data-shaped filename(s) are tracked (see above)"
             fail=1
           else

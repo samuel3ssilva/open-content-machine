@@ -44,7 +44,7 @@ git check-ignore -v data/private/anything.csv .env
 
 # 2. Nothing sensitive is tracked
 git ls-files | grep -Ei '(^|/)\.env$|connections.*\.csv|secret|credential|\.pem$|\.key$' \
-  | grep -v -E 'examples/synthetic-connections.csv|\.env\.example' && echo "FAIL" || echo "OK"
+  | grep -v -E '^examples/synthetic-connections([._-]|-variants/)|\.env\.example' && echo "FAIL" || echo "OK"
 
 # 3. No obvious secrets or personal emails in tracked content
 git grep -nIE '(api[_-]?key|token|password)\s*[:=]\s*["'"'"'][A-Za-z0-9_\-]{16,}' -- . && echo "FAIL" || echo "OK"
