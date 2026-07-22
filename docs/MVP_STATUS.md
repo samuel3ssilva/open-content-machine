@@ -46,8 +46,14 @@ marcada). Nenhum dado real foi processado.
 ## Próximo gate
 
 > Sprint 1 ✅ → run local real ✅ (unknown 41,7% — bloqueio de qualidade) →
-> **➡️ ESTAMOS AQUI: auditoria manual e hardening determinístico do
-> classificador (Sprint 1.1)** → 2º run real aprovado pelo Fable → **v0.1.0**
+> hardening do classificador 🔄 →
+> **➡️ ESTAMOS AQUI: aguardando o archive completo do LinkedIn para
+> inventário de criador e audiência** → 2º run real (pós-inventário, aprovado
+> pelo Fable) → **v0.1.0**
+>
+> Nota: a revisão manual dos 100 títulos está pausada por decisão do Founder
+> (arquivo preservado em ambiente privado); será substituída por uma amostra
+> direcionada de 20–30 casos após o inventário do novo archive.
 
 ## Backlog principal (fora do sprint)
 
