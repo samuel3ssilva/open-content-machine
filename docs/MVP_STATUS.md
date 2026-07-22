@@ -30,7 +30,8 @@ marcada). Nenhum dado real foi processado.
 - ✅ `audience export-public` (supressão de grupos < 10, rótulo "sanitized")
 - ✅ Teste de performance com 8.000 registros sintéticos
 - ✅ Dry-run executado contra o export real (somente metadados; 8.204 linhas, zero warnings)
-- 🔒 Processamento completo do export real → **v0.1.0**
+- ✅ **REAL LOCAL RUN COMPLETED — AWAITING FOUNDER REVIEW** (outputs privados fora do repo; nada commitado)
+- 🔒 Publicação da **v0.1.0** → após revisão do Founder
 
 ## Segurança e privacidade
 
@@ -44,9 +45,10 @@ marcada). Nenhum dado real foi processado.
 
 ## Próximo gate
 
-> Implementação do Sprint 1 ✅ → gates de qualidade ✅ → dry-run do export
-> real ✅ → parecer Fable ✅ → **➡️ ESTAMOS AQUI: 🔒 autorização do Founder**
-> → processamento local do export real → relatório privado → **v0.1.0**
+> Implementação do Sprint 1 ✅ → gates ✅ → dry-run real ✅ → parecer Fable ✅
+> → autorização do Founder ✅ → run local real ✅ →
+> **➡️ ESTAMOS AQUI: revisão do relatório privado e auditoria manual da
+> classificação** → **v0.1.0**
 
 ## Backlog principal (fora do sprint)
 
