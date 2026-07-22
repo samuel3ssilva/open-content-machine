@@ -25,8 +25,10 @@ LABELED_CSV = REPO_ROOT / "tests" / "fixtures" / "labeled_titles_synthetic.csv"
 
 
 def test_labeled_fixture_exists_and_is_reasonably_sized() -> None:
+    # Sprint 1.1 grew the labeled fixture to >= 250 rows (ticket §2) for
+    # broader PT/EN vocabulary regression coverage.
     labeled = load_labeled_csv(LABELED_CSV)
-    assert len(labeled) >= 100
+    assert len(labeled) >= 250
 
 
 def test_synthetic_set_meets_quality_bar() -> None:

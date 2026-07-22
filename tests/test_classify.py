@@ -267,3 +267,209 @@ def test_model_forbids_extra_fields() -> None:
 
     with pytest.raises(ValidationError):
         RoleClassification(family=RoleFamily.product, bogus="x")  # type: ignore[call-arg]
+
+
+# --- Sprint 1.1 vocabulary-expansion decisions -------------------------------
+# One dedicated assertion per documented edge case in docs/classification.md's
+# decision table, so a future vocabulary change cannot silently flip one of
+# these calls without a test failing.
+
+
+def test_product_owner_stays_product_bare_po_stays_unmapped() -> None:
+    # "PO" alone is deliberately NOT vocabulary (Purchase Order / too
+    # ambiguous); only the unambiguous phrase "product owner" is mapped.
+    assert classify_role("Product Owner").family is RoleFamily.product
+    assert classify_role("PO").family is RoleFamily.unknown
+
+
+@pytest.mark.parametrize("title", ["Scrum Master", "Agile Coach"])
+def test_scrum_master_and_agile_coach_are_engineering_medium(title: str) -> None:
+    # Delivery-facilitation roles, hedged to engineering at medium (documented
+    # decision: overwhelmingly embedded in software delivery teams here).
+    result = classify_role(title)
+    assert result.family is RoleFamily.engineering_data_ai
+    assert result.confidence is Confidence.medium
+
+
+def test_cro_abbreviation_is_sales_medium_but_spelled_out_is_high() -> None:
+    # "CRO" is ambiguous (Chief Revenue Officer vs Chief Risk Officer) -> the
+    # revenue reading is chosen, but only at medium. Spelled out, the phrase
+    # is unambiguous and gets high.
+    abbrev = classify_role("CRO")
+    assert abbrev.family is RoleFamily.sales_bd_partnerships
+    assert abbrev.confidence is Confidence.medium
+    spelled = classify_role("Chief Revenue Officer")
+    assert spelled.family is RoleFamily.sales_bd_partnerships
+    assert spelled.confidence is Confidence.high
+
+
+def test_cpo_abbreviation_is_product_medium() -> None:
+    # Ambiguous (Product vs People vs Privacy officer); product reading
+    # chosen at medium given this app's tech/startup audience.
+    result = classify_role("CPO")
+    assert result.family is RoleFamily.product
+    assert result.confidence is Confidence.medium
+
+
+def test_cdo_abbreviation_is_engineering_medium_but_spelled_out_is_high() -> None:
+    # Ambiguous (Chief Data Officer vs Chief Digital Officer); both readings
+    # are technology-adjacent, so mapped at medium. Spelled out is high.
+    abbrev = classify_role("CDO")
+    assert abbrev.family is RoleFamily.engineering_data_ai
+    assert abbrev.confidence is Confidence.medium
+    spelled = classify_role("Chief Data Officer")
+    assert spelled.family is RoleFamily.engineering_data_ai
+    assert spelled.confidence is Confidence.high
+
+
+def test_journalist_is_other_not_marketing() -> None:
+    # Pure journalism is a distinct recognized profession (T3, other); content
+    # and social-media roles stay in marketing_growth_content.
+    result = classify_role("Jornalista")
+    assert result.family is RoleFamily.other
+    assert result.confidence is Confidence.high
+
+
+def test_bare_cientista_is_left_unknown() -> None:
+    # A bare "Cientista" (scientist, no domain) is genuinely ambiguous (data /
+    # political / physical scientist, ...) -- deliberately unmapped rather
+    # than forced.
+    result = classify_role("Cientista")
+    assert result.family is RoleFamily.unknown
+    assert result.confidence is Confidence.unknown
+
+
+def test_cientista_de_dados_is_still_engineering_high() -> None:
+    # The bare "Cientista" exclusion above must not regress the qualified
+    # "Cientista de Dados" (data scientist) phrase, which stays high.
+    result = classify_role("Cientista de Dados")
+    assert result.family is RoleFamily.engineering_data_ai
+    assert result.confidence is Confidence.high
+
+
+@pytest.mark.parametrize("title", ["Arquiteto", "Arquiteta"])
+def test_bare_arquiteto_is_other_buildings_profession(title: str) -> None:
+    # A context-free "Arquiteto(a)" reads as a building architect (T3,
+    # other) -- only reached because none of T1's "arquiteto de
+    # software/solucoes/dados/cloud" phrases matched.
+    result = classify_role(title)
+    assert result.family is RoleFamily.other
+    assert result.confidence is Confidence.high
+
+
+def test_arquiteto_de_software_stays_engineering_not_buildings() -> None:
+    # The bare-"arquiteto" -> other rule above must never shadow the
+    # qualified software/solutions/data/cloud architect phrases (T1 always
+    # wins first).
+    result = classify_role("Arquiteto de Software")
+    assert result.family is RoleFamily.engineering_data_ai
+    assert result.confidence is Confidence.high
+
+
+def test_dono_da_padaria_is_founder_executive() -> None:
+    # A genuine PT ownership claim ("Dono da Padaria" = owner of the bakery)
+    # still fires the T0 ownership override.
+    result = classify_role("Dono da Padaria")
+    assert result.family is RoleFamily.founder_executive
+    assert result.confidence is Confidence.high
+
+
+@pytest.mark.parametrize(
+    "title",
+    ["Dono de Produto", "Dono do Produto", "Dona de Processo", "Dona do Servico"],
+)
+def test_dono_dona_false_friends_do_not_trigger_ownership(title: str) -> None:
+    # PT mirror of the existing English "owner" false-friend guard: "Dono/
+    # Dona de Produto/Processo/Serviço" is role stewardship (product/process/
+    # service owner), not company ownership, so T0 must NOT fire.
+    result = classify_role(title)
+    assert result.family is not RoleFamily.founder_executive
+
+
+def test_dono_de_produto_falls_through_to_product() -> None:
+    result = classify_role("Dono de Produto")
+    assert result.family is RoleFamily.product
+
+
+@pytest.mark.parametrize("title", ["Empreendedor", "Empreendedora"])
+def test_empreendedor_is_founder_executive_medium_not_high(title: str) -> None:
+    # Weaker evidence than an explicit founder/owner claim (T0): a
+    # self-identifier that does not always denote a formal ownership stake.
+    result = classify_role(title)
+    assert result.family is RoleFamily.founder_executive
+    assert result.confidence is Confidence.medium
+
+
+def test_qualidade_routes_to_operations_not_engineering() -> None:
+    # Bare PT "Qualidade" overwhelmingly means manufacturing/process quality
+    # in this context, not software QA (which is covered separately via
+    # "qa"/"quality assurance"/"qa engineer").
+    result = classify_role("Analista de Qualidade")
+    assert result.family is RoleFamily.operations_people_finance_legal
+
+
+def test_qa_engineer_still_engineering_despite_qualidade_decision() -> None:
+    result = classify_role("QA Engineer")
+    assert result.family is RoleFamily.engineering_data_ai
+    assert result.confidence is Confidence.high
+
+
+def test_bare_bi_abbreviation_is_not_expanded() -> None:
+    # "BI" is deliberately left unmapped (too ambiguous as a bare token);
+    # "Analista de BI" falls to the generic low "analista" rule rather than
+    # a forced high "business intelligence" match.
+    result = classify_role("Analista de BI")
+    assert result.family is RoleFamily.engineering_data_ai
+    assert result.confidence is Confidence.low
+
+
+def test_fiscal_is_left_unknown() -> None:
+    # "Fiscal" (PT) is genuinely ambiguous between tax/finance ("Auditor
+    # Fiscal") and a generic inspector role ("Fiscal de Trânsito") unrelated
+    # to finance -- deliberately unmapped.
+    result = classify_role("Fiscal")
+    assert result.family is RoleFamily.unknown
+
+
+def test_bare_especialista_is_left_unknown() -> None:
+    # "Especialista" (specialist) alone names no domain -- too generic to map.
+    result = classify_role("Especialista")
+    assert result.family is RoleFamily.unknown
+
+
+def test_apaixonado_por_tecnologia_is_not_unknown() -> None:
+    # Unlike a truly domain-empty non-conventional title, this one contains
+    # genuine evidence ("tecnologia") and correctly resolves at T2 -- not a
+    # bug, see docs/classification.md.
+    result = classify_role("Apaixonado por Tecnologia")
+    assert result.family is RoleFamily.engineering_data_ai
+    assert result.confidence is Confidence.high
+
+
+@pytest.mark.parametrize(
+    "title",
+    ["Resolvedor de Problemas", "Fazedor de Coisas", "Curioso Nato"],
+)
+def test_domain_empty_non_conventional_titles_are_unknown(title: str) -> None:
+    result = classify_role(title)
+    assert result.family is RoleFamily.unknown
+    assert result.confidence is Confidence.unknown
+
+
+def test_tech_lead_mixed_language_is_engineering() -> None:
+    result = classify_role("Tech Lead na StartupX")
+    assert result.family is RoleFamily.engineering_data_ai
+    assert result.confidence is Confidence.high
+
+
+def test_sdr_and_bdr_are_sales_high() -> None:
+    assert classify_role("SDR").family is RoleFamily.sales_bd_partnerships
+    assert classify_role("BDR").family is RoleFamily.sales_bd_partnerships
+
+
+def test_founder_plus_cpo_ownership_still_dominates() -> None:
+    # Ownership overrides even a NEW C-level acronym (not just CTO): T0 fires
+    # before T1's "cpo" rule is ever consulted.
+    result = classify_role("Founder & CPO")
+    assert result.family is RoleFamily.founder_executive
+    assert result.confidence is Confidence.high

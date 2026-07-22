@@ -175,6 +175,32 @@ _T0_OWNERSHIP: tuple[_T0Rule, ...] = (
     ("proprietor", ()),
     ("proprietario", ()),
     ("proprietaria", ()),
+    # Sprint 1.1: PT "dono/dona" (colloquial "owner"). Mirrors the "owner"
+    # false-friend guard above -- "Dono de Produto/Processo/Serviço" is a PT
+    # rendering of product/process/service owner (role stewardship), NOT
+    # company ownership, so it must fall through to its function instead.
+    (
+        "dono",
+        (
+            "dono de produto",
+            "dono do produto",
+            "dono de processo",
+            "dono do processo",
+            "dono de servico",
+            "dono do servico",
+        ),
+    ),
+    (
+        "dona",
+        (
+            "dona de produto",
+            "dona do produto",
+            "dona de processo",
+            "dona do processo",
+            "dona de servico",
+            "dona do servico",
+        ),
+    ),
 )
 
 # --- T1: exact / phrase-level functional matches ---------------------------
@@ -227,6 +253,46 @@ _T1_FUNCTIONAL_PHRASES: tuple[_Rule, ...] = (
     (_F.engineering_data_ai, "cto", _C.high),
     (_F.engineering_data_ai, "cio", _C.high),
     (_F.engineering_data_ai, "ciso", _C.high),
+    # Sprint 1.1: broaden PT/EN engineering phrase coverage (ticket §1).
+    (_F.engineering_data_ai, "engenharia de software", _C.high),
+    (_F.engineering_data_ai, "engenharia de dados", _C.high),
+    (_F.engineering_data_ai, "engenheira de software", _C.high),
+    (_F.engineering_data_ai, "engenheira de dados", _C.high),
+    (_F.engineering_data_ai, "arquiteta de software", _C.high),
+    (_F.engineering_data_ai, "arquiteta de solucoes", _C.high),
+    (_F.engineering_data_ai, "arquiteto de dados", _C.high),
+    (_F.engineering_data_ai, "arquiteta de dados", _C.high),
+    (_F.engineering_data_ai, "arquiteto de cloud", _C.high),
+    (_F.engineering_data_ai, "arquiteta de cloud", _C.high),
+    (_F.engineering_data_ai, "desenvolvedor full stack", _C.high),
+    (_F.engineering_data_ai, "desenvolvedora full stack", _C.high),
+    (_F.engineering_data_ai, "desenvolvedor backend", _C.high),
+    (_F.engineering_data_ai, "desenvolvedora backend", _C.high),
+    (_F.engineering_data_ai, "desenvolvedor frontend", _C.high),
+    (_F.engineering_data_ai, "desenvolvedora frontend", _C.high),
+    (_F.engineering_data_ai, "desenvolvedor mobile", _C.high),
+    (_F.engineering_data_ai, "desenvolvedora mobile", _C.high),
+    (_F.engineering_data_ai, "ciencia de dados", _C.high),
+    (_F.engineering_data_ai, "aprendizado de maquina", _C.high),
+    (_F.engineering_data_ai, "business intelligence", _C.high),
+    (_F.engineering_data_ai, "inteligencia de negocios", _C.high),
+    (_F.engineering_data_ai, "quality assurance", _C.high),
+    (_F.engineering_data_ai, "seguranca da informacao", _C.high),
+    (_F.engineering_data_ai, "information security", _C.high),
+    # "CDO" is ambiguous (Chief Data Officer vs Chief Digital Officer); both
+    # readings are technology-adjacent for this audience, so it maps here at
+    # medium rather than high (documented in docs/classification.md).
+    (_F.engineering_data_ai, "cdo", _C.medium),
+    # "Scrum Master"/"Agile Coach" are delivery-facilitation roles, not core
+    # engineering, but are overwhelmingly embedded in software delivery teams
+    # in this dataset's target audience -- hedged to medium, same pattern as
+    # "sales engineer" below (documented in docs/classification.md).
+    (_F.engineering_data_ai, "scrum master", _C.medium),
+    (_F.engineering_data_ai, "agile coach", _C.medium),
+    # "Tech Lead" is a common, unambiguous mixed-language title (ticket §2's
+    # "Tech Lead na StartupX" example) -- safe as a 2-word phrase since it
+    # cannot fire on unrelated "tech"-prefixed words (fintech, biotech, ...).
+    (_F.engineering_data_ai, "tech lead", _C.high),
     # product
     (_F.product, "product manager", _C.high),
     (_F.product, "product owner", _C.high),
@@ -238,6 +304,17 @@ _T1_FUNCTIONAL_PHRASES: tuple[_Rule, ...] = (
     (_F.product, "group product manager", _C.high),
     (_F.product, "technical product manager", _C.high),
     (_F.product, "gerente de produto", _C.high),
+    (_F.product, "gerente de produtos", _C.high),
+    (_F.product, "coordenador de produto", _C.high),
+    (_F.product, "coordenadora de produto", _C.high),
+    (_F.product, "analista de produto", _C.high),
+    # "CPO" is ambiguous (Chief Product Officer vs Chief People Officer vs
+    # Chief Privacy Officer); mapped to product at medium given this app's
+    # tech/startup audience skews toward the product reading (documented in
+    # docs/classification.md). Note "po" is deliberately NOT added bare
+    # (Purchase Order / too ambiguous) -- "product owner" above already
+    # covers the unambiguous phrase.
+    (_F.product, "cpo", _C.medium),
     # design / UX  (designer outranks a product/brand modifier -> phrase first)
     (_F.design_ux, "product designer", _C.high),
     (_F.design_ux, "ux designer", _C.high),
@@ -260,6 +337,10 @@ _T1_FUNCTIONAL_PHRASES: tuple[_Rule, ...] = (
     (_F.design_ux, "designer de produto", _C.high),
     (_F.design_ux, "experiencia do usuario", _C.high),
     (_F.design_ux, "designer grafico", _C.high),
+    (_F.design_ux, "designer de servico", _C.high),
+    (_F.design_ux, "pesquisa com usuarios", _C.high),
+    (_F.design_ux, "ux writer", _C.high),
+    (_F.design_ux, "service design", _C.high),
     # marketing / growth / content
     (_F.marketing_growth_content, "content marketing", _C.high),
     (_F.marketing_growth_content, "product marketing", _C.high),
@@ -275,6 +356,11 @@ _T1_FUNCTIONAL_PHRASES: tuple[_Rule, ...] = (
     (_F.marketing_growth_content, "marketing de conteudo", _C.high),
     (_F.marketing_growth_content, "gerente de marketing", _C.high),
     (_F.marketing_growth_content, "cmo", _C.high),
+    (_F.marketing_growth_content, "redes sociais", _C.high),
+    (_F.marketing_growth_content, "comunicacao corporativa", _C.high),
+    (_F.marketing_growth_content, "relacoes publicas", _C.high),
+    (_F.marketing_growth_content, "growth hacker", _C.high),
+    (_F.marketing_growth_content, "marketing de crescimento", _C.high),
     # sales / BD / partnerships
     (_F.sales_bd_partnerships, "account executive", _C.high),
     (_F.sales_bd_partnerships, "account manager", _C.high),
@@ -290,8 +376,22 @@ _T1_FUNCTIONAL_PHRASES: tuple[_Rule, ...] = (
     (_F.sales_bd_partnerships, "executivo de contas", _C.high),
     (_F.sales_bd_partnerships, "desenvolvimento de negocios", _C.high),
     (_F.sales_bd_partnerships, "gerente de vendas", _C.high),
+    (_F.sales_bd_partnerships, "representante comercial", _C.high),
+    (_F.sales_bd_partnerships, "executiva de contas", _C.high),
+    (_F.sales_bd_partnerships, "key account", _C.high),
+    (_F.sales_bd_partnerships, "sucesso do cliente", _C.high),
+    (_F.sales_bd_partnerships, "parcerias estrategicas", _C.high),
+    # Spelled out, "Chief Revenue Officer" is unambiguous (literally names
+    # "revenue"), unlike the bare "cro" acronym below -- same asymmetry as
+    # "chief data officer" (high) vs bare "cdo" (medium).
+    (_F.sales_bd_partnerships, "chief revenue officer", _C.high),
     # "Sales Engineer" is a pre-sales function -> sales, hedged to medium (§5).
     (_F.sales_bd_partnerships, "sales engineer", _C.medium),
+    # "CRO" is genuinely ambiguous: Chief Revenue Officer (sales/BD) vs Chief
+    # Risk Officer (finance/ops). Mapped here at MEDIUM (revenue reading,
+    # documented in docs/classification.md) -- never high, since either
+    # reading is plausible without more context.
+    (_F.sales_bd_partnerships, "cro", _C.medium),
     # operations / people / finance / legal
     (_F.operations_people_finance_legal, "people operations", _C.high),
     (_F.operations_people_finance_legal, "people ops", _C.high),
@@ -317,6 +417,9 @@ _T1_FUNCTIONAL_PHRASES: tuple[_Rule, ...] = (
     (_F.operations_people_finance_legal, "cfo", _C.high),
     (_F.operations_people_finance_legal, "coo", _C.high),
     (_F.operations_people_finance_legal, "chro", _C.high),
+    (_F.operations_people_finance_legal, "recrutamento e selecao", _C.high),
+    (_F.operations_people_finance_legal, "folha de pagamento", _C.high),
+    (_F.operations_people_finance_legal, "cadeia de suprimentos", _C.high),
     # education / research
     (_F.education_research, "research scientist", _C.high),
     (_F.education_research, "research fellow", _C.high),
@@ -325,6 +428,7 @@ _T1_FUNCTIONAL_PHRASES: tuple[_Rule, ...] = (
     (_F.education_research, "phd candidate", _C.high),
     (_F.education_research, "post doc", _C.high),
     (_F.education_research, "pesquisador cientifico", _C.high),
+    (_F.education_research, "pos doutorado", _C.high),
 )
 
 # --- T2: strong single-token domain keywords -------------------------------
@@ -351,12 +455,19 @@ _T2_STRONG_DOMAIN: tuple[_Rule, ...] = (
     (_F.engineering_data_ai, "dados", _C.high),
     (_F.engineering_data_ai, "ai", _C.high),
     (_F.engineering_data_ai, "cybersecurity", _C.high),
+    (_F.engineering_data_ai, "analytics", _C.high),
+    (_F.engineering_data_ai, "qa", _C.high),
+    (_F.engineering_data_ai, "infosec", _C.high),
+    (_F.engineering_data_ai, "ciberseguranca", _C.high),
     (_F.product, "product", _C.high),
     (_F.product, "produto", _C.high),
     (_F.design_ux, "design", _C.high),
     (_F.design_ux, "designer", _C.high),
     (_F.design_ux, "ux", _C.high),
     (_F.design_ux, "ui", _C.high),
+    (_F.design_ux, "ilustrador", _C.high),
+    (_F.design_ux, "ilustradora", _C.high),
+    (_F.design_ux, "illustrator", _C.high),
     (_F.marketing_growth_content, "marketing", _C.high),
     (_F.marketing_growth_content, "growth", _C.high),
     (_F.marketing_growth_content, "content", _C.high),
@@ -365,11 +476,16 @@ _T2_STRONG_DOMAIN: tuple[_Rule, ...] = (
     (_F.marketing_growth_content, "branding", _C.high),
     (_F.marketing_growth_content, "seo", _C.high),
     (_F.marketing_growth_content, "copywriting", _C.high),
+    (_F.marketing_growth_content, "copywriter", _C.high),
+    (_F.marketing_growth_content, "publicidade", _C.high),
+    (_F.marketing_growth_content, "propaganda", _C.high),
     (_F.sales_bd_partnerships, "sales", _C.high),
     (_F.sales_bd_partnerships, "vendas", _C.high),
     (_F.sales_bd_partnerships, "comercial", _C.high),
     (_F.sales_bd_partnerships, "partnerships", _C.high),
     (_F.sales_bd_partnerships, "parcerias", _C.high),
+    (_F.sales_bd_partnerships, "sdr", _C.high),
+    (_F.sales_bd_partnerships, "bdr", _C.high),
     (_F.operations_people_finance_legal, "operations", _C.high),
     (_F.operations_people_finance_legal, "operacoes", _C.high),
     (_F.operations_people_finance_legal, "finance", _C.high),
@@ -396,6 +512,21 @@ _T2_STRONG_DOMAIN: tuple[_Rule, ...] = (
     (_F.operations_people_finance_legal, "paralegal", _C.high),
     (_F.operations_people_finance_legal, "compliance", _C.high),
     (_F.operations_people_finance_legal, "procurement", _C.high),
+    (_F.operations_people_finance_legal, "logistica", _C.high),
+    (_F.operations_people_finance_legal, "compras", _C.high),
+    # "Qualidade" (PT "quality") maps to ops rather than engineering: bare PT
+    # usage overwhelmingly means manufacturing/process quality (e.g. "Analista
+    # de Qualidade"), not software QA -- software QA is already covered
+    # explicitly via "qa"/"quality assurance"/"qa engineer" above (documented
+    # in docs/classification.md).
+    (_F.operations_people_finance_legal, "qualidade", _C.high),
+    (_F.operations_people_finance_legal, "contabilidade", _C.high),
+    (_F.operations_people_finance_legal, "tesouraria", _C.high),
+    (_F.operations_people_finance_legal, "auditoria", _C.high),
+    (_F.operations_people_finance_legal, "tributario", _C.high),
+    (_F.operations_people_finance_legal, "advocacia", _C.high),
+    (_F.operations_people_finance_legal, "regulatorio", _C.high),
+    (_F.operations_people_finance_legal, "pmo", _C.high),
     (_F.education_research, "professor", _C.high),
     (_F.education_research, "professora", _C.high),
     (_F.education_research, "docente", _C.high),
@@ -408,6 +539,15 @@ _T2_STRONG_DOMAIN: tuple[_Rule, ...] = (
     (_F.education_research, "academico", _C.high),
     (_F.education_research, "academica", _C.high),
     (_F.education_research, "postdoc", _C.high),
+    (_F.education_research, "ensino", _C.high),
+    (_F.education_research, "educacao", _C.high),
+    (_F.education_research, "pedagogia", _C.high),
+    (_F.education_research, "pedagogo", _C.high),
+    (_F.education_research, "pedagoga", _C.high),
+    (_F.education_research, "doutorando", _C.high),
+    (_F.education_research, "doutoranda", _C.high),
+    (_F.education_research, "mestrando", _C.high),
+    (_F.education_research, "mestranda", _C.high),
 )
 
 # --- T3: recognized non-listed professions -> other (high) -----------------
@@ -433,6 +573,20 @@ _T3_PROFESSIONS: tuple[str, ...] = (
     "enfermeiro",
     "enfermeira",
     "piloto",
+    # Sprint 1.1 additions. "Jornalista" (journalist) is deliberately routed
+    # here (other), not marketing_growth_content: pure journalism is a
+    # distinct recognized profession, whereas content/social-media roles stay
+    # in marketing (documented in docs/classification.md). "Arquiteto(a)"
+    # (building architect) is checked only after T1's "arquiteto de
+    # software/solucoes/dados/cloud" phrases, so "Arquiteto de Software"
+    # still resolves to engineering at T1 -- this bare form only catches a
+    # context-free "Arquiteto" (buildings).
+    "jornalista",
+    "psicologo",
+    "psicologa",
+    "nutricionista",
+    "arquiteto",
+    "arquiteta",
 )
 
 # --- T4: general executive / ownership-lite -> founder_executive -----------
@@ -456,6 +610,12 @@ _T4_EXECUTIVE: tuple[_T4Rule, ...] = (
     ("chief", _C.medium, ()),
     ("diretor executivo", _C.medium, ()),
     ("diretora executiva", _C.medium, ()),
+    # "Empreendedor(a)" (entrepreneur, PT) is weaker evidence than an explicit
+    # founder/owner claim (T0) -- it is a self-identifier that does not always
+    # denote a formal ownership stake -- so it lands here at medium rather
+    # than in T0 (documented in docs/classification.md).
+    ("empreendedor", _C.medium, ()),
+    ("empreendedora", _C.medium, ()),
 )
 
 # --- T5: weak / ambiguous -> low -------------------------------------------
@@ -471,6 +631,7 @@ _T5_WEAK: tuple[_Rule, ...] = (
     (_F.other, "partner", _C.low),
     (_F.other, "socio", _C.low),
     (_F.operations_people_finance_legal, "risk", _C.low),
+    (_F.operations_people_finance_legal, "risco", _C.low),
     (_F.operations_people_finance_legal, "coordinator", _C.low),
     (_F.operations_people_finance_legal, "coordenador", _C.low),
     (_F.operations_people_finance_legal, "administrator", _C.low),

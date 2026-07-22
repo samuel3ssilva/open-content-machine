@@ -125,3 +125,136 @@ VP,unknown,vp_head_director
 Coordinator,operations_people_finance_legal,manager_lead
 Manager,unknown,manager_lead
 Estagiário,unknown,entry_student
+Engenheira de Software,engineering_data_ai,individual_contributor
+Desenvolvedora Full Stack,engineering_data_ai,individual_contributor
+Desenvolvedor Backend,engineering_data_ai,individual_contributor
+Desenvolvedora Frontend,engineering_data_ai,individual_contributor
+Desenvolvedor Mobile,engineering_data_ai,individual_contributor
+Arquiteta de Dados,engineering_data_ai,unknown
+Arquiteto de Cloud,engineering_data_ai,unknown
+Arquiteta de Cloud,engineering_data_ai,unknown
+Analista de BI,engineering_data_ai,individual_contributor
+Especialista em Business Intelligence,engineering_data_ai,individual_contributor
+Analista de Business Intelligence,engineering_data_ai,individual_contributor
+Engenheiro de Machine Learning,engineering_data_ai,individual_contributor
+Analista de Qualidade,operations_people_finance_legal,individual_contributor
+QA Engineer,engineering_data_ai,individual_contributor
+Quality Assurance Analyst,engineering_data_ai,individual_contributor
+Especialista em Segurança da Informação,engineering_data_ai,individual_contributor
+Information Security Analyst,engineering_data_ai,individual_contributor
+Cybersecurity Specialist,engineering_data_ai,individual_contributor
+Analista de TI,engineering_data_ai,individual_contributor
+Gerente de TI,engineering_data_ai,manager_lead
+Coordenador de Infraestrutura,operations_people_finance_legal,manager_lead
+Cloud Solutions Architect,engineering_data_ai,unknown
+Business Intelligence Analyst,engineering_data_ai,individual_contributor
+Head de Produto,product,vp_head_director
+Coordenadora de Produto,product,manager_lead
+Analista de Produto,product,individual_contributor
+Gerente de Produtos,product,manager_lead
+PO,unknown,unknown
+CPO,product,c_level
+Analista de Redes Sociais,marketing_growth_content,individual_contributor
+Coordenador de Comunicação Corporativa,marketing_growth_content,manager_lead
+Especialista em Relações Públicas,marketing_growth_content,individual_contributor
+Growth Hacker,marketing_growth_content,unknown
+Copywriter,marketing_growth_content,unknown
+Diretor de Publicidade e Propaganda,marketing_growth_content,vp_head_director
+Jornalista,other,unknown
+Representante Comercial,sales_bd_partnerships,individual_contributor
+SDR,sales_bd_partnerships,unknown
+BDR,sales_bd_partnerships,unknown
+Executiva de Contas,sales_bd_partnerships,unknown
+Key Account Manager,sales_bd_partnerships,manager_lead
+Analista de Sucesso do Cliente,sales_bd_partnerships,individual_contributor
+Gerente de Parcerias Estratégicas,sales_bd_partnerships,manager_lead
+Pre-Sales Consultant,sales_bd_partnerships,individual_contributor
+CRO,sales_bd_partnerships,c_level
+Designer de Serviço,design_ux,individual_contributor
+Pesquisadora de Usuários,education_research,unknown
+UX Writer,design_ux,unknown
+Ilustradora,design_ux,unknown
+Illustrator,design_ux,unknown
+Analista de Logística,operations_people_finance_legal,individual_contributor
+Coordenador de Compras,operations_people_finance_legal,manager_lead
+Especialista em Qualidade,operations_people_finance_legal,individual_contributor
+Analista Contábil,operations_people_finance_legal,individual_contributor
+Contabilidade,operations_people_finance_legal,unknown
+Analista de Tesouraria,operations_people_finance_legal,individual_contributor
+Auditoria Interna,operations_people_finance_legal,unknown
+Advogado Tributário,operations_people_finance_legal,unknown
+Especialista em Advocacia Regulatória,operations_people_finance_legal,individual_contributor
+Coordenadora de Recrutamento e Seleção,operations_people_finance_legal,manager_lead
+Analista de Folha de Pagamento,operations_people_finance_legal,individual_contributor
+Gerente de Cadeia de Suprimentos,operations_people_finance_legal,manager_lead
+PMO,operations_people_finance_legal,unknown
+Business Partner RH,operations_people_finance_legal,unknown
+Professor Universitário,education_research,unknown
+Coordenador de Ensino,education_research,manager_lead
+Especialista em Educação,education_research,individual_contributor
+Pedagoga,education_research,unknown
+Doutorando,education_research,unknown
+Doutoranda,education_research,unknown
+Mestrando,education_research,unknown
+Mestranda,education_research,unknown
+Pesquisadora Científica,education_research,unknown
+Pós-Doutorado,education_research,unknown
+Cientista,unknown,unknown
+Psicóloga,other,unknown
+Nutricionista,other,unknown
+Arquiteto,other,unknown
+Arquiteto de Software,engineering_data_ai,unknown
+Chef de Cozinha,other,unknown
+Empreendedor,founder_executive,unknown
+Empreendedora Digital,founder_executive,unknown
+Dono de Padaria,founder_executive,unknown
+Dona de Loja,founder_executive,unknown
+Dono de Produto,product,unknown
+Dona do Processo,unknown,unknown
+Sócio Fundador,founder_executive,founder_owner
+Sócia Fundadora,founder_executive,founder_owner
+Founder & CEO,founder_executive,founder_owner
+CIO,engineering_data_ai,c_level
+CISO,engineering_data_ai,c_level
+CDO,engineering_data_ai,unknown
+CHRO,operations_people_finance_legal,c_level
+Chief Data Officer,engineering_data_ai,c_level
+Chief Revenue Officer,sales_bd_partnerships,c_level
+Tech Lead na StartupX,engineering_data_ai,manager_lead
+Diretora de Growth na Fictícia Labs,marketing_growth_content,vp_head_director
+Analista Pleno de Dados na Nimbus,engineering_data_ai,individual_contributor
+Engenheiro de Software e Empreendedor,engineering_data_ai,individual_contributor
+Diretora de Marketing e Vendas,marketing_growth_content,vp_head_director
+Product Manager and Designer,product,manager_lead
+Engineer @ ExemploTech,engineering_data_ai,individual_contributor
+Diretora Comercial - FicticiaCorp,sales_bd_partnerships,vp_head_director
+Software Engineer at Northwind Labs,engineering_data_ai,individual_contributor
+Data Scientist @ Globex,engineering_data_ai,unknown
+Analista Financeiro na ExemploCorp,operations_people_finance_legal,individual_contributor
+Consultora,other,individual_contributor
+Analista,engineering_data_ai,individual_contributor
+Especialista,unknown,individual_contributor
+Diretor,unknown,vp_head_director
+Diretora,unknown,vp_head_director
+Coordenador,operations_people_finance_legal,manager_lead
+Resolvedor de Problemas,unknown,unknown
+Fazedor de Coisas,unknown,unknown
+Curioso Nato,unknown,unknown
+Amante de Café e Código,unknown,unknown
+Apaixonado por Tecnologia,engineering_data_ai,unknown
+Servidor Público,unknown,unknown
+Fiscal,unknown,unknown
+Analista de Risco,operations_people_finance_legal,individual_contributor
+Head of Product & Growth,product,vp_head_director
+Diretor de Vendas e Marketing,marketing_growth_content,vp_head_director
+Analista de Marketing e Vendas,marketing_growth_content,individual_contributor
+Founder & CPO,founder_executive,founder_owner
+CTO e Fundador,founder_executive,founder_owner
+Diretora de RH,operations_people_finance_legal,vp_head_director
+Head of Talent Acquisition,operations_people_finance_legal,vp_head_director
+Coordenadora de Qualidade,operations_people_finance_legal,manager_lead
+Especialista em Growth,marketing_growth_content,individual_contributor
+Growth Marketing Manager,marketing_growth_content,manager_lead
+Founder da Fictícia Ventures,founder_executive,founder_owner
+Diretor de Segurança da Informação,engineering_data_ai,vp_head_director
+Analista de Compras,operations_people_finance_legal,individual_contributor
