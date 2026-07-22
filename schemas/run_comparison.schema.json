@@ -1,0 +1,178 @@
+{
+  "$defs": {
+    "CountItem": {
+      "description": "A label with its count, for top-N tables and distributions.",
+      "properties": {
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "label",
+        "count"
+      ],
+      "title": "CountItem",
+      "type": "object"
+    },
+    "DistributionDelta": {
+      "additionalProperties": false,
+      "description": "A single label's before/after counts and their signed delta.",
+      "properties": {
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "before": {
+          "title": "Before",
+          "type": "integer"
+        },
+        "after": {
+          "title": "After",
+          "type": "integer"
+        },
+        "delta": {
+          "title": "Delta",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "label",
+        "before",
+        "after",
+        "delta"
+      ],
+      "title": "DistributionDelta",
+      "type": "object"
+    },
+    "SegmentRef": {
+      "additionalProperties": false,
+      "description": "A segment reference: name, size, share -- no per-person evidence.",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "size": {
+          "title": "Size",
+          "type": "integer"
+        },
+        "share": {
+          "title": "Share",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "size",
+        "share"
+      ],
+      "title": "SegmentRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Aggregate before/after diff of two :class:`AudienceReport` runs.",
+  "properties": {
+    "before_unknown_rate": {
+      "title": "Before Unknown Rate",
+      "type": "number"
+    },
+    "after_unknown_rate": {
+      "title": "After Unknown Rate",
+      "type": "number"
+    },
+    "unknown_reduction": {
+      "title": "Unknown Reduction",
+      "type": "number"
+    },
+    "family_before": {
+      "items": {
+        "$ref": "#/$defs/CountItem"
+      },
+      "title": "Family Before",
+      "type": "array"
+    },
+    "family_after": {
+      "items": {
+        "$ref": "#/$defs/CountItem"
+      },
+      "title": "Family After",
+      "type": "array"
+    },
+    "seniority_before": {
+      "items": {
+        "$ref": "#/$defs/CountItem"
+      },
+      "title": "Seniority Before",
+      "type": "array"
+    },
+    "seniority_after": {
+      "items": {
+        "$ref": "#/$defs/CountItem"
+      },
+      "title": "Seniority After",
+      "type": "array"
+    },
+    "confidence_before": {
+      "items": {
+        "$ref": "#/$defs/CountItem"
+      },
+      "title": "Confidence Before",
+      "type": "array"
+    },
+    "confidence_after": {
+      "items": {
+        "$ref": "#/$defs/CountItem"
+      },
+      "title": "Confidence After",
+      "type": "array"
+    },
+    "family_deltas": {
+      "items": {
+        "$ref": "#/$defs/DistributionDelta"
+      },
+      "title": "Family Deltas",
+      "type": "array"
+    },
+    "top_segments_before": {
+      "items": {
+        "$ref": "#/$defs/SegmentRef"
+      },
+      "title": "Top Segments Before",
+      "type": "array"
+    },
+    "top_segments_after": {
+      "items": {
+        "$ref": "#/$defs/SegmentRef"
+      },
+      "title": "Top Segments After",
+      "type": "array"
+    },
+    "segments_added": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Segments Added",
+      "type": "array"
+    },
+    "segments_removed": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Segments Removed",
+      "type": "array"
+    }
+  },
+  "required": [
+    "before_unknown_rate",
+    "after_unknown_rate",
+    "unknown_reduction"
+  ],
+  "title": "RunComparison",
+  "type": "object"
+}

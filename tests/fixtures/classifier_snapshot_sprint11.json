@@ -1,0 +1,632 @@
+[
+  {
+    "confidence": "high",
+    "family": "founder_executive",
+    "seniority": "founder_owner"
+  },
+  {
+    "confidence": "high",
+    "family": "founder_executive",
+    "seniority": "founder_owner"
+  },
+  {
+    "confidence": "high",
+    "family": "founder_executive",
+    "seniority": "founder_owner"
+  },
+  {
+    "confidence": "high",
+    "family": "founder_executive",
+    "seniority": "founder_owner"
+  },
+  {
+    "confidence": "high",
+    "family": "founder_executive",
+    "seniority": "founder_owner"
+  },
+  {
+    "confidence": "high",
+    "family": "founder_executive",
+    "seniority": "founder_owner"
+  },
+  {
+    "confidence": "high",
+    "family": "founder_executive",
+    "seniority": "founder_owner"
+  },
+  {
+    "confidence": "high",
+    "family": "founder_executive",
+    "seniority": "founder_owner"
+  },
+  {
+    "confidence": "high",
+    "family": "founder_executive",
+    "seniority": "c_level"
+  },
+  {
+    "confidence": "high",
+    "family": "founder_executive",
+    "seniority": "c_level"
+  },
+  {
+    "confidence": "medium",
+    "family": "founder_executive",
+    "seniority": "c_level"
+  },
+  {
+    "confidence": "medium",
+    "family": "founder_executive",
+    "seniority": "c_level"
+  },
+  {
+    "confidence": "medium",
+    "family": "founder_executive",
+    "seniority": "vp_head_director"
+  },
+  {
+    "confidence": "medium",
+    "family": "founder_executive",
+    "seniority": "manager_lead"
+  },
+  {
+    "confidence": "medium",
+    "family": "founder_executive",
+    "seniority": "unknown"
+  },
+  {
+    "confidence": "high",
+    "family": "founder_executive",
+    "seniority": "founder_owner"
+  },
+  {
+    "confidence": "high",
+    "family": "founder_executive",
+    "seniority": "founder_owner"
+  },
+  {
+    "confidence": "high",
+    "family": "engineering_data_ai",
+    "seniority": "individual_contributor"
+  },
+  {
+    "confidence": "high",
+    "family": "engineering_data_ai",
+    "seniority": "individual_contributor"
+  },
+  {
+    "confidence": "high",
+    "family": "engineering_data_ai",
+    "seniority": "individual_contributor"
+  },
+  {
+    "confidence": "high",
+    "family": "engineering_data_ai",
+    "seniority": "individual_contributor"
+  },
+  {
+    "confidence": "high",
+    "family": "engineering_data_ai",
+    "seniority": "individual_contributor"
+  },
+  {
+    "confidence": "high",
+    "family": "engineering_data_ai",
+    "seniority": "individual_contributor"
+  },
+  {
+    "confidence": "high",
+    "family": "engineering_data_ai",
+    "seniority": "individual_contributor"
+  },
+  {
+    "confidence": "high",
+    "family": "engineering_data_ai",
+    "seniority": "individual_contributor"
+  },
+  {
+    "confidence": "high",
+    "family": "engineering_data_ai",
+    "seniority": "individual_contributor"
+  },
+  {
+    "confidence": "high",
+    "family": "engineering_data_ai",
+    "seniority": "individual_contributor"
+  },
+  {
+    "confidence": "high",
+    "family": "engineering_data_ai",
+    "seniority": "manager_lead"
+  },
+  {
+    "confidence": "high",
+    "family": "engineering_data_ai",
+    "seniority": "vp_head_director"
+  },
+  {
+    "confidence": "high",
+    "family": "engineering_data_ai",
+    "seniority": "vp_head_director"
+  },
+  {
+    "confidence": "high",
+    "family": "engineering_data_ai",
+    "seniority": "vp_head_director"
+  },
+  {
+    "confidence": "high",
+    "family": "engineering_data_ai",
+    "seniority": "c_level"
+  },
+  {
+    "confidence": "high",
+    "family": "engineering_data_ai",
+    "seniority": "c_level"
+  },
+  {
+    "confidence": "high",
+    "family": "engineering_data_ai",
+    "seniority": "individual_contributor"
+  },
+  {
+    "confidence": "high",
+    "family": "engineering_data_ai",
+    "seniority": "individual_contributor"
+  },
+  {
+    "confidence": "high",
+    "family": "engineering_data_ai",
+    "seniority": "individual_contributor"
+  },
+  {
+    "confidence": "high",
+    "family": "engineering_data_ai",
+    "seniority": "unknown"
+  },
+  {
+    "confidence": "high",
+    "family": "engineering_data_ai",
+    "seniority": "unknown"
+  },
+  {
+    "confidence": "high",
+    "family": "engineering_data_ai",
+    "seniority": "vp_head_director"
+  },
+  {
+    "confidence": "high",
+    "family": "engineering_data_ai",
+    "seniority": "vp_head_director"
+  },
+  {
+    "confidence": "high",
+    "family": "engineering_data_ai",
+    "seniority": "manager_lead"
+  },
+  {
+    "confidence": "high",
+    "family": "engineering_data_ai",
+    "seniority": "individual_contributor"
+  },
+  {
+    "confidence": "high",
+    "family": "engineering_data_ai",
+    "seniority": "individual_contributor"
+  },
+  {
+    "confidence": "high",
+    "family": "engineering_data_ai",
+    "seniority": "unknown"
+  },
+  {
+    "confidence": "high",
+    "family": "product",
+    "seniority": "manager_lead"
+  },
+  {
+    "confidence": "high",
+    "family": "product",
+    "seniority": "manager_lead"
+  },
+  {
+    "confidence": "high",
+    "family": "product",
+    "seniority": "manager_lead"
+  },
+  {
+    "confidence": "high",
+    "family": "product",
+    "seniority": "unknown"
+  },
+  {
+    "confidence": "high",
+    "family": "product",
+    "seniority": "vp_head_director"
+  },
+  {
+    "confidence": "high",
+    "family": "product",
+    "seniority": "vp_head_director"
+  },
+  {
+    "confidence": "high",
+    "family": "product",
+    "seniority": "c_level"
+  },
+  {
+    "confidence": "high",
+    "family": "product",
+    "seniority": "manager_lead"
+  },
+  {
+    "confidence": "high",
+    "family": "product",
+    "seniority": "manager_lead"
+  },
+  {
+    "confidence": "high",
+    "family": "marketing_growth_content",
+    "seniority": "manager_lead"
+  },
+  {
+    "confidence": "high",
+    "family": "marketing_growth_content",
+    "seniority": "unknown"
+  },
+  {
+    "confidence": "high",
+    "family": "marketing_growth_content",
+    "seniority": "manager_lead"
+  },
+  {
+    "confidence": "high",
+    "family": "marketing_growth_content",
+    "seniority": "vp_head_director"
+  },
+  {
+    "confidence": "high",
+    "family": "marketing_growth_content",
+    "seniority": "vp_head_director"
+  },
+  {
+    "confidence": "high",
+    "family": "marketing_growth_content",
+    "seniority": "c_level"
+  },
+  {
+    "confidence": "high",
+    "family": "marketing_growth_content",
+    "seniority": "manager_lead"
+  },
+  {
+    "confidence": "high",
+    "family": "marketing_growth_content",
+    "seniority": "unknown"
+  },
+  {
+    "confidence": "high",
+    "family": "marketing_growth_content",
+    "seniority": "vp_head_director"
+  },
+  {
+    "confidence": "high",
+    "family": "marketing_growth_content",
+    "seniority": "manager_lead"
+  },
+  {
+    "confidence": "high",
+    "family": "marketing_growth_content",
+    "seniority": "individual_contributor"
+  },
+  {
+    "confidence": "high",
+    "family": "marketing_growth_content",
+    "seniority": "individual_contributor"
+  },
+  {
+    "confidence": "high",
+    "family": "marketing_growth_content",
+    "seniority": "entry_student"
+  },
+  {
+    "confidence": "high",
+    "family": "sales_bd_partnerships",
+    "seniority": "unknown"
+  },
+  {
+    "confidence": "high",
+    "family": "sales_bd_partnerships",
+    "seniority": "manager_lead"
+  },
+  {
+    "confidence": "high",
+    "family": "sales_bd_partnerships",
+    "seniority": "manager_lead"
+  },
+  {
+    "confidence": "high",
+    "family": "sales_bd_partnerships",
+    "seniority": "vp_head_director"
+  },
+  {
+    "confidence": "high",
+    "family": "sales_bd_partnerships",
+    "seniority": "vp_head_director"
+  },
+  {
+    "confidence": "high",
+    "family": "sales_bd_partnerships",
+    "seniority": "vp_head_director"
+  },
+  {
+    "confidence": "medium",
+    "family": "sales_bd_partnerships",
+    "seniority": "individual_contributor"
+  },
+  {
+    "confidence": "high",
+    "family": "sales_bd_partnerships",
+    "seniority": "manager_lead"
+  },
+  {
+    "confidence": "high",
+    "family": "sales_bd_partnerships",
+    "seniority": "manager_lead"
+  },
+  {
+    "confidence": "high",
+    "family": "sales_bd_partnerships",
+    "seniority": "unknown"
+  },
+  {
+    "confidence": "high",
+    "family": "sales_bd_partnerships",
+    "seniority": "vp_head_director"
+  },
+  {
+    "confidence": "high",
+    "family": "sales_bd_partnerships",
+    "seniority": "individual_contributor"
+  },
+  {
+    "confidence": "high",
+    "family": "design_ux",
+    "seniority": "individual_contributor"
+  },
+  {
+    "confidence": "high",
+    "family": "design_ux",
+    "seniority": "individual_contributor"
+  },
+  {
+    "confidence": "high",
+    "family": "design_ux",
+    "seniority": "individual_contributor"
+  },
+  {
+    "confidence": "high",
+    "family": "design_ux",
+    "seniority": "individual_contributor"
+  },
+  {
+    "confidence": "high",
+    "family": "design_ux",
+    "seniority": "vp_head_director"
+  },
+  {
+    "confidence": "high",
+    "family": "design_ux",
+    "seniority": "vp_head_director"
+  },
+  {
+    "confidence": "high",
+    "family": "design_ux",
+    "seniority": "unknown"
+  },
+  {
+    "confidence": "high",
+    "family": "design_ux",
+    "seniority": "individual_contributor"
+  },
+  {
+    "confidence": "high",
+    "family": "design_ux",
+    "seniority": "vp_head_director"
+  },
+  {
+    "confidence": "high",
+    "family": "operations_people_finance_legal",
+    "seniority": "unknown"
+  },
+  {
+    "confidence": "high",
+    "family": "operations_people_finance_legal",
+    "seniority": "unknown"
+  },
+  {
+    "confidence": "high",
+    "family": "operations_people_finance_legal",
+    "seniority": "unknown"
+  },
+  {
+    "confidence": "high",
+    "family": "operations_people_finance_legal",
+    "seniority": "manager_lead"
+  },
+  {
+    "confidence": "high",
+    "family": "operations_people_finance_legal",
+    "seniority": "c_level"
+  },
+  {
+    "confidence": "high",
+    "family": "operations_people_finance_legal",
+    "seniority": "c_level"
+  },
+  {
+    "confidence": "high",
+    "family": "operations_people_finance_legal",
+    "seniority": "vp_head_director"
+  },
+  {
+    "confidence": "high",
+    "family": "operations_people_finance_legal",
+    "seniority": "individual_contributor"
+  },
+  {
+    "confidence": "high",
+    "family": "operations_people_finance_legal",
+    "seniority": "manager_lead"
+  },
+  {
+    "confidence": "high",
+    "family": "operations_people_finance_legal",
+    "seniority": "entry_student"
+  },
+  {
+    "confidence": "high",
+    "family": "operations_people_finance_legal",
+    "seniority": "individual_contributor"
+  },
+  {
+    "confidence": "high",
+    "family": "operations_people_finance_legal",
+    "seniority": "unknown"
+  },
+  {
+    "confidence": "high",
+    "family": "operations_people_finance_legal",
+    "seniority": "manager_lead"
+  },
+  {
+    "confidence": "high",
+    "family": "operations_people_finance_legal",
+    "seniority": "vp_head_director"
+  },
+  {
+    "confidence": "high",
+    "family": "operations_people_finance_legal",
+    "seniority": "unknown"
+  },
+  {
+    "confidence": "high",
+    "family": "operations_people_finance_legal",
+    "seniority": "unknown"
+  },
+  {
+    "confidence": "high",
+    "family": "education_research",
+    "seniority": "unknown"
+  },
+  {
+    "confidence": "high",
+    "family": "education_research",
+    "seniority": "unknown"
+  },
+  {
+    "confidence": "high",
+    "family": "education_research",
+    "seniority": "unknown"
+  },
+  {
+    "confidence": "high",
+    "family": "education_research",
+    "seniority": "unknown"
+  },
+  {
+    "confidence": "high",
+    "family": "education_research",
+    "seniority": "unknown"
+  },
+  {
+    "confidence": "high",
+    "family": "education_research",
+    "seniority": "unknown"
+  },
+  {
+    "confidence": "high",
+    "family": "education_research",
+    "seniority": "unknown"
+  },
+  {
+    "confidence": "high",
+    "family": "other",
+    "seniority": "unknown"
+  },
+  {
+    "confidence": "high",
+    "family": "other",
+    "seniority": "unknown"
+  },
+  {
+    "confidence": "high",
+    "family": "other",
+    "seniority": "unknown"
+  },
+  {
+    "confidence": "high",
+    "family": "other",
+    "seniority": "unknown"
+  },
+  {
+    "confidence": "low",
+    "family": "other",
+    "seniority": "individual_contributor"
+  },
+  {
+    "confidence": "low",
+    "family": "other",
+    "seniority": "individual_contributor"
+  },
+  {
+    "confidence": "low",
+    "family": "other",
+    "seniority": "unknown"
+  },
+  {
+    "confidence": "low",
+    "family": "other",
+    "seniority": "unknown"
+  },
+  {
+    "confidence": "low",
+    "family": "engineering_data_ai",
+    "seniority": "individual_contributor"
+  },
+  {
+    "confidence": "unknown",
+    "family": "unknown",
+    "seniority": "vp_head_director"
+  },
+  {
+    "confidence": "unknown",
+    "family": "unknown",
+    "seniority": "vp_head_director"
+  },
+  {
+    "confidence": "unknown",
+    "family": "unknown",
+    "seniority": "manager_lead"
+  },
+  {
+    "confidence": "unknown",
+    "family": "unknown",
+    "seniority": "vp_head_director"
+  },
+  {
+    "confidence": "low",
+    "family": "operations_people_finance_legal",
+    "seniority": "manager_lead"
+  },
+  {
+    "confidence": "unknown",
+    "family": "unknown",
+    "seniority": "manager_lead"
+  },
+  {
+    "confidence": "unknown",
+    "family": "unknown",
+    "seniority": "entry_student"
+  }
+]

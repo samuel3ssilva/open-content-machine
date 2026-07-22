@@ -1,0 +1,158 @@
+{
+  "$defs": {
+    "CategoryCount": {
+      "additionalProperties": false,
+      "description": "A category label (a role family) with an associated count.",
+      "properties": {
+        "category": {
+          "title": "Category",
+          "type": "string"
+        },
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "category",
+        "count"
+      ],
+      "title": "CategoryCount",
+      "type": "object"
+    },
+    "ConfidencePrecision": {
+      "additionalProperties": false,
+      "description": "Family-correctness precision within one predicted confidence level.",
+      "properties": {
+        "confidence": {
+          "title": "Confidence",
+          "type": "string"
+        },
+        "denom": {
+          "title": "Denom",
+          "type": "integer"
+        },
+        "correct": {
+          "title": "Correct",
+          "type": "integer"
+        },
+        "precision": {
+          "title": "Precision",
+          "type": "number"
+        }
+      },
+      "required": [
+        "confidence",
+        "denom",
+        "correct",
+        "precision"
+      ],
+      "title": "ConfidencePrecision",
+      "type": "object"
+    },
+    "ConfusionCell": {
+      "additionalProperties": false,
+      "description": "A single (expected, predicted) cell of a confusion matrix with its count.",
+      "properties": {
+        "expected": {
+          "title": "Expected",
+          "type": "string"
+        },
+        "predicted": {
+          "title": "Predicted",
+          "type": "string"
+        },
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "expected",
+        "predicted",
+        "count"
+      ],
+      "title": "ConfusionCell",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Aggregate-only summary of a Founder review. No titles or notes by design.\n\nEvery field is a count, rate, or label -- there is no path for a ``position``\nor ``reviewer_notes`` value to appear here.",
+  "properties": {
+    "records_total": {
+      "title": "Records Total",
+      "type": "integer"
+    },
+    "records_reviewed": {
+      "title": "Records Reviewed",
+      "type": "integer"
+    },
+    "records_unanswered": {
+      "title": "Records Unanswered",
+      "type": "integer"
+    },
+    "family_answered": {
+      "title": "Family Answered",
+      "type": "integer"
+    },
+    "family_unanswered": {
+      "title": "Family Unanswered",
+      "type": "integer"
+    },
+    "seniority_answered": {
+      "title": "Seniority Answered",
+      "type": "integer"
+    },
+    "seniority_unanswered": {
+      "title": "Seniority Unanswered",
+      "type": "integer"
+    },
+    "family_accuracy": {
+      "title": "Family Accuracy",
+      "type": "number"
+    },
+    "seniority_accuracy": {
+      "title": "Seniority Accuracy",
+      "type": "number"
+    },
+    "confidence_precision": {
+      "items": {
+        "$ref": "#/$defs/ConfidencePrecision"
+      },
+      "title": "Confidence Precision",
+      "type": "array"
+    },
+    "unknown_confidence_rate": {
+      "default": 0.0,
+      "title": "Unknown Confidence Rate",
+      "type": "number"
+    },
+    "family_confusion": {
+      "items": {
+        "$ref": "#/$defs/ConfusionCell"
+      },
+      "title": "Family Confusion",
+      "type": "array"
+    },
+    "errors_per_family": {
+      "items": {
+        "$ref": "#/$defs/CategoryCount"
+      },
+      "title": "Errors Per Family",
+      "type": "array"
+    }
+  },
+  "required": [
+    "records_total",
+    "records_reviewed",
+    "records_unanswered",
+    "family_answered",
+    "family_unanswered",
+    "seniority_answered",
+    "seniority_unanswered",
+    "family_accuracy",
+    "seniority_accuracy"
+  ],
+  "title": "ReviewAggregateReport",
+  "type": "object"
+}

@@ -1,0 +1,115 @@
+{
+  "$defs": {
+    "LabeledChange": {
+      "additionalProperties": false,
+      "description": "An aggregated ``from \u2192 to`` transition and how often it occurred.",
+      "properties": {
+        "from_label": {
+          "title": "From Label",
+          "type": "string"
+        },
+        "to_label": {
+          "title": "To Label",
+          "type": "string"
+        },
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "from_label",
+        "to_label",
+        "count"
+      ],
+      "title": "LabeledChange",
+      "type": "object"
+    },
+    "RegressionFlag": {
+      "additionalProperties": false,
+      "description": "A heuristic possible-regression bucket -- counts + labels only.\n\n``kind`` is ``high_conf_family_flip`` (a high-confidence classification that\nbecame a DIFFERENT high-confidence family) or ``classified_to_unknown`` (a\npreviously-placed row that became ``unknown``). No titles are referenced.",
+      "properties": {
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "from_family": {
+          "title": "From Family",
+          "type": "string"
+        },
+        "to_family": {
+          "title": "To Family",
+          "type": "string"
+        },
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "from_family",
+        "to_family",
+        "count"
+      ],
+      "title": "RegressionFlag",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Aggregate diff between two index-aligned classification snapshots.",
+  "properties": {
+    "n": {
+      "title": "N",
+      "type": "integer"
+    },
+    "total_changed": {
+      "title": "Total Changed",
+      "type": "integer"
+    },
+    "unknown_to_classified": {
+      "title": "Unknown To Classified",
+      "type": "integer"
+    },
+    "classified_to_unknown": {
+      "title": "Classified To Unknown",
+      "type": "integer"
+    },
+    "family_changes": {
+      "items": {
+        "$ref": "#/$defs/LabeledChange"
+      },
+      "title": "Family Changes",
+      "type": "array"
+    },
+    "confidence_changes": {
+      "items": {
+        "$ref": "#/$defs/LabeledChange"
+      },
+      "title": "Confidence Changes",
+      "type": "array"
+    },
+    "seniority_changes": {
+      "items": {
+        "$ref": "#/$defs/LabeledChange"
+      },
+      "title": "Seniority Changes",
+      "type": "array"
+    },
+    "possible_regressions": {
+      "items": {
+        "$ref": "#/$defs/RegressionFlag"
+      },
+      "title": "Possible Regressions",
+      "type": "array"
+    }
+  },
+  "required": [
+    "n",
+    "total_changed",
+    "unknown_to_classified",
+    "classified_to_unknown"
+  ],
+  "title": "ComparisonReport",
+  "type": "object"
+}

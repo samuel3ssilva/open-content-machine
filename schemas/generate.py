@@ -18,9 +18,17 @@ if _SRC.exists() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
 from content_machine.audience.classify import RoleClassification  # noqa: E402
-from content_machine.audience.evaluate import EvaluationReport  # noqa: E402
+from content_machine.audience.compare import ComparisonReport  # noqa: E402
+from content_machine.audience.evaluate import (  # noqa: E402
+    EvaluationReport,
+    ReviewAggregateReport,
+)
 from content_machine.audience.public_report import PublicReport  # noqa: E402
 from content_machine.audience.report import AudienceReport  # noqa: E402
+from content_machine.audience.run_comparison import (  # noqa: E402
+    ReclassificationStats,
+    RunComparison,
+)
 from content_machine.ingestion.csv_loader import RawConnection  # noqa: E402
 from content_machine.privacy.anonymizer import AnonymizedConnection  # noqa: E402
 
@@ -33,6 +41,10 @@ _MODELS = {
     "audience_report.schema.json": AudienceReport,
     "public_report.schema.json": PublicReport,
     "evaluation_report.schema.json": EvaluationReport,
+    "review_aggregate_report.schema.json": ReviewAggregateReport,
+    "classifier_comparison_report.schema.json": ComparisonReport,
+    "run_comparison.schema.json": RunComparison,
+    "reclassification_stats.schema.json": ReclassificationStats,
 }
 
 

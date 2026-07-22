@@ -14,6 +14,19 @@ from typing import Annotated
 import typer
 
 from content_machine import __version__
+from content_machine.audience.compare import (
+    compare,
+    load_snapshot,
+    render_comparison,
+    snapshot_classifications,
+    snapshot_to_json,
+)
+from content_machine.audience.evaluate import (
+    evaluate_review,
+    load_labeled_csv,
+    load_review_csv,
+    render_review_report,
+)
 from content_machine.audience.normalize import normalize
 from content_machine.audience.public_report import (
     PublicReport,
@@ -38,8 +51,30 @@ audience_app = typer.Typer(
 )
 app.add_typer(audience_app, name="audience")
 
+# The repo root, used both to locate the shipped example and to warn when a
+# private review file is (mis)placed inside the version-controlled tree.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 # Path to the shipped synthetic example, resolved relative to the repo root.
-_EXAMPLE_CSV = Path(__file__).resolve().parents[3] / "examples" / "synthetic-connections.csv"
+_EXAMPLE_CSV = _REPO_ROOT / "examples" / "synthetic-connections.csv"
+
+
+def _warn_if_in_repo(file: Path) -> None:
+    """Warn (never fail) if a private input lives inside the repo tree.
+
+    Real review exports must stay in ``data/private/`` (git-ignored) or fully
+    outside the checkout; a file under the repo root risks being committed. The
+    path itself is user-supplied, not a data value, so echoing it is safe.
+    """
+    try:
+        file.resolve().relative_to(_REPO_ROOT)
+    except ValueError:
+        return
+    typer.secho(
+        "Warning: this file is inside the repository tree. Private review files "
+        "must never be committed — keep them in data/private/ or outside the repo.",
+        fg=typer.colors.YELLOW,
+        err=True,
+    )
 
 
 @app.command()
@@ -322,6 +357,102 @@ def audience_export_public(
         md_output.write_text(public_to_markdown(public), encoding="utf-8")
         typer.echo(f"Wrote sanitized Markdown report to {md_output}")
 
+    raise typer.Exit(code=0)
+
+
+@audience_app.command("evaluate-review")
+def audience_evaluate_review(
+    review_file: Annotated[
+        Path,
+        typer.Argument(
+            help="Path to a PRIVATE Founder review CSV (kept out of the repo)."
+        ),
+    ],
+) -> None:
+    """Aggregate a private Founder review CSV and print AGGREGATES ONLY.
+
+    Reads the file read-only, trusts its recorded predictions (never re-runs the
+    classifier), and prints counts, accuracies, precision-by-confidence, and a
+    family confusion matrix. It NEVER prints a title/note value and never writes
+    a file. Validation errors reference row numbers only.
+    """
+    _warn_if_in_repo(review_file)
+    try:
+        records = load_review_csv(review_file)
+    except OSError:
+        typer.secho(
+            f"Error: could not read {review_file}.", fg=typer.colors.RED, err=True
+        )
+        raise typer.Exit(code=1) from None
+    except ValueError as exc:
+        typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from None
+
+    report = evaluate_review(records)
+    typer.echo(render_review_report(report))
+    raise typer.Exit(code=0)
+
+
+@audience_app.command("compare-classifiers")
+def audience_compare_classifiers(
+    fixture: Annotated[
+        Path,
+        typer.Argument(help="Path to a PUBLIC labeled fixture CSV (title column)."),
+    ],
+    baseline: Annotated[
+        Path,
+        typer.Option("--baseline", help="Baseline snapshot JSON to compare against."),
+    ],
+    save_snapshot: Annotated[
+        Path | None,
+        typer.Option(
+            "--save-snapshot",
+            help="Also write the current run's snapshot (no titles) here.",
+        ),
+    ] = None,
+) -> None:
+    """Classify a fixture with the CURRENT code and diff it against a baseline.
+
+    The fixture must be a public synthetic labeled CSV. Snapshots hold only
+    family/seniority/confidence labels (never titles). Prints an aggregate diff.
+    """
+    try:
+        titles = [row.title for row in load_labeled_csv(fixture)]
+    except OSError:
+        typer.secho(
+            f"Error: could not read {fixture}.", fg=typer.colors.RED, err=True
+        )
+        raise typer.Exit(code=1) from None
+    except ValueError as exc:
+        typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from None
+
+    current = snapshot_classifications(titles)
+
+    if save_snapshot is not None:
+        save_snapshot.write_text(snapshot_to_json(current), encoding="utf-8")
+        typer.echo(f"Wrote current snapshot ({len(current)} rows) to {save_snapshot}")
+
+    try:
+        baseline_snapshot = load_snapshot(baseline)
+    except OSError:
+        typer.secho(
+            f"Error: could not read baseline {baseline}.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1) from None
+    except ValueError as exc:
+        typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from None
+
+    try:
+        report = compare(baseline_snapshot, current)
+    except ValueError as exc:
+        typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from None
+
+    typer.echo(render_comparison(report))
     raise typer.Exit(code=0)
 
 

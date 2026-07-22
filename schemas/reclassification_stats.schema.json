@@ -1,0 +1,40 @@
+{
+  "additionalProperties": false,
+  "description": "Per-record reclassification counts across two runs, matched by id.\n\nAggregate only: the number of matched records and how many changed family /\nconfidence / seniority, plus the two directional unknown transitions. No id\nor title is ever stored.",
+  "properties": {
+    "n_matched": {
+      "title": "N Matched",
+      "type": "integer"
+    },
+    "n_family_changed": {
+      "title": "N Family Changed",
+      "type": "integer"
+    },
+    "n_confidence_changed": {
+      "title": "N Confidence Changed",
+      "type": "integer"
+    },
+    "n_seniority_changed": {
+      "title": "N Seniority Changed",
+      "type": "integer"
+    },
+    "unknown_to_classified": {
+      "title": "Unknown To Classified",
+      "type": "integer"
+    },
+    "classified_to_unknown": {
+      "title": "Classified To Unknown",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "n_matched",
+    "n_family_changed",
+    "n_confidence_changed",
+    "n_seniority_changed",
+    "unknown_to_classified",
+    "classified_to_unknown"
+  ],
+  "title": "ReclassificationStats",
+  "type": "object"
+}
