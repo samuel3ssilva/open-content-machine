@@ -57,3 +57,7 @@ Thumbs.db
 
 # Claude Code local settings (may contain machine-specific paths)
 .claude/settings.local.json
+
+# Claude Code agent working dirs (never content to publish)
+.claude/worktrees/
+.claude/agent-memory/
