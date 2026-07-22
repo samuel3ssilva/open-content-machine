@@ -31,6 +31,11 @@ from content_machine.audience.run_comparison import (  # noqa: E402
 )
 from content_machine.ingestion.csv_loader import RawConnection  # noqa: E402
 from content_machine.privacy.anonymizer import AnonymizedConnection  # noqa: E402
+from content_machine.sources.contracts import SourceReference  # noqa: E402
+from content_machine.sources.inventory import (  # noqa: E402
+    InventoryEntry,
+    SourceInventory,
+)
 
 _OUT_DIR = Path(__file__).resolve().parent
 
@@ -45,6 +50,9 @@ _MODELS = {
     "classifier_comparison_report.schema.json": ComparisonReport,
     "run_comparison.schema.json": RunComparison,
     "reclassification_stats.schema.json": ReclassificationStats,
+    "source_inventory.schema.json": SourceInventory,
+    "inventory_entry.schema.json": InventoryEntry,
+    "source_reference.schema.json": SourceReference,
 }
 
 

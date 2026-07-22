@@ -1,0 +1,124 @@
+{
+  "$defs": {
+    "FileStatus": {
+      "description": "How a discovered filesystem object was handled by the scan.",
+      "enum": [
+        "ok",
+        "symlink_skipped",
+        "archive_not_extracted",
+        "encrypted_suspected",
+        "unsupported",
+        "unreadable",
+        "hidden"
+      ],
+      "title": "FileStatus",
+      "type": "string"
+    },
+    "PrivacyCategory": {
+      "description": "Provisional privacy lattice for a source file. String-valued.\n\nOrdered by restrictiveness (see :func:`categorize`):\n``restricted`` (D) > ``third_party_confidential`` (C) >\n``creator_private`` (B) > ``creator_public`` (A) > ``unknown``.",
+      "enum": [
+        "creator_public",
+        "creator_private",
+        "third_party_confidential",
+        "restricted",
+        "unknown"
+      ],
+      "title": "PrivacyCategory",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One discovered filesystem object, described by metadata only.\n\n``relative_ref`` is always relative to the scanned root (never absolute).\n``category_evidence`` names the rule that fired (e.g. ``\"ext:.pem -> ...\")``\nand NEVER contains file content. ``sha256`` is populated only for ``ok``\nfiles; every other status leaves it ``None``.",
+  "properties": {
+    "file_id": {
+      "title": "File Id",
+      "type": "string"
+    },
+    "relative_ref": {
+      "title": "Relative Ref",
+      "type": "string"
+    },
+    "extension": {
+      "title": "Extension",
+      "type": "string"
+    },
+    "mime_guess": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Mime Guess"
+    },
+    "size_bytes": {
+      "default": 0,
+      "title": "Size Bytes",
+      "type": "integer"
+    },
+    "modified_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Modified At"
+    },
+    "subfolder": {
+      "default": "",
+      "title": "Subfolder",
+      "type": "string"
+    },
+    "sha256": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Sha256"
+    },
+    "status": {
+      "$ref": "#/$defs/FileStatus"
+    },
+    "provisional_category": {
+      "$ref": "#/$defs/PrivacyCategory",
+      "default": "unknown"
+    },
+    "category_evidence": {
+      "default": "",
+      "title": "Category Evidence",
+      "type": "string"
+    },
+    "is_duplicate_of": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Is Duplicate Of"
+    }
+  },
+  "required": [
+    "file_id",
+    "relative_ref",
+    "extension",
+    "status"
+  ],
+  "title": "InventoryEntry",
+  "type": "object"
+}

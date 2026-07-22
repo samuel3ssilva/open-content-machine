@@ -1,0 +1,203 @@
+{
+  "$defs": {
+    "FileStatus": {
+      "description": "How a discovered filesystem object was handled by the scan.",
+      "enum": [
+        "ok",
+        "symlink_skipped",
+        "archive_not_extracted",
+        "encrypted_suspected",
+        "unsupported",
+        "unreadable",
+        "hidden"
+      ],
+      "title": "FileStatus",
+      "type": "string"
+    },
+    "InventoryEntry": {
+      "additionalProperties": false,
+      "description": "One discovered filesystem object, described by metadata only.\n\n``relative_ref`` is always relative to the scanned root (never absolute).\n``category_evidence`` names the rule that fired (e.g. ``\"ext:.pem -> ...\")``\nand NEVER contains file content. ``sha256`` is populated only for ``ok``\nfiles; every other status leaves it ``None``.",
+      "properties": {
+        "file_id": {
+          "title": "File Id",
+          "type": "string"
+        },
+        "relative_ref": {
+          "title": "Relative Ref",
+          "type": "string"
+        },
+        "extension": {
+          "title": "Extension",
+          "type": "string"
+        },
+        "mime_guess": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mime Guess"
+        },
+        "size_bytes": {
+          "default": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "modified_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Modified At"
+        },
+        "subfolder": {
+          "default": "",
+          "title": "Subfolder",
+          "type": "string"
+        },
+        "sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sha256"
+        },
+        "status": {
+          "$ref": "#/$defs/FileStatus"
+        },
+        "provisional_category": {
+          "$ref": "#/$defs/PrivacyCategory",
+          "default": "unknown"
+        },
+        "category_evidence": {
+          "default": "",
+          "title": "Category Evidence",
+          "type": "string"
+        },
+        "is_duplicate_of": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Is Duplicate Of"
+        }
+      },
+      "required": [
+        "file_id",
+        "relative_ref",
+        "extension",
+        "status"
+      ],
+      "title": "InventoryEntry",
+      "type": "object"
+    },
+    "InventoryTotals": {
+      "additionalProperties": false,
+      "description": "Aggregate counters over a scan.\n\n``files`` counts file-like entries (regular files and skipped symlinks);\n``dirs`` counts directories encountered (hidden directories included, symlink\ntargets never). ``total_bytes`` sums only the bytes of ``ok`` files -- the\ncontent actually read for hashing. Grouping maps are keyed by the enum value\n(or extension string) and are sorted for deterministic output.",
+      "properties": {
+        "files": {
+          "default": 0,
+          "title": "Files",
+          "type": "integer"
+        },
+        "dirs": {
+          "default": 0,
+          "title": "Dirs",
+          "type": "integer"
+        },
+        "by_extension": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "By Extension",
+          "type": "object"
+        },
+        "by_category": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "By Category",
+          "type": "object"
+        },
+        "by_status": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "By Status",
+          "type": "object"
+        },
+        "duplicate_count": {
+          "default": 0,
+          "title": "Duplicate Count",
+          "type": "integer"
+        },
+        "total_bytes": {
+          "default": 0,
+          "title": "Total Bytes",
+          "type": "integer"
+        }
+      },
+      "title": "InventoryTotals",
+      "type": "object"
+    },
+    "PrivacyCategory": {
+      "description": "Provisional privacy lattice for a source file. String-valued.\n\nOrdered by restrictiveness (see :func:`categorize`):\n``restricted`` (D) > ``third_party_confidential`` (C) >\n``creator_private`` (B) > ``creator_public`` (A) > ``unknown``.",
+      "enum": [
+        "creator_public",
+        "creator_private",
+        "third_party_confidential",
+        "restricted",
+        "unknown"
+      ],
+      "title": "PrivacyCategory",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "A complete, private, metadata-only inventory of one source folder.\n\n``root_label`` is a SANITIZED label supplied by the caller, never the real\nfilesystem path. ``scanned_at`` is a caller-supplied ISO timestamp (kept\ncaller-supplied so the model stays pure and reproducible in tests).",
+  "properties": {
+    "root_label": {
+      "title": "Root Label",
+      "type": "string"
+    },
+    "scanned_at": {
+      "title": "Scanned At",
+      "type": "string"
+    },
+    "entries": {
+      "items": {
+        "$ref": "#/$defs/InventoryEntry"
+      },
+      "title": "Entries",
+      "type": "array"
+    },
+    "totals": {
+      "$ref": "#/$defs/InventoryTotals"
+    }
+  },
+  "required": [
+    "root_label",
+    "scanned_at"
+  ],
+  "title": "SourceInventory",
+  "type": "object"
+}

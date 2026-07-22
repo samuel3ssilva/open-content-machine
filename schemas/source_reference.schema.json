@@ -1,0 +1,69 @@
+{
+  "$defs": {
+    "IntendedUse": {
+      "description": "Downstream destination the Founder may (later) assign to a source.\n\nNever assigned automatically in Phase 1 -- it exists so the review workflow\nand the future draft contracts share one vocabulary.",
+      "enum": [
+        "creator_profile",
+        "authority_map",
+        "experience_vault",
+        "timeline",
+        "story_index",
+        "voice_vault",
+        "positioning",
+        "do_not_use"
+      ],
+      "title": "IntendedUse",
+      "type": "string"
+    },
+    "PrivacyCategory": {
+      "description": "Provisional privacy lattice for a source file. String-valued.\n\nOrdered by restrictiveness (see :func:`categorize`):\n``restricted`` (D) > ``third_party_confidential`` (C) >\n``creator_private`` (B) > ``creator_public`` (A) > ``unknown``.",
+      "enum": [
+        "creator_public",
+        "creator_private",
+        "third_party_confidential",
+        "restricted",
+        "unknown"
+      ],
+      "title": "PrivacyCategory",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Provenance pointer from a derived draft back to one inventoried source.\n\nCarries only metadata-safe identifiers -- ``file_id`` and the sanitized\n``root_label`` -- never a path or file content. ``approved`` mirrors the\nFounder's private review decision at build time; ``intended_use`` records the\ndestination the Founder assigned. A reference with ``approved=False`` must\nnever appear in a draft whose ``derived_only_from_approved`` is ``True``\n(Phase-2 enforcement).",
+  "properties": {
+    "file_id": {
+      "title": "File Id",
+      "type": "string"
+    },
+    "root_label": {
+      "title": "Root Label",
+      "type": "string"
+    },
+    "category": {
+      "$ref": "#/$defs/PrivacyCategory",
+      "default": "unknown"
+    },
+    "approved": {
+      "default": false,
+      "title": "Approved",
+      "type": "boolean"
+    },
+    "intended_use": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/IntendedUse"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "file_id",
+    "root_label"
+  ],
+  "title": "SourceReference",
+  "type": "object"
+}
