@@ -70,9 +70,9 @@ marcada). Nenhum dado real foi processado.
 - ✅ **Dois posts do Math Trail aprovados pelo Founder** (texto final canônico)
 - ✅ Memória editorial privada atualizada (amostras canônicas, guia de estilo,
   decisões, histórico)
-- 🔄 Post 1 aguardando publicação manual pelo Founder
-- ⬜ Post 2: publicação manual (após o post 1)
-- ⬜ Post 3 (OCM): refinamento após publicação do post 1
+- ✅ **Post 1 publicado no LinkedIn (2026-07-23)** — coleta de métricas pendente
+- 🔄 Post 2: preparação final de publicação (pacote de revisão pronto)
+- ⬜ Post 3 (OCM): refinamento com a voz publicada
 
 ## Próximo gate
 
@@ -80,7 +80,7 @@ marcada). Nenhum dado real foi processado.
 > precisão high 100%, unknown sintético 9,6%) →
 > inventário da pasta de biografia ✅ (Fase 1, somente metadados) →
 > síntese qualitativa ✅ → drafts LinkedIn/X ✅ (privados, não aprovados) →
-> **➡️ ESTAMOS AQUI: publicação manual do post 1 pelo Founder** →
+> **➡️ ESTAMOS AQUI: pós-publicação do post 1 — métricas + preparação do post 2** →
 > inventário do archive LinkedIn → 2º run real (aprovado pelo Fable) →
 > **v0.1.0**
 >
