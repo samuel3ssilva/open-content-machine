@@ -65,12 +65,15 @@ marcada). Nenhum dado real foi processado.
 
 ## Content MVP
 
-- ✅ Cinco ideias pontuadas
-- ✅ Primeiro draft LinkedIn (privado, DRAFT — NOT APPROVED FOR PUBLICATION)
-- ✅ Primeira adaptação nativa para X (thread, mesmo rótulo)
-- ✅ Revisão Fable de privacidade/factualidade + 1 revisão focada aplicada
-- ⬜ Revisão final do Founder
+- ✅ Cinco ideias pontuadas · primeiro draft LinkedIn · adaptação X (fase anterior)
+- ✅ Estratégia narrativa da série de 3 posts
+- ✅ Draft do post 1 (Math Trail)
+- ✅ Draft do post 2 (engenharia com IA)
+- ✅ Draft do post 3 (Open Content Machine)
+- 🔄 Revisão do Founder do post 1
 - ⬜ Publicação manual
+- ⬜ Captura das edições do Founder
+- ⬜ Preparação do post 2
 
 ## Próximo gate
 
@@ -78,7 +81,7 @@ marcada). Nenhum dado real foi processado.
 > precisão high 100%, unknown sintético 9,6%) →
 > inventário da pasta de biografia ✅ (Fase 1, somente metadados) →
 > síntese qualitativa ✅ → drafts LinkedIn/X ✅ (privados, não aprovados) →
-> **➡️ ESTAMOS AQUI: revisão do Founder — posicionamento e primeira publicação** →
+> **➡️ ESTAMOS AQUI: revisão do Founder do post de lançamento do Math Trail** →
 > inventário do archive LinkedIn → 2º run real (aprovado pelo Fable) →
 > **v0.1.0**
 >
