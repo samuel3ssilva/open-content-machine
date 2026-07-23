@@ -112,7 +112,7 @@
     },
     "InventoryTotals": {
       "additionalProperties": false,
-      "description": "Aggregate counters over a scan.\n\n``files`` counts file-like entries (regular files and skipped symlinks);\n``dirs`` counts directories encountered (hidden directories included, symlink\ntargets never). ``total_bytes`` sums only the bytes of ``ok`` files -- the\ncontent actually read for hashing. Grouping maps are keyed by the enum value\n(or extension string) and are sorted for deterministic output.",
+      "description": "Aggregate counters over a scan.\n\n``files`` counts file-like entries (regular files and skipped symlinks);\n``dirs`` counts directories encountered (hidden directories included, symlink\ntargets never, excluded directories never -- see ``excluded_dirs`` below).\n``total_bytes`` sums only the bytes of ``ok`` files -- the content actually\nread for hashing. Grouping maps are keyed by the enum value (or extension\nstring) and are sorted for deterministic output.\n\n``excluded_dirs`` counts directories skipped by name (default patterns such\nas ``node_modules`` or ``.git``, or a caller-supplied set) -- see\n``scan_source_folder``. These directories are never descended into, so\nfiles beneath them are never counted anywhere else in these totals.",
       "properties": {
         "files": {
           "default": 0,
@@ -153,6 +153,11 @@
         "total_bytes": {
           "default": 0,
           "title": "Total Bytes",
+          "type": "integer"
+        },
+        "excluded_dirs": {
+          "default": 0,
+          "title": "Excluded Dirs",
           "type": "integer"
         }
       },

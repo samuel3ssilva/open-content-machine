@@ -542,6 +542,17 @@ def source_inspect(
             "--dry-run", help="Required: perform a read-only, metadata-safe inventory."
         ),
     ] = False,
+    include_all: Annotated[
+        bool,
+        typer.Option(
+            "--include-all",
+            help=(
+                "Disable the default dependency/generated-directory exclusions "
+                "(node_modules, .git, dist, build, __pycache__, ...) and scan "
+                "everything."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Phase-1 metadata-safe inventory of a private source folder (dry-run only).
 
@@ -551,6 +562,10 @@ def source_inspect(
     file names/refs never reach stdout. See docs/source-approval-gate.md:
     approval fields in the review CSV start empty and analysis of any file
     requires the Founder's explicit, per-file approval.
+
+    By default, common dependency/generated directories (``node_modules``,
+    ``.git``, ``dist``, ``__pycache__``, ...) are excluded from the scan
+    entirely -- pass ``--include-all`` to disable that and scan everything.
     """
     if not dry_run:
         typer.secho(
@@ -566,9 +581,13 @@ def source_inspect(
     _reject_if_in_repo(output_dir, what="--output-dir")
 
     scanned_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    excluded_dirs: frozenset[str] | None = frozenset() if include_all else None
     try:
         inventory = scan_source_folder(
-            folder, root_label="<private-source>", scanned_at=scanned_at
+            folder,
+            root_label="<private-source>",
+            scanned_at=scanned_at,
+            excluded_dirs=excluded_dirs,
         )
     except SourceScanError as exc:
         typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
@@ -595,6 +614,10 @@ def source_inspect(
     lines.append("")
     lines.append(f"Total files: {totals.files}")
     lines.append(f"Total directories: {totals.dirs}")
+    lines.append(
+        "Excluded dependency/generated directories: "
+        f"{totals.excluded_dirs} (default patterns; use --include-all to disable)"
+    )
     lines.append("")
     lines.append("By category:")
     for category in PrivacyCategory:

@@ -376,6 +376,147 @@ def test_third_party_rows_never_auto_approved(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Default directory exclusions (SONNET-1.2b).
+# ---------------------------------------------------------------------------
+
+_SENTINEL_NODE_MODULES_BODY = "SENTINEL_BODY_NM_pacote_dependencia_interna"
+_SENTINEL_DIST_BODY = "SENTINEL_BODY_DIST_arquivo_gerado"
+_SENTINEL_COVERAGE_BODY = "SENTINEL_BODY_COVERAGE_relatorio_gerado"
+_SENTINEL_PYCACHE_BODY = "SENTINEL_BODY_PYCACHE_bytecode_gerado"
+
+_EXCLUDED_DIR_SENTINELS = [
+    _SENTINEL_NODE_MODULES_BODY,
+    _SENTINEL_DIST_BODY,
+    _SENTINEL_COVERAGE_BODY,
+    _SENTINEL_PYCACHE_BODY,
+]
+_EXCLUDED_DIR_NAMES = ["node_modules", "dist", "coverage", "__pycache__"]
+
+
+def _add_excluded_dirs(source_root: Path) -> None:
+    """Add one default-excluded directory per name, each with a sentinel file."""
+    nm = source_root / "node_modules" / "some-pkg"
+    nm.mkdir(parents=True)
+    (nm / "index.js").write_text(_SENTINEL_NODE_MODULES_BODY, encoding="utf-8")
+
+    dist = source_root / "dist"
+    dist.mkdir()
+    (dist / "bundle.js").write_text(_SENTINEL_DIST_BODY, encoding="utf-8")
+
+    coverage = source_root / "coverage"
+    coverage.mkdir()
+    (coverage / "lcov.info").write_text(_SENTINEL_COVERAGE_BODY, encoding="utf-8")
+
+    pycache = source_root / "__pycache__"
+    pycache.mkdir()
+    (pycache / "mod.cpython-312.pyc").write_bytes(_SENTINEL_PYCACHE_BODY.encode())
+
+
+def _run_include_all(source_root: Path, output_dir: Path):
+    return runner.invoke(
+        app,
+        [
+            "source",
+            "inspect",
+            str(source_root),
+            "--dry-run",
+            "--output-dir",
+            str(output_dir),
+            "--include-all",
+        ],
+    )
+
+
+def test_dependency_directory_excluded_by_default(tmp_path: Path) -> None:
+    source_root, output_dir = _build_fixture(tmp_path)
+    _add_excluded_dirs(source_root)
+    result = _run(source_root, output_dir)
+    assert result.exit_code == 0, result.output
+
+    # Check the artifacts (which never contain the scanned folder's own path)
+    # for the excluded directory name and its sentinel body; stdout is
+    # aggregate-only by design and is checked separately below.
+    for text in _artifact_texts(output_dir):
+        assert "node_modules" not in text
+        assert _SENTINEL_NODE_MODULES_BODY not in text
+    assert "node_modules" not in result.output
+    assert _SENTINEL_NODE_MODULES_BODY not in result.output
+    assert f"Excluded dependency/generated directories: {len(_EXCLUDED_DIR_NAMES)}" in result.output
+
+
+def test_other_generated_dirs_excluded_by_default(tmp_path: Path) -> None:
+    source_root, output_dir = _build_fixture(tmp_path)
+    _add_excluded_dirs(source_root)
+    result = _run(source_root, output_dir)
+    assert result.exit_code == 0, result.output
+
+    haystacks = [*_artifact_texts(output_dir), result.output]
+    for name, sentinel in zip(
+        ("dist", "coverage", "__pycache__"),
+        (_SENTINEL_DIST_BODY, _SENTINEL_COVERAGE_BODY, _SENTINEL_PYCACHE_BODY),
+        strict=True,
+    ):
+        for text in haystacks:
+            assert name not in text
+            assert sentinel not in text
+
+
+def test_include_all_flag_walks_excluded_dirs(tmp_path: Path) -> None:
+    source_root, output_dir = _build_fixture(tmp_path)
+    _add_excluded_dirs(source_root)
+    result = _run_include_all(source_root, output_dir)
+    assert result.exit_code == 0, result.output
+
+    assert "Excluded dependency/generated directories: 0" in result.output
+    json_text = (output_dir / "source-inventory-private.json").read_text(encoding="utf-8")
+    for name in _EXCLUDED_DIR_NAMES:
+        assert f'"relative_ref": "{name}' in json_text or f'/{name}/' in json_text
+    for sentinel in _EXCLUDED_DIR_SENTINELS:
+        # Sentinel BODIES never appear even with --include-all -- only metadata
+        # (names/refs) is ever written, never file content.
+        assert sentinel not in json_text
+
+
+def test_excluded_dirs_scan_does_not_modify_source_tree(tmp_path: Path) -> None:
+    source_root, output_dir = _build_fixture(tmp_path)
+    _add_excluded_dirs(source_root)
+    before = _snapshot(source_root)
+    result = _run(source_root, output_dir)
+    assert result.exit_code == 0, result.output
+    after = _snapshot(source_root)
+    assert before == after
+
+
+def test_no_network_calls_with_include_all_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source_root, output_dir = _build_fixture(tmp_path)
+    _add_excluded_dirs(source_root)
+
+    class _NoSocket:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            raise AssertionError("network access attempted during source inspect")
+
+    monkeypatch.setattr(socket_module, "socket", _NoSocket)
+    result = _run_include_all(source_root, output_dir)
+    assert result.exit_code == 0, result.output
+
+
+def test_no_absolute_path_leaks_with_exclusions_active(tmp_path: Path) -> None:
+    # Matches the pattern of test_no_full_personal_path_in_written_artifacts:
+    # the three PRIVATE artifacts must never contain the real filesystem path
+    # (stdout's "Scanning private source folder:" line intentionally shows an
+    # abbreviated path by design and is covered by other tests).
+    source_root, output_dir = _build_fixture(tmp_path)
+    _add_excluded_dirs(source_root)
+    result = _run(source_root, output_dir)
+    assert result.exit_code == 0, result.output
+    for text in _artifact_texts(output_dir):
+        assert str(tmp_path) not in text
+        assert str(source_root) not in text
+
+
 def test_output_dir_and_files_are_locked_down(tmp_path: Path) -> None:
     source_root, output_dir = _build_fixture(tmp_path)
     result = _run(source_root, output_dir)

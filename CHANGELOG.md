@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Sprint 1.2 (Phase 1, ticket SONNET-1.2b) — default exclusion patterns for
+  `content-machine source inspect`. `sources/inventory.py` gains
+  `DEFAULT_EXCLUDED_DIRS` (`node_modules`, `.git`, `dist`, `build`,
+  `coverage`, `.next`, `.nuxt`, `.cache`, `__pycache__`, `.venv`, `venv`,
+  `.turbo`, `.parcel-cache`, `out`, `.output`, `vendor`, `bower_components`,
+  `.pnpm-store`, `.yarn`) and a new `excluded_dirs` parameter on
+  `scan_source_folder` (`None` = use the defaults, `frozenset()` = exclude
+  nothing). A directory whose name matches (casefolded, exact match, at any
+  depth) is skipped entirely — never descended, never emitted as an entry —
+  and counted in the new `InventoryTotals.excluded_dirs` field. The CLI gains
+  an `--include-all` flag to disable the default exclusions, and stdout gains
+  one line: "Excluded dependency/generated directories: N (default patterns;
+  use --include-all to disable)". 13 new tests across
+  `tests/test_source_inventory.py` and `tests/test_cli_source_inspect.py`
+  cover: `node_modules` and other generated directories (`dist`, `coverage`,
+  `__pycache__`) not walked and their inner sentinel content absent from
+  entries/artifacts/stdout; nested-depth exclusion; case-insensitive
+  matching; `excluded_dirs=frozenset()` and `--include-all` walking
+  everything; the scan still never modifies the source tree or makes network
+  calls with exclusions active; and no absolute path or sentinel body leaks
+  into stdout or artifacts. `source_inventory.schema.json` regenerated to
+  include the new `excluded_dirs` totals field.
 - Sprint 1.2 (Phase 1, ticket SONNET-1.2) — `content-machine source inspect
   FOLDER --dry-run --output-dir DIR` CLI command
   (`src/content_machine/cli/main.py`): wires the metadata-safe source

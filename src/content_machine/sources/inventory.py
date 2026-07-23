@@ -31,6 +31,10 @@ Security posture (each requirement is covered by a dedicated test):
   * The scan opens files strictly read-only and writes nothing inside the root.
   * Ordering is deterministic (entries sorted by relative path) so repeated runs
     over an unchanged tree are byte-for-byte identical.
+  * By default, common dependency/generated directories (``node_modules``,
+    ``.git``, ``dist``, ``__pycache__``, ...) are skipped entirely -- not
+    descended, not emitted as entries -- see ``DEFAULT_EXCLUDED_DIRS`` and the
+    ``excluded_dirs`` parameter on :func:`scan_source_folder`.
 
 Nothing here approves a file for use. ``provisional_category`` is triage only;
 there is deliberately no "approved" field on any model in this module. Approval
@@ -69,6 +73,34 @@ _ARCHIVE_EXTS: frozenset[str] = frozenset(
 # (documented on ``_looks_encrypted``): an encrypted PDF or an AES blob without a
 # recognized extension CANNOT be detected without parsing, which we refuse to do.
 _ENCRYPTED_EXTS: frozenset[str] = frozenset({".gpg", ".age", ".enc"})
+
+# Directory names excluded from a scan by default (dependency/build/cache
+# directories that are never source material). Matched by exact NAME
+# (casefolded), at any depth -- see ``scan_source_folder``. Passing an empty
+# frozenset() as ``excluded_dirs`` disables this default and walks everything.
+DEFAULT_EXCLUDED_DIRS: frozenset[str] = frozenset(
+    {
+        "node_modules",
+        ".git",
+        "dist",
+        "build",
+        "coverage",
+        ".next",
+        ".nuxt",
+        ".cache",
+        "__pycache__",
+        ".venv",
+        "venv",
+        ".turbo",
+        ".parcel-cache",
+        "out",
+        ".output",
+        "vendor",
+        "bower_components",
+        ".pnpm-store",
+        ".yarn",
+    }
+)
 
 
 class PrivacyCategory(StrEnum):
@@ -145,9 +177,15 @@ class InventoryTotals(BaseModel):
 
     ``files`` counts file-like entries (regular files and skipped symlinks);
     ``dirs`` counts directories encountered (hidden directories included, symlink
-    targets never). ``total_bytes`` sums only the bytes of ``ok`` files -- the
-    content actually read for hashing. Grouping maps are keyed by the enum value
-    (or extension string) and are sorted for deterministic output.
+    targets never, excluded directories never -- see ``excluded_dirs`` below).
+    ``total_bytes`` sums only the bytes of ``ok`` files -- the content actually
+    read for hashing. Grouping maps are keyed by the enum value (or extension
+    string) and are sorted for deterministic output.
+
+    ``excluded_dirs`` counts directories skipped by name (default patterns such
+    as ``node_modules`` or ``.git``, or a caller-supplied set) -- see
+    ``scan_source_folder``. These directories are never descended into, so
+    files beneath them are never counted anywhere else in these totals.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -159,6 +197,7 @@ class InventoryTotals(BaseModel):
     by_status: dict[str, int] = Field(default_factory=dict)
     duplicate_count: int = 0
     total_bytes: int = 0
+    excluded_dirs: int = 0
 
 
 class SourceInventory(BaseModel):
@@ -491,7 +530,11 @@ def _build_entry(
 
 
 def scan_source_folder(
-    root: Path, *, root_label: str, scanned_at: str
+    root: Path,
+    *,
+    root_label: str,
+    scanned_at: str,
+    excluded_dirs: frozenset[str] | None = None,
 ) -> SourceInventory:
     """Inventory ``root`` at metadata granularity, safely and deterministically.
 
@@ -501,7 +544,25 @@ def scan_source_folder(
     files are opened strictly read-only. See the module docstring for the full
     security contract. Raises :class:`SourceScanError` (referencing
     ``root_label`` only) if ``root`` is missing or not a directory.
+
+    ``excluded_dirs`` controls dependency/generated-directory exclusion:
+
+    - ``None`` (the default) uses :data:`DEFAULT_EXCLUDED_DIRS`.
+    - ``frozenset()`` (empty) excludes nothing -- everything is walked.
+    - Any other frozenset replaces the default set entirely.
+
+    A directory whose NAME matches an excluded pattern (casefolded, exact
+    match, at any depth) is neither descended into nor emitted as an entry --
+    it, and everything beneath it, is skipped outright and only counted in
+    ``InventoryTotals.excluded_dirs``. This is checked before the hidden-
+    directory check, so an excluded name (e.g. ``.git``) is accounted for as
+    excluded, not as ``hidden``.
     """
+    excluded_cf = frozenset(
+        name.casefold()
+        for name in (DEFAULT_EXCLUDED_DIRS if excluded_dirs is None else excluded_dirs)
+    )
+
     try:
         resolved_root = root.resolve(strict=True)
     except (OSError, RuntimeError):
@@ -514,6 +575,7 @@ def scan_source_folder(
     entries: list[InventoryEntry] = []
     dir_count = 0
     file_count = 0
+    excluded_dir_count = 0
 
     # Iterative DFS. Sorting each directory's children keeps traversal stable;
     # the final entry list is sorted by relative path regardless.
@@ -573,6 +635,14 @@ def scan_source_folder(
 
             # 3. Directories.
             if child.is_dir(follow_symlinks=False):
+                # 3a. Excluded (dependency/generated) directories: skipped
+                # outright -- not descended, not emitted as an entry, not
+                # counted in ``dirs``. Checked before the hidden check so an
+                # excluded name (e.g. ".git") is counted as excluded.
+                if child.name.casefold() in excluded_cf:
+                    excluded_dir_count += 1
+                    continue
+
                 dir_count += 1
                 if hidden:
                     # Recorded but NOT descended -- we never inventory the
@@ -626,6 +696,7 @@ def scan_source_folder(
     duplicate_count = _mark_duplicates(entries)
     totals = _compute_totals(entries, files=file_count, dirs=dir_count)
     totals.duplicate_count = duplicate_count
+    totals.excluded_dirs = excluded_dir_count
 
     return SourceInventory(
         root_label=root_label,
