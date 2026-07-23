@@ -78,7 +78,7 @@ marcada). Nenhum dado real foi processado.
 > precisão high 100%, unknown sintético 9,6%) →
 > inventário da pasta de biografia ✅ (Fase 1, somente metadados) →
 > síntese qualitativa ✅ → drafts LinkedIn/X ✅ (privados, não aprovados) →
-> **➡️ ESTAMOS AQUI: revisão final do Founder dos drafts e artefatos** →
+> **➡️ ESTAMOS AQUI: revisão do Founder — posicionamento e primeira publicação** →
 > inventário do archive LinkedIn → 2º run real (aprovado pelo Fable) →
 > **v0.1.0**
 >
