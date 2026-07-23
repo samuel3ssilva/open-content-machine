@@ -54,16 +54,30 @@ marcada). Nenhum dado real foi processado.
 - ✅ Triagem do Founder concluída (15 aprovados / 4 rejeitados, validação limpa)
 - ✅ Fase 2A: extração determinística local + 5 pacotes qualitativos sanitizados
   (redação de identificadores; originais intocados; tudo fora do repo)
-- 🔒 **Análise qualitativa em contexto de modelo bloqueada** — cada pacote exige
-  aprovação individual do Founder (aprovação de um não implica outro)
+- ✅ Founder autorizou análise qualitativa de 4 pacotes (STORY permanece bloqueado)
+
+## Creator Intelligence
+
+- ✅ Extração determinística
+- 🔄 Síntese qualitativa
+- 🔄 Posicionamento
+- 🔄 Guia de voz preliminar
+
+## Content MVP
+
+- 🔄 Cinco ideias pontuadas
+- 🔄 Primeiro draft LinkedIn
+- 🔄 Primeira adaptação nativa para X
+- ⬜ Revisão final do Founder
+- ⬜ Publicação manual
 
 ## Próximo gate
 
 > Sprint 1 ✅ → run local real ✅ → hardening do classificador ✅ (Sprint 1.1:
 > precisão high 100%, unknown sintético 9,6%) →
 > inventário da pasta de biografia ✅ (Fase 1, somente metadados) →
-> **➡️ ESTAMOS AQUI: extração determinística local concluída; revisão do
-> Founder dos pacotes qualitativos sanitizados** →
+> **➡️ ESTAMOS AQUI: síntese qualitativa autônoma e primeira fatia vertical
+> de conteúdo** →
 > inventário do archive LinkedIn → 2º run real (aprovado pelo Fable) →
 > **v0.1.0**
 >
