@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (creator intelligence workflow — process only, no private findings)
+
+- Generic documentation of the creator-intelligence workflow (inventory →
+  Founder triage → deterministic extraction → sanitized packages →
+  individually approved qualitative synthesis → labeled private drafts →
+  manual publication), in `docs/creator-intelligence-workflow.md`.
+- MVP status panel tracks for Creator Intelligence and Content MVP.
+
 ### Added
 
 - Sprint 1.2 (Phase 1, ticket SONNET-1.2b) — default exclusion patterns for
