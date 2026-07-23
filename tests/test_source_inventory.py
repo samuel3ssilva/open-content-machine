@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from content_machine.sources.inventory import (
+    DEFAULT_EXCLUDED_DIRS,
     FileStatus,
     PrivacyCategory,
     SourceScanError,
@@ -125,11 +126,18 @@ def test_office_lock_file_is_hidden(tmp_path: Path) -> None:
 def test_hidden_directory_not_descended(tmp_path: Path) -> None:
     root = tmp_path / "root"
     root.mkdir()
+    # ``.git`` is also a DEFAULT_EXCLUDED_DIRS name; use excluded_dirs=frozenset()
+    # here so this test isolates the hidden-directory pathway specifically (the
+    # excluded-directory pathway is covered by the tests below).
     hidden_dir = root / ".git"
     hidden_dir.mkdir()
     (hidden_dir / "config").write_text("should not be inventoried", encoding="utf-8")
 
-    by_ref = _by_ref(_scan(root))
+    by_ref = _by_ref(
+        scan_source_folder(
+            root, root_label=_LABEL, scanned_at=_SCANNED_AT, excluded_dirs=frozenset()
+        )
+    )
     assert by_ref[".git"].status is FileStatus.hidden
     # Contents of the hidden directory are never inventoried.
     assert not any(ref.startswith(".git/") for ref in by_ref)
@@ -407,3 +415,145 @@ def test_ok_file_is_hashed_and_totals_coherent(tmp_path: Path) -> None:
     assert inv.totals.files == 2
     assert inv.totals.dirs == 1
     assert inv.totals.total_bytes == len("alpha") + len("beta")
+
+
+# ---------------------------------------------------------------------------
+# Default directory exclusions (SONNET-1.2b).
+# ---------------------------------------------------------------------------
+
+
+def test_node_modules_subtree_not_walked_by_default(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "app.md").write_text("biografia", encoding="utf-8")
+    nm = root / "node_modules"
+    nm.mkdir()
+    (nm / "some-pkg").mkdir()
+    (nm / "some-pkg" / "SENTINEL_INNER_node_modules.js").write_text(
+        "should never be inventoried", encoding="utf-8"
+    )
+
+    inv = _scan(root)
+    by_ref = _by_ref(inv)
+
+    assert "node_modules" not in by_ref
+    assert not any("node_modules" in ref for ref in by_ref)
+    assert not any("SENTINEL_INNER_node_modules" in ref for ref in by_ref)
+    assert to_json(inv).count("SENTINEL_INNER_node_modules") == 0
+    assert inv.totals.excluded_dirs == 1
+    # The excluded subtree contributes nothing to `dirs` or `files`.
+    assert inv.totals.dirs == 0
+    assert inv.totals.files == 1
+
+
+def test_other_generated_dirs_excluded_by_default(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    for name in ("dist", "coverage", "__pycache__"):
+        d = root / name
+        d.mkdir()
+        (d / "SENTINEL_INNER_generated.txt").write_text("x", encoding="utf-8")
+
+    inv = _scan(root)
+    by_ref = _by_ref(inv)
+
+    for name in ("dist", "coverage", "__pycache__"):
+        assert name not in by_ref
+        assert not any(ref.startswith(f"{name}/") for ref in by_ref)
+    assert not any("SENTINEL_INNER_generated" in ref for ref in by_ref)
+    assert inv.totals.excluded_dirs == 3
+    assert inv.totals.dirs == 0
+    assert inv.totals.files == 0
+
+
+def test_excluded_dir_nested_at_depth(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    nested = root / "packages" / "widget" / "build"
+    nested.mkdir(parents=True)
+    (nested / "SENTINEL_INNER_nested_build.txt").write_text("x", encoding="utf-8")
+    (root / "packages" / "widget" / "src.md").write_text("codigo", encoding="utf-8")
+
+    inv = _scan(root)
+    by_ref = _by_ref(inv)
+
+    assert not any("build" in ref for ref in by_ref)
+    assert not any("SENTINEL_INNER_nested_build" in ref for ref in by_ref)
+    assert "packages/widget/src.md" in by_ref
+    assert inv.totals.excluded_dirs == 1
+
+
+def test_empty_excluded_dirs_walks_everything(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    nm = root / "node_modules"
+    nm.mkdir()
+    (nm / "pkg.js").write_text("code", encoding="utf-8")
+
+    inv = scan_source_folder(
+        root, root_label=_LABEL, scanned_at=_SCANNED_AT, excluded_dirs=frozenset()
+    )
+    by_ref = _by_ref(inv)
+
+    # Directories themselves are never emitted as entries (only files are);
+    # walking "everything" means the file beneath it is now inventoried.
+    assert "node_modules/pkg.js" in by_ref
+    assert inv.totals.excluded_dirs == 0
+
+
+def test_exclusion_matching_is_case_insensitive(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "Node_Modules").mkdir()
+    (root / "Node_Modules" / "pkg.js").write_text("code", encoding="utf-8")
+
+    inv = _scan(root)
+    by_ref = _by_ref(inv)
+    assert not any("pkg.js" in ref for ref in by_ref)
+    assert inv.totals.excluded_dirs == 1
+
+
+def test_default_excluded_dirs_frozenset_contents() -> None:
+    expected = {
+        "node_modules",
+        ".git",
+        "dist",
+        "build",
+        "coverage",
+        ".next",
+        ".nuxt",
+        ".cache",
+        "__pycache__",
+        ".venv",
+        "venv",
+        ".turbo",
+        ".parcel-cache",
+        "out",
+        ".output",
+        "vendor",
+        "bower_components",
+        ".pnpm-store",
+        ".yarn",
+    }
+    assert DEFAULT_EXCLUDED_DIRS == frozenset(expected)
+
+
+def test_scan_with_exclusions_does_not_modify_the_tree(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "one.md").write_text("biografia", encoding="utf-8")
+    nm = root / "node_modules"
+    nm.mkdir()
+    (nm / "pkg.js").write_text("code", encoding="utf-8")
+
+    def snapshot() -> dict[str, tuple[int, int]]:
+        snap: dict[str, tuple[int, int]] = {}
+        for path in sorted(root.rglob("*")):
+            st = path.stat()
+            snap[str(path)] = (st.st_size, st.st_mtime_ns)
+        return snap
+
+    before = snapshot()
+    _scan(root)
+    after = snapshot()
+    assert before == after

@@ -77,6 +77,12 @@ content-machine source inspect ~/private/biography-material --dry-run \
 - The scan never copies, extracts, or modifies anything under `FOLDER`;
   archives are never opened, symlinks are never followed, and hidden
   directories are never descended.
+- By default, common dependency/generated directories are excluded from the
+  scan entirely — not descended, not listed — including `node_modules`,
+  `.git`, `dist`, `build`, `coverage`, `__pycache__`, `.venv`/`venv`, and
+  similar tool-output directories. Pass `--include-all` to disable this and
+  scan every directory. Terminal output reports how many such directories
+  were skipped.
 - Three private files are written to `--output-dir` (mode `0700` dir,
   `0600` files): `source-inventory-private.md`, `source-inventory-private.json`,
   and `source-review-private.csv`. None of the three ever contains the real
