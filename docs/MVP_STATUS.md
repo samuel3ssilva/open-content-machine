@@ -51,14 +51,19 @@ marcada). Nenhum dado real foi processado.
 - ✅ Pacote de triagem (Fase 1.1): 19 textos candidatos aguardando revisão ·
   14 docs de projeto separados · 14 mídias deferidas (sem OCR) ·
   158 código/gerados excluídos
-- 🔒 **Fase 2 (análise de corpo) bloqueada** até aprovação por arquivo do Founder
+- ✅ Triagem do Founder concluída (15 aprovados / 4 rejeitados, validação limpa)
+- ✅ Fase 2A: extração determinística local + 5 pacotes qualitativos sanitizados
+  (redação de identificadores; originais intocados; tudo fora do repo)
+- 🔒 **Análise qualitativa em contexto de modelo bloqueada** — cada pacote exige
+  aprovação individual do Founder (aprovação de um não implica outro)
 
 ## Próximo gate
 
 > Sprint 1 ✅ → run local real ✅ → hardening do classificador ✅ (Sprint 1.1:
 > precisão high 100%, unknown sintético 9,6%) →
 > inventário da pasta de biografia ✅ (Fase 1, somente metadados) →
-> **➡️ ESTAMOS AQUI: triagem do Founder dos textos candidatos do criador** →
+> **➡️ ESTAMOS AQUI: extração determinística local concluída; revisão do
+> Founder dos pacotes qualitativos sanitizados** →
 > inventário do archive LinkedIn → 2º run real (aprovado pelo Fable) →
 > **v0.1.0**
 >
