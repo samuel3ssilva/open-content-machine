@@ -59,15 +59,16 @@ marcada). Nenhum dado real foi processado.
 ## Creator Intelligence
 
 - ✅ Extração determinística
-- 🔄 Síntese qualitativa
-- 🔄 Posicionamento
-- 🔄 Guia de voz preliminar
+- ✅ Síntese qualitativa (4 pacotes; STORY nunca usado)
+- ✅ Posicionamento (1 recomendação + 2 alternativas)
+- ✅ Guia de voz preliminar (amostra limitada, rotulado)
 
 ## Content MVP
 
-- 🔄 Cinco ideias pontuadas
-- 🔄 Primeiro draft LinkedIn
-- 🔄 Primeira adaptação nativa para X
+- ✅ Cinco ideias pontuadas
+- ✅ Primeiro draft LinkedIn (privado, DRAFT — NOT APPROVED FOR PUBLICATION)
+- ✅ Primeira adaptação nativa para X (thread, mesmo rótulo)
+- ✅ Revisão Fable de privacidade/factualidade + 1 revisão focada aplicada
 - ⬜ Revisão final do Founder
 - ⬜ Publicação manual
 
@@ -76,8 +77,8 @@ marcada). Nenhum dado real foi processado.
 > Sprint 1 ✅ → run local real ✅ → hardening do classificador ✅ (Sprint 1.1:
 > precisão high 100%, unknown sintético 9,6%) →
 > inventário da pasta de biografia ✅ (Fase 1, somente metadados) →
-> **➡️ ESTAMOS AQUI: síntese qualitativa autônoma e primeira fatia vertical
-> de conteúdo** →
+> síntese qualitativa ✅ → drafts LinkedIn/X ✅ (privados, não aprovados) →
+> **➡️ ESTAMOS AQUI: revisão final do Founder dos drafts e artefatos** →
 > inventário do archive LinkedIn → 2º run real (aprovado pelo Fable) →
 > **v0.1.0**
 >
