@@ -67,13 +67,12 @@ marcada). Nenhum dado real foi processado.
 
 - ✅ Cinco ideias pontuadas · primeiro draft LinkedIn · adaptação X (fase anterior)
 - ✅ Estratégia narrativa da série de 3 posts
-- ✅ Draft do post 1 (Math Trail)
-- ✅ Draft do post 2 (engenharia com IA)
-- ✅ Draft do post 3 (Open Content Machine)
-- 🔄 Revisão do Founder do post 1
-- ⬜ Publicação manual
-- ⬜ Captura das edições do Founder
-- ⬜ Preparação do post 2
+- ✅ **Dois posts do Math Trail aprovados pelo Founder** (texto final canônico)
+- ✅ Memória editorial privada atualizada (amostras canônicas, guia de estilo,
+  decisões, histórico)
+- 🔄 Post 1 aguardando publicação manual pelo Founder
+- ⬜ Post 2: publicação manual (após o post 1)
+- ⬜ Post 3 (OCM): refinamento após publicação do post 1
 
 ## Próximo gate
 
@@ -81,7 +80,7 @@ marcada). Nenhum dado real foi processado.
 > precisão high 100%, unknown sintético 9,6%) →
 > inventário da pasta de biografia ✅ (Fase 1, somente metadados) →
 > síntese qualitativa ✅ → drafts LinkedIn/X ✅ (privados, não aprovados) →
-> **➡️ ESTAMOS AQUI: revisão do Founder do post de lançamento do Math Trail** →
+> **➡️ ESTAMOS AQUI: publicação manual do post 1 pelo Founder** →
 > inventário do archive LinkedIn → 2º run real (aprovado pelo Fable) →
 > **v0.1.0**
 >
