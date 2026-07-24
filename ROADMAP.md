@@ -11,6 +11,38 @@ shipped software. **As software**, only Phase 1 is in progress; every later
 phase below — including Positioning & Creator Profile and Voice Vault — is
 planned and unstarted as code.
 
+## Next build focus — Intelligence Brief v0.1 (approved 2026-07-24)
+
+The next module to be built is a weekly **Intelligence Brief** (see the
+[product vision](docs/vision.md#near-term-product-focus-the-intelligence-brief)):
+signal collection from authorized sources → clustering and deduplication →
+explainable personal-relevance ranking → evidence verification → a tiered
+weekly brief with a study queue, one practical experiment, and content
+opportunities, always ending in a human-review state.
+
+Scope notes:
+
+- v0.1 is built and tested **entirely against synthetic local fixtures** —
+  no real inbox or external-source connector is activated until its exact
+  read-only scope is explicitly authorized and passes a security review.
+- External public sources gain two bounded operating modes: a discovery
+  scan limited to recent titles, dates, and summaries (no broad historical
+  crawling), and deep verification restricted to topics that pass a
+  preliminary relevance gate. This supersedes the earlier assumption that
+  external sources enter only late, as contextualization for
+  already-selected ideas.
+- This phase pulls forward parts of Phase 5 (Oracle: prioritized,
+  personally grounded topic selection) and Phase 8 (Evidence Check) as a
+  standalone intelligence product. The remaining editorial phases below are
+  unchanged and still gated on human approval; the brief's data contracts
+  are designed so the editorial layer can attach later without rewriting
+  the ranking and report layers.
+- Ranking is never by mention frequency alone: frequency can flag a signal,
+  but scores come from explainable, weighted dimensions (relevance,
+  magnitude, practical consequence, evidence quality, experiment/learning
+  potential, connection to the creator's live questions), each preserved
+  with a per-topic breakdown.
+
 ## 1. Foundation & security — in progress
 
 Repository scaffolding, license, architecture and privacy governance,

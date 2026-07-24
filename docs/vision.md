@@ -1,9 +1,10 @@
 # Product Vision
 
-Status: approved direction for the Bootstrap Sprint, 2026-07-22. This is a
-vision document, not a specification — it describes the shape of the product
-being built toward, in the order set by [`ROADMAP.md`](../ROADMAP.md).
-Concrete, sprint-level requirements are owned separately by the CEO role; see
+Status: approved direction, updated 2026-07-24 (originally approved for the
+Bootstrap Sprint, 2026-07-22). This is a vision document, not a
+specification — it describes the shape of the product being built toward, in
+the order set by [`ROADMAP.md`](../ROADMAP.md). Concrete, sprint-level
+requirements are owned separately by the CEO role; see
 [`docs/product-requirements.md`](product-requirements.md).
 
 ## What Open Content Machine is
@@ -13,6 +14,38 @@ their professional network, their notes and experiences, their real work —
 into audience intelligence, editorial positioning, and content drafted in
 their own voice. It is built for one creator at a time, run on that
 creator's own machine, with personal data never leaving it.
+
+## Moonshot
+
+A personal, local-first, human-governed intelligence, learning, and
+publishing system: it monitors sources the creator has explicitly
+authorized, consolidates and ranks what matters for the creator's work and
+interests, verifies evidence, recommends what to study or test, interviews
+the creator to capture genuine experience and opinions, and turns that
+knowledge into briefs, experiments, and review-ready content — without
+exposing private context and without ever publishing autonomously.
+
+## Near-term product focus: the Intelligence Brief
+
+The user need is simple: **a professional with limited time needs a
+trustworthy way to understand which developments deserve attention, study,
+or action.** Reading everything is not an option; outsourcing judgment to
+generic rankings loses personal context.
+
+The primary near-term output is therefore a **weekly Intelligence Brief**:
+the system collects signals from authorized sources, clusters and
+deduplicates coverage of the same event, ranks topics with an explainable
+personal-relevance model (never by mention frequency alone), verifies
+evidence for what ranks highest, and delivers a small set of tiered topics
+with study recommendations, one practical experiment, and content
+opportunities — ending in a human-review state. Publication is always a
+separate, manual, human decision.
+
+The intended flow: authorized sources → signal detection → clustering and
+deduplication → personal relevance ranking → evidence verification →
+learning recommendations → practical experiments → adaptive creator
+interview → evidence-backed point of view → publication-ready content →
+human approval.
 
 ## Inputs
 
