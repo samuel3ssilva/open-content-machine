@@ -249,6 +249,25 @@ def _brief_for(
     return build_weekly_brief(tiered, ranked, clusters_by_topic_id, items_by_id, WEEK_LABEL)
 
 
+def _extract_markdown_section(markdown: str, heading_prefix: str) -> str:
+    """Return only the lines of ``markdown`` belonging to the FIRST section
+    whose heading starts with ``heading_prefix``, up to (but excluding) the
+    next ``## `` heading. Used so a consistency check can assert a title
+    appears in a SPECIFIC section, not merely somewhere in the whole
+    document (see QA-2: a substring-anywhere check still passes even if the
+    Tier 1/Appendix renderer stops emitting the title, because it also
+    leaks via the Content Opportunities section)."""
+    lines = markdown.splitlines()
+    start = next((i for i, line in enumerate(lines) if line.startswith(heading_prefix)), None)
+    assert start is not None, f"heading {heading_prefix!r} not found in markdown"
+    end = len(lines)
+    for j in range(start + 1, len(lines)):
+        if lines[j].startswith("## ") and not lines[j].startswith(heading_prefix):
+            end = j
+            break
+    return "\n".join(lines[start:end])
+
+
 # --- review status / no auto-publish ----------------------------------------
 
 
@@ -296,6 +315,76 @@ def test_tier1_lean_presentation_present_on_real_fixture() -> None:
         assert item.recommended_action == "study"
         assert item.recommended_action_reason
         assert item.ranking_explanation
+
+
+# --- Product F1: human-readable Tier 1/2 lean lines, no rubric mechanics ----
+
+_RUBRIC_JARGON_TOKENS = (
+    "raw magnitude",
+    "capped to evidence_level",
+    "raw consequence",
+    "effective_value",
+    "floored to 5",
+)
+
+
+def test_tier1_what_changed_is_the_authored_rationale_not_rubric_mechanics() -> None:
+    """F1: what_changed must be the anchor's authored change_class_rationale
+    (falling back to summary_normalized), never the magnitude dimension's
+    rationale (which reads like a debug trace, e.g. "change_class
+    'material_change' has raw magnitude 3; capped to evidence_level+1=5")."""
+    clusters, items_by_id, ranked = _real_fixture_pipeline()
+    clusters_by_topic_id = {c.topic_id: c for c in clusters}
+    tiered = assign_tiers(ranked, clusters_by_topic_id, items_by_id)
+    brief = build_weekly_brief(tiered, ranked, clusters_by_topic_id, items_by_id, WEEK_LABEL)
+    assert brief.tier1
+    for item in brief.tier1:
+        cluster = clusters_by_topic_id[item.topic_id]
+        anchor = items_by_id[cluster.anchor_item_id]
+        expected = anchor.change_class_rationale or anchor.summary_normalized
+        assert item.what_changed == expected
+        for token in _RUBRIC_JARGON_TOKENS:
+            assert token not in item.what_changed
+
+
+def test_tier1_why_it_matters_is_a_human_template_not_rubric_mechanics() -> None:
+    """F1: why_it_matters must be the deterministic human template (territory
+    tags, action_required phrase, claim_class, confidence), never the
+    consequence dimension's rationale."""
+    brief = _brief_from_real_fixture()
+    assert brief.tier1
+    for item in brief.tier1:
+        assert item.why_it_matters.startswith("On-territory (")
+        for token in _RUBRIC_JARGON_TOKENS:
+            assert token not in item.why_it_matters
+
+
+def test_tier2_explanation_is_the_authored_rationale_not_rubric_mechanics() -> None:
+    """F1: Tier 2's 'explanation' line has the same rubric-jargon problem as
+    Tier 1's what_changed (both were `magnitude.rationale`) -- fixed the same
+    way."""
+    clusters, items_by_id, ranked = _real_fixture_pipeline()
+    clusters_by_topic_id = {c.topic_id: c for c in clusters}
+    tiered = assign_tiers(ranked, clusters_by_topic_id, items_by_id)
+    brief = build_weekly_brief(tiered, ranked, clusters_by_topic_id, items_by_id, WEEK_LABEL)
+    assert brief.tier2
+    for item in brief.tier2:
+        cluster = clusters_by_topic_id[item.topic_id]
+        anchor = items_by_id[cluster.anchor_item_id]
+        expected = anchor.change_class_rationale or anchor.summary_normalized
+        assert item.explanation == expected
+        for token in _RUBRIC_JARGON_TOKENS:
+            assert token not in item.explanation
+
+
+def test_dimension_rationales_still_live_in_the_appendix() -> None:
+    """F1: the raw dimension mechanics must not be LOST -- only moved out of
+    the lean Tier 1 lines and into the Appendix's dimension_breakdown."""
+    brief = _brief_from_real_fixture()
+    assert brief.appendix
+    for record in brief.appendix:
+        joined = " ".join(record.dimension_breakdown)
+        assert "raw=" in joined and "effective=" in joined
 
 
 def test_appendix_has_the_twelve_full_fields() -> None:
@@ -351,6 +440,31 @@ def test_markdown_contains_every_tier1_title_and_counts_match() -> None:
     assert len(brief.tier1) <= len(tier1_headers)
 
 
+def test_tier1_section_specifically_contains_each_admitted_tier1_title() -> None:
+    """QA-2: a substring-anywhere check on the whole document still passes if
+    the Tier 1 renderer stops emitting the title (it also leaks via Content
+    Opportunities). This test parses ONLY the '## Tier 1' section and must
+    fail if that specific renderer stops emitting a title."""
+    brief = _brief_from_real_fixture()
+    assert brief.tier1  # otherwise this test would vacuously pass
+    markdown = render_markdown(brief)
+    section = _extract_markdown_section(markdown, "## Tier 1")
+    for item in brief.tier1:
+        assert item.canonical_title in section
+
+
+def test_appendix_section_specifically_contains_each_appendix_record_title() -> None:
+    """QA-2: same strengthening as above, for the Appendix section
+    specifically -- must fail if the Appendix renderer stops emitting a
+    title even though it still appears elsewhere in the document."""
+    brief = _brief_from_real_fixture()
+    assert brief.appendix  # otherwise this test would vacuously pass
+    markdown = render_markdown(brief)
+    section = _extract_markdown_section(markdown, "## Appendix")
+    for record in brief.appendix:
+        assert record.canonical_title in section
+
+
 def test_markdown_and_json_never_diverge_tier1_titles_and_counts() -> None:
     brief = _brief_from_real_fixture()
     markdown = render_markdown(brief)
@@ -371,6 +485,48 @@ def test_tier1_short_reason_present_and_consistent_when_fewer_than_three_admitte
     assert "rank 3" in brief.tier1_short_reason
     joined_summary = " ".join(brief.executive_summary)
     assert brief.tier1_short_reason in joined_summary or "1" in joined_summary
+
+
+def test_tier1_short_reason_states_the_failing_condition_and_is_not_doubled() -> None:
+    """F4: the no-backfill reason must state WHY the fell-through rank failed
+    admission (its failing condition, e.g. 'insufficient evidence level'),
+    and must not repeat the phrase 'no-backfill rule' twice for the SAME
+    failing rank (the old text was tiers.py's own warning, "No-backfill rule
+    applied: ... per the no-backfill rule ..."). Exactly one rank (3) fails
+    here, so the whole reason must contain the phrase exactly once."""
+    brief = _brief_for([True, True, False])
+    assert len(brief.tier1) == 2
+    assert brief.tier1_short_reason is not None
+    # Exactly one occurrence of "no-backfill rule" (one failing rank), not
+    # two -- the old text doubled it within a single rank's own reason.
+    assert brief.tier1_short_reason.lower().count("no-backfill rule") == 1
+    # The reason names the actual failing base-rule category (rank 3 is a
+    # synthetic 'hypothesis' topic that fails on evidence/independence).
+    assert (
+        "insufficient evidence level" in brief.tier1_short_reason
+        or "lack of independent corroboration" in brief.tier1_short_reason
+    )
+
+
+def test_tier1_short_reason_one_occurrence_of_no_backfill_rule_per_failing_rank() -> None:
+    """When MULTIPLE ranks fall through (ranks 2 and 3 both fail here), each
+    contributes its own single "no-backfill rule applied" mention -- one per
+    failing rank, never doubled within any one rank's own reason text."""
+    brief = _brief_for([True, False, False])
+    assert len(brief.tier1) == 1
+    assert brief.tier1_short_reason is not None
+    # Two failing ranks -> two per-rank mentions, not four (doubled).
+    assert brief.tier1_short_reason.lower().count("no-backfill rule applied") == 2
+
+
+def test_tier1_short_reason_failing_condition_matches_real_fixture() -> None:
+    """Same check against the real fixture's actual fell-through rank (rank
+    2, 'Core Project Spec: Breaking Change To Tool Call Framing', which
+    fails on independence, not evidence level)."""
+    brief = _brief_from_real_fixture()
+    assert brief.tier1_short_reason is not None
+    assert brief.tier1_short_reason.lower().count("no-backfill rule") == 1
+    assert "lack of independent corroboration" in brief.tier1_short_reason
 
 
 def test_tier1_short_reason_is_none_when_all_three_admitted() -> None:
@@ -449,11 +605,24 @@ def test_content_opportunities_zero_is_representable_and_stated() -> None:
     assert brief.content_opportunities.none_reason is not None
 
 
-def test_content_opportunities_never_exceeds_three_even_with_three_qualifying_tier1() -> None:
-    brief = _brief_for([True, True, True])
-    assert len(brief.content_opportunities.opportunities) <= 3
+def test_content_opportunities_exact_count_matches_documented_selection_rule_on_real_fixture() -> (
+    None
+):
+    """QA-1: the previous version of this test (constructing exactly 3
+    qualifying Tier 1 topics) was tautological -- Tier 1 never exceeds 3
+    topics by construction (tiers._tier_bucket_for_rank only ever offers
+    ranks 1-3 as Tier 1 candidates), so the `== 3: break` cap it claimed to
+    exercise was structurally unreachable regardless of whether the
+    safeguard existed. This test instead measures the REAL fixture: exactly
+    2 Tier 1 topics there are high-confidence facts with on-territory
+    relevance (both admitted Tier 1 topics qualify), independently
+    verifiable against the fixture data, not backfilled to hit a quota."""
+    brief = _brief_from_real_fixture()
+    assert len(brief.content_opportunities.opportunities) == 2
+    assert len(brief.tier1) == 2
     for opp in brief.content_opportunities.opportunities:
         assert opp.reason
+        assert "claim_class=fact" in opp.reason
 
 
 # --- discarded topics ---------------------------------------------------------
@@ -476,6 +645,180 @@ def test_discarded_topics_listed_with_reasons_on_real_fixture() -> None:
 def test_discarded_topics_empty_is_representable() -> None:
     brief = _brief_for([True, False, False])  # only 3 topics total, none discarded
     assert brief.discarded == []
+
+
+# --- Product F2: D1 threshold-watch diagnostic (decision support only) -----
+
+
+def test_d1_threshold_watch_flags_exactly_the_expected_topics_on_real_fixture() -> None:
+    """Measured against the real fixture: exactly rank 2 ('Core Project
+    Spec: Breaking Change To Tool Call Framing', spec_change, evidence_level
+    3) and rank 5 ('VendorC Deprecates Legacy Harness Plugin API',
+    deprecation_notice, evidence_level 3) are flagged -- both are Top-10,
+    not Tier-1-admitted, and satisfy d1_would_admit_at_evidence_3."""
+    brief = _brief_from_real_fixture()
+    by_title = {item.canonical_title: item for item in brief.d1_threshold_watch}
+    assert set(by_title) == {
+        "Core Project Spec: Breaking Change To Tool Call Framing",
+        "VendorC Deprecates Legacy Harness Plugin API",
+    }
+    spec_item = by_title["Core Project Spec: Breaking Change To Tool Call Framing"]
+    assert spec_item.evidence_type == "spec_change"
+    assert spec_item.evidence_level == 3
+    assert spec_item.rank == 2
+    deprecation_item = by_title["VendorC Deprecates Legacy Harness Plugin API"]
+    assert deprecation_item.evidence_type == "deprecation_notice"
+    assert deprecation_item.evidence_level == 3
+    assert deprecation_item.rank == 5
+
+
+def test_d1_threshold_watch_never_changes_tier_assignment() -> None:
+    """The diagnostic must remain decision-support only: no topic flagged by
+    d1_threshold_watch is ever Tier-1 admitted, and admission is unaffected
+    by whether the diagnostic is computed at all."""
+    brief = _brief_from_real_fixture()
+    tier1_topic_ids = {t.topic_id for t in brief.tier1}
+    watch_topic_ids = {item.topic_id for item in brief.d1_threshold_watch}
+    assert tier1_topic_ids.isdisjoint(watch_topic_ids)
+    # Re-building the brief from the same inputs yields the same tier1 set
+    # and the same watch set -- the diagnostic doesn't perturb anything.
+    clusters, items_by_id, ranked = _real_fixture_pipeline()
+    clusters_by_topic_id = {c.topic_id: c for c in clusters}
+    tiered = assign_tiers(ranked, clusters_by_topic_id, items_by_id)
+    brief_again = build_weekly_brief(tiered, ranked, clusters_by_topic_id, items_by_id, WEEK_LABEL)
+    assert {t.topic_id for t in brief_again.tier1} == tier1_topic_ids
+    assert {item.topic_id for item in brief_again.d1_threshold_watch} == watch_topic_ids
+
+
+def test_d1_threshold_watch_empty_is_representable() -> None:
+    """When no Top-10 topic satisfies the diagnostic, the list is empty and
+    the Markdown states so explicitly rather than omitting the section."""
+    brief = _brief_for([True, False, False])
+    assert brief.d1_threshold_watch == []
+    markdown = render_markdown(brief)
+    section = _extract_markdown_section(markdown, "## D1 Threshold Watch")
+    assert "No Top-10 topic is currently flagged" in section
+
+
+def test_d1_threshold_watch_rendered_in_both_markdown_and_json() -> None:
+    brief = _brief_from_real_fixture()
+    markdown = render_markdown(brief)
+    json_str = render_json(brief)
+    payload = json.loads(json_str)
+
+    assert len(payload["d1_threshold_watch"]) == len(brief.d1_threshold_watch)
+    section = _extract_markdown_section(markdown, "## D1 Threshold Watch")
+    for item in brief.d1_threshold_watch:
+        assert item.canonical_title in section
+        assert item.evidence_type in section
+        assert str(item.evidence_level) in section
+
+
+# --- Product F7: TL;DR block, study time, library-movements deferral -------
+
+
+def test_tldr_present_at_most_three_lines_names_top_tier1_actions() -> None:
+    brief = _brief_from_real_fixture()
+    assert brief.tldr
+    assert len(brief.tldr) <= 3
+    assert len(brief.tldr) == len(brief.tier1)
+    for line, item in zip(brief.tldr, brief.tier1, strict=True):
+        assert item.canonical_title in line
+        assert item.recommended_action in line
+
+
+def test_tldr_states_explicitly_when_no_tier1_admitted() -> None:
+    brief = _brief_for([False, False, False])
+    assert brief.tier1 == []
+    assert len(brief.tldr) == 1
+    assert "No topics were admitted to Tier 1" in brief.tldr[0]
+
+
+def test_tldr_rendered_at_the_very_top_distinct_from_executive_summary() -> None:
+    brief = _brief_from_real_fixture()
+    markdown = render_markdown(brief)
+    tldr_index = markdown.index("## If You Read Nothing Else")
+    summary_index = markdown.index("## Executive Summary")
+    assert tldr_index < summary_index
+    for line in brief.tldr:
+        assert line in markdown[tldr_index:summary_index]
+
+
+def test_estimated_study_time_is_distinct_from_reading_time_and_documented() -> None:
+    brief = _brief_from_real_fixture()
+    assert isinstance(brief.estimated_study_minutes, int)
+    assert brief.estimated_study_minutes != brief.estimated_reading_minutes
+    assert brief.estimated_study_time_method
+    assert brief.estimated_study_time_method != brief.estimated_reading_time_method
+
+
+def test_estimated_study_time_is_zero_when_study_queue_is_empty() -> None:
+    brief = _brief_for([False, False, False])
+    assert brief.study_queue.deep is None
+    assert brief.study_queue.light == []
+    assert brief.estimated_study_minutes == 0
+
+
+def test_library_movements_states_deferred_to_m6_when_none_wired_in() -> None:
+    brief = _brief_from_real_fixture()
+    assert brief.library_movements.movements == []
+    assert brief.library_movements.deferred_note is not None
+    assert "deferred to the topic library (M6)" in brief.library_movements.deferred_note
+    markdown = render_markdown(brief)
+    section = _extract_markdown_section(markdown, "## Library Movements")
+    assert "deferred to the topic library (M6)" in section
+
+
+# --- Product F9/F10/F12: appendix method placement, radar title, list ------
+# --- rendering ---------------------------------------------------------------
+
+
+def test_header_shows_compact_reading_and_study_time_pointing_to_appendix() -> None:
+    """F9: the verbose method paragraph must live in the appendix, not the
+    header -- the header shows only the figure and a pointer."""
+    brief = _brief_from_real_fixture()
+    markdown = render_markdown(brief)
+    header = markdown[: markdown.index("## Executive Summary")]
+    assert f"{brief.estimated_reading_minutes} minutes (see appendix for method)" in header
+    assert f"{brief.estimated_study_minutes} minutes (see appendix for method)" in header
+    assert brief.estimated_reading_time_method not in header
+    assert brief.estimated_study_time_method not in header
+    appendix_section = _extract_markdown_section(markdown, "## Appendix")
+    assert brief.estimated_reading_time_method in appendix_section
+    assert brief.estimated_study_time_method in appendix_section
+
+
+def test_radar_paragraph_does_not_repeat_the_title() -> None:
+    """F10: the bullet already shows the title ("- **8. Title** -- ...");
+    the signal_paragraph itself must not repeat it a second time."""
+    brief = _brief_from_real_fixture()
+    assert brief.tier3
+    for item in brief.tier3:
+        assert not item.signal_paragraph.startswith(item.canonical_title)
+
+
+def test_appendix_lists_render_as_joined_text_not_python_repr() -> None:
+    """F12: admission_reasons/exclusion_reasons/warnings must render as
+    human-readable '; '-joined text (or '(none)' when empty), never a Python
+    list repr like "['a', 'b']"."""
+    brief = _brief_from_real_fixture()
+    markdown = render_markdown(brief)
+    appendix_section = _extract_markdown_section(markdown, "## Appendix")
+    record_blocks = re.split(r"(?=^### \d+\. )", appendix_section, flags=re.MULTILINE)
+    for record in brief.appendix:
+        block = next(b for b in record_blocks if f"({record.topic_id})" in b.splitlines()[0])
+        for field_name, value in (
+            ("admission_reasons", record.admission_reasons),
+            ("exclusion_reasons", record.exclusion_reasons),
+            ("warnings", record.warnings),
+        ):
+            # The field's Python list repr (e.g. "['a', 'b']") must never
+            # appear as the rendered value for this field -- only the
+            # "; "-joined human-readable form (or "(none)" when empty).
+            line = next(
+                line for line in block.splitlines() if line.startswith(f"- {field_name}:")
+            )
+            assert line == f"- {field_name}: {'; '.join(value) if value else '(none)'}"
 
 
 # --- determinism --------------------------------------------------------------

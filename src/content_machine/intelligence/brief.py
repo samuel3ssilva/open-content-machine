@@ -35,9 +35,10 @@ writes outside of returning plain Python objects/strings to its caller.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from content_machine.intelligence.models import (
+    ClaimAssessment,
     ClaimClass,
     ConfidenceLevel,
     DimensionScore,
@@ -92,6 +93,47 @@ ESTIMATED_READING_TIME_METHOD = (
     f"the discarded-topics section (if non-empty) {_READING_MINUTES_DISCARDED_SECTION}; "
     f"the ranking-explanation pointer {_READING_MINUTES_RANKING_EXPLANATION_POINTER}; "
     f"each Tier 1 appendix record {_READING_MINUTES_APPENDIX_TIER1_ITEM}. Summed, integer minutes."
+)
+
+# --- deterministic STUDY-time budget (spec 4.2: "tempo de leitura E de       --
+# estudo" -- reading time and study time are two distinct figures). Reading
+# time (above) estimates how long it takes to READ the brief document itself;
+# study time estimates the separate, larger effort of actually working
+# through the study-queue topics it points to. Same fixed-budget method as
+# reading time, for the same circularity reason.
+_STUDY_MINUTES_DEEP_STUDY_TOPIC = 20
+_STUDY_MINUTES_LIGHT_STUDY_TOPIC = 10
+
+ESTIMATED_STUDY_TIME_METHOD = (
+    "Fixed per-study-queue-item minute budget, distinct from the reading-time estimate above "
+    "(spec: reading time AND study time are separate figures): the deep-study topic (if any) "
+    f"{_STUDY_MINUTES_DEEP_STUDY_TOPIC}; each light-study topic "
+    f"{_STUDY_MINUTES_LIGHT_STUDY_TOPIC}. Summed, integer minutes; zero when the study queue "
+    "is empty."
+)
+
+# --- human phrase for action_required, used by the Tier 1/2 lean "why it ----
+# matters" template (no rubric jargon).
+_ACTION_REQUIRED_HUMAN_PHRASE: dict[str, str] = {
+    "migration_required": "requires a migration",
+    "config_or_code_change": "requires a config or code change",
+    "new_option_available": "makes a new option available",
+    "changes_how_to_think": "changes how you should think about this area",
+    "none": "requires no immediate action",
+}
+
+# --- D1 threshold-watch diagnostic (decision-support only, ADR 0004/D1) -----
+D1_THRESHOLD_WATCH_NOTE = (
+    "Would become Tier-1 eligible if D1's threshold were evidence_level >= 3 instead of >= 4 "
+    "(ADR 0004). Currently inert: decision-support only -- does NOT admit this topic to Tier "
+    "1 and never will unless the Founder rules to change the threshold."
+)
+
+# --- library movements (M6 deferral note for a standalone M5 brief) --------
+LIBRARY_MOVEMENTS_DEFERRED_NOTE = (
+    "Library movements (new / promoted-from-deferred / deferred / rejected / stale, with "
+    "reasons) are deferred to the topic library (M6): no persistent topic library is wired "
+    "into this brief yet."
 )
 
 # --- editorial-gate proxy for content opportunities (Founder spec example) --
@@ -271,6 +313,47 @@ class Tier1AppendixRecord(BaseModel):
     dimension_breakdown: list[str]
 
 
+class D1ThresholdWatchItem(BaseModel):
+    """One Top-10 topic flagged by ``tiers.d1_would_admit_at_evidence_3`` --
+    decision-support only for the Founder's D1 threshold ruling (ADR 0004).
+    Never affects ``tier1_admitted``; see
+    ``test_d1_threshold_watch_never_changes_tier_assignment``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    topic_id: str
+    rank: int
+    canonical_title: str
+    evidence_type: str
+    evidence_level: int
+    note: str
+
+
+class LibraryMovement(BaseModel):
+    """One topic's lifecycle movement in the persistent topic library (M6),
+    e.g. newly seen, promoted from deferred, deferred, rejected, or gone
+    stale -- with the reason for the movement."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    topic_id: str
+    canonical_title: str
+    movement: str
+    reason: str
+
+
+class LibraryMovementsSection(BaseModel):
+    """Library movements for this week. ``deferred_note`` is populated (and
+    ``movements`` empty) when no library-update result is wired into this
+    brief -- e.g. a standalone M5 brief with no M6 library yet -- rather than
+    silently omitting the section."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    movements: list[LibraryMovement] = Field(default_factory=list)
+    deferred_note: str | None = None
+
+
 class WeeklyBrief(BaseModel):
     """The full structured Intelligence Brief -- the single source of truth
     both the Markdown and the JSON outputs are derived from.
@@ -288,9 +371,12 @@ class WeeklyBrief(BaseModel):
     weights_version: str
     taxonomy_version: str
     profile_version: str
+    tldr: list[str]
     executive_summary: list[str]
     estimated_reading_minutes: int
     estimated_reading_time_method: str
+    estimated_study_minutes: int
+    estimated_study_time_method: str
     tier1: list[Tier1LeanItem]
     tier1_short_reason: str | None
     tier2: list[Tier2Item]
@@ -299,6 +385,8 @@ class WeeklyBrief(BaseModel):
     experiment: ExperimentSelection
     content_opportunities: ContentOpportunitySelection
     discarded: list[DiscardedTopic]
+    d1_threshold_watch: list[D1ThresholdWatchItem]
+    library_movements: LibraryMovementsSection
     ranking_explanation_pointer: str
     appendix: list[Tier1AppendixRecord]
     review_status: str = REVIEW_STATUS
@@ -357,15 +445,36 @@ def _anchor_for_topic(
     return items_by_id[cluster.anchor_item_id]
 
 
-def _build_tier1_lean(topic: TieredTopic, breakdown: RankingBreakdown) -> Tier1LeanItem:
-    magnitude = _dimension(breakdown, "magnitude")
-    consequence = _dimension(breakdown, "consequence")
+def _human_what_changed(anchor: SourceItem) -> str:
+    """Human-authored prose about the actual change, never rubric mechanics:
+    the anchor's authored ``change_class_rationale``, falling back to its
+    ``summary_normalized`` only when the rationale was left empty."""
+    return anchor.change_class_rationale or anchor.summary_normalized
+
+
+def _human_why_it_matters(inputs: RankingInputs, claim: ClaimAssessment) -> str:
+    """Deterministic, human-readable template built ONLY from already-computed
+    structured fields (topic_tags, action_required, claim_class, confidence)
+    -- no rubric jargon (raw/effective values, weights, caps/floors)."""
+    territory = ", ".join(sorted(inputs.topic_tags)) if inputs.topic_tags else "no matched tag"
+    action_phrase = _ACTION_REQUIRED_HUMAN_PHRASE.get(
+        inputs.action_required, inputs.action_required
+    )
+    return (
+        f"On-territory ({territory}); {action_phrase}. "
+        f"{claim.claim_class} at {claim.confidence} confidence."
+    )
+
+
+def _build_tier1_lean(
+    topic: TieredTopic, breakdown: RankingBreakdown, inputs: RankingInputs, anchor: SourceItem
+) -> Tier1LeanItem:
     return Tier1LeanItem(
         rank=topic.rank,
         topic_id=topic.topic_id,
         canonical_title=topic.canonical_title,
-        what_changed=magnitude.rationale,
-        why_it_matters=consequence.rationale,
+        what_changed=_human_what_changed(anchor),
+        why_it_matters=_human_why_it_matters(inputs, topic.claim),
         evidence_and_confidence=(
             f"{topic.claim.claim_class} claim, {topic.claim.confidence} confidence -- "
             f"{topic.claim.confidence_reason}"
@@ -377,15 +486,14 @@ def _build_tier1_lean(topic: TieredTopic, breakdown: RankingBreakdown) -> Tier1L
     )
 
 
-def _build_tier2(topic: TieredTopic, breakdown: RankingBreakdown) -> Tier2Item:
-    magnitude = _dimension(breakdown, "magnitude")
+def _build_tier2(topic: TieredTopic, breakdown: RankingBreakdown, anchor: SourceItem) -> Tier2Item:
     consequence = _dimension(breakdown, "consequence")
     evidence = _dimension(breakdown, "evidence")
     return Tier2Item(
         rank=topic.rank,
         topic_id=topic.topic_id,
         canonical_title=topic.canonical_title,
-        explanation=magnitude.rationale,
+        explanation=_human_what_changed(anchor),
         practical_consequence=consequence.rationale,
         principal_evidence=evidence.rationale,
         confidence=topic.claim.confidence,
@@ -415,7 +523,7 @@ def _build_radar(topic: TieredTopic) -> RadarItem:
         entered_because = "it ranked outside the Top 3 window"
     future_event = _radar_future_event(topic.claim.claim_class, topic.claim.confidence)
     paragraph = (
-        f"{topic.canonical_title}. Currently ranked #{topic.rank} (score {topic.score}/100), "
+        f"Currently ranked #{topic.rank} (score {topic.score}/100), "
         f"classified as {topic.claim.claim_class} at {topic.claim.confidence} confidence. "
         f"It entered the radar because {entered_because}. It would warrant closer attention if "
         f"{future_event}."
@@ -563,6 +671,14 @@ def _build_content_opportunities(
                 ),
             )
         )
+        # Defensive cap, currently structurally unreachable: Tier 1 never
+        # admits more than 3 topics (tiers._tier_bucket_for_rank only ever
+        # offers ranks 1-3 as Tier 1 candidates), so `tier1_topics` itself
+        # never has more than 3 elements today. Kept explicit rather than
+        # removed in case Tier 1's size ever changes upstream -- see
+        # test_content_opportunities_exact_count_matches_documented_selection_rule_on_real_fixture
+        # for the real-fixture test that exercises the actual documented
+        # behaviour instead of a tautological one.
         if len(opportunities) == 3:
             break
     none_reason = None
@@ -611,11 +727,11 @@ def _tier1_short_reason(top_n_topics: list[TieredTopic], tier1_count: int) -> st
         )
     reasons = []
     for t in failed:
-        no_backfill = next(
-            (w for w in t.tier_assignment.warnings if "no-backfill" in w.lower()),
-            f"rank {t.rank} failed Tier 1 admission",
+        failing_condition = _primary_exclusion_category(t.tier_assignment.exclusion_reasons)
+        reasons.append(
+            f"rank {t.rank} ('{t.canonical_title}'): no-backfill rule applied -- fell through "
+            f"to Tier 2 because it failed admission on {failing_condition}"
         )
-        reasons.append(f"rank {t.rank} ('{t.canonical_title}'): {no_backfill}")
     joined = "; ".join(reasons)
     return (
         f"Tier 1 shipped with only {tier1_count} of 3 possible slots -- never backfilled "
@@ -723,6 +839,60 @@ def _estimate_reading_minutes(brief_parts: dict[str, int]) -> int:
     return total
 
 
+def _estimate_study_minutes(*, deep_present: bool, light_count: int) -> int:
+    total = _STUDY_MINUTES_DEEP_STUDY_TOPIC if deep_present else 0
+    total += _STUDY_MINUTES_LIGHT_STUDY_TOPIC * light_count
+    return total
+
+
+def _build_tldr(tier1_topics: list[TieredTopic]) -> list[str]:
+    """The 3-line (at most, since Tier 1 never exceeds 3 items) "If you read
+    nothing else" summary -- distinct from the executive summary, naming only
+    the top Tier 1 action(s) in rank order."""
+    if not tier1_topics:
+        return [
+            "No topics were admitted to Tier 1 this week -- see Tier 2 (Should Know) for the "
+            "highest-priority items instead."
+        ]
+    return [
+        f"{t.rank}. {t.canonical_title} -- {t.tier_assignment.recommended_action}: "
+        f"{t.tier_assignment.recommended_action_reason}"
+        for t in tier1_topics
+    ]
+
+
+def _build_d1_threshold_watch(
+    tiered: list[TieredTopic],
+    inputs_by_topic_id: dict[str, RankingInputs],
+    clusters_by_topic_id: dict[str, TopicCluster],
+    items_by_id: dict[str, SourceItem],
+) -> list[D1ThresholdWatchItem]:
+    """Every Top-10 topic flagged by the ``d1_would_admit_at_evidence_3``
+    diagnostic that is NOT already Tier-1 admitted -- decision-support only
+    for the Founder's D1 threshold ruling (ADR 0004). Reads
+    ``tier_assignment.d1_would_admit_at_evidence_3`` (computed in
+    ``tiers.py``) and never itself decides or changes admission."""
+    watch: list[D1ThresholdWatchItem] = []
+    for t in tiered:
+        if not t.tier_assignment.d1_would_admit_at_evidence_3:
+            continue
+        if t.tier_assignment.tier1_admitted:
+            continue
+        anchor = _anchor_for_topic(t.topic_id, clusters_by_topic_id, items_by_id)
+        inputs = inputs_by_topic_id[t.topic_id]
+        watch.append(
+            D1ThresholdWatchItem(
+                topic_id=t.topic_id,
+                rank=t.rank,
+                canonical_title=t.canonical_title,
+                evidence_type=anchor.evidence_type,
+                evidence_level=inputs.evidence_level,
+                note=D1_THRESHOLD_WATCH_NOTE,
+            )
+        )
+    return watch
+
+
 # ------------------------------ public API -----------------------------------
 
 
@@ -732,6 +902,7 @@ def build_weekly_brief(
     clusters_by_topic_id: dict[str, TopicCluster],
     items_by_id: dict[str, SourceItem],
     week_label: str,
+    library_movements: LibraryMovementsSection | None = None,
 ) -> WeeklyBrief:
     """Build the full structured Intelligence Brief.
 
@@ -745,17 +916,41 @@ def build_weekly_brief(
     the caller-supplied ISO week label (e.g. ``"2026-W30"``) -- this function
     never reads the wall clock.
 
+    ``library_movements`` is OPTIONAL: this module never imports or depends
+    on ``content_machine.intelligence.library`` (M6) -- a caller that has run
+    the M6 library update may build a :class:`LibraryMovementsSection` from
+    its result and pass it in; when omitted (the default, and the only path
+    exercised by an M5-only caller), this brief states explicitly that
+    library movements are deferred to M6 rather than silently omitting the
+    section.
+
     Pure and deterministic: same arguments, same :class:`WeeklyBrief` (field
     for field, including nested lists in the same order).
     """
     breakdown_by_topic_id = _breakdown_lookup(ranked)
+    inputs_by_topic_id = {inputs.topic_id: inputs for inputs, _breakdown in ranked}
 
     tier1_topics = [t for t in tiered if t.tier_assignment.tier == "tier_1"]
     tier2_topics = [t for t in tiered if t.tier_assignment.tier == "tier_2"]
     tier3_topics = [t for t in tiered if t.tier_assignment.tier == "tier_3"]
 
-    tier1 = [_build_tier1_lean(t, breakdown_by_topic_id[t.topic_id]) for t in tier1_topics]
-    tier2 = [_build_tier2(t, breakdown_by_topic_id[t.topic_id]) for t in tier2_topics]
+    tier1 = [
+        _build_tier1_lean(
+            t,
+            breakdown_by_topic_id[t.topic_id],
+            inputs_by_topic_id[t.topic_id],
+            _anchor_for_topic(t.topic_id, clusters_by_topic_id, items_by_id),
+        )
+        for t in tier1_topics
+    ]
+    tier2 = [
+        _build_tier2(
+            t,
+            breakdown_by_topic_id[t.topic_id],
+            _anchor_for_topic(t.topic_id, clusters_by_topic_id, items_by_id),
+        )
+        for t in tier2_topics
+    ]
     tier3 = [_build_radar(t) for t in tier3_topics]
 
     appendix = [
@@ -767,6 +962,13 @@ def build_weekly_brief(
     experiment = _build_experiment(tiered, ranked, clusters_by_topic_id, items_by_id)
     content_opportunities = _build_content_opportunities(tier1_topics, breakdown_by_topic_id)
     tier1_short_reason = _tier1_short_reason(tiered, len(tier1_topics))
+    d1_threshold_watch = _build_d1_threshold_watch(
+        tiered, inputs_by_topic_id, clusters_by_topic_id, items_by_id
+    )
+    if library_movements is None:
+        library_movements = LibraryMovementsSection(
+            movements=[], deferred_note=LIBRARY_MOVEMENTS_DEFERRED_NOTE
+        )
 
     executive_summary = _build_executive_summary(
         ranked=ranked,
@@ -781,6 +983,8 @@ def build_weekly_brief(
         tier1_short_reason=tier1_short_reason,
     )
 
+    tldr = _build_tldr(tier1_topics)
+
     estimated_reading_minutes = _estimate_reading_minutes(
         {
             "tier1": len(tier1),
@@ -792,6 +996,10 @@ def build_weekly_brief(
             "content_opportunities": len(content_opportunities.opportunities),
             "discarded": len(discarded),
         }
+    )
+    estimated_study_minutes = _estimate_study_minutes(
+        deep_present=study_queue.deep is not None,
+        light_count=len(study_queue.light),
     )
 
     first_breakdown = ranked[0][1] if ranked else None
@@ -809,9 +1017,12 @@ def build_weekly_brief(
         weights_version=first_breakdown.weights_version if first_breakdown else "",
         taxonomy_version=first_breakdown.taxonomy_version if first_breakdown else "",
         profile_version=first_breakdown.profile_version if first_breakdown else "",
+        tldr=tldr,
         executive_summary=executive_summary,
         estimated_reading_minutes=estimated_reading_minutes,
         estimated_reading_time_method=ESTIMATED_READING_TIME_METHOD,
+        estimated_study_minutes=estimated_study_minutes,
+        estimated_study_time_method=ESTIMATED_STUDY_TIME_METHOD,
         tier1=tier1,
         tier1_short_reason=tier1_short_reason,
         tier2=tier2,
@@ -820,6 +1031,8 @@ def build_weekly_brief(
         experiment=experiment,
         content_opportunities=content_opportunities,
         discarded=discarded,
+        d1_threshold_watch=d1_threshold_watch,
+        library_movements=library_movements,
         ranking_explanation_pointer=ranking_explanation_pointer,
         appendix=appendix,
         review_status=REVIEW_STATUS,
@@ -917,6 +1130,42 @@ def _render_discarded_section(brief: WeeklyBrief) -> list[str]:
     return lines
 
 
+def _render_string_list(values: list[str]) -> str:
+    """Render a list of strings as human-readable ``; ``-joined text, never a
+    Python list repr (``['a', 'b']``) -- see Product F12."""
+    return "; ".join(values) if values else "(none)"
+
+
+def _render_d1_threshold_watch_section(brief: WeeklyBrief) -> list[str]:
+    lines = ["## D1 Threshold Watch (Decision Support)"]
+    if not brief.d1_threshold_watch:
+        lines.append(
+            "No Top-10 topic is currently flagged by the d1_would_admit_at_evidence_3 "
+            "diagnostic."
+        )
+    for item in brief.d1_threshold_watch:
+        lines.append(
+            f"- **{item.canonical_title}** (rank {item.rank}, evidence_type="
+            f"{item.evidence_type}, evidence_level={item.evidence_level}): {item.note}"
+        )
+    return lines
+
+
+def _render_library_movements_section(brief: WeeklyBrief) -> list[str]:
+    lines = ["## Library Movements"]
+    movements = brief.library_movements
+    if movements.deferred_note is not None and not movements.movements:
+        lines.append(f"_{movements.deferred_note}_")
+    elif not movements.movements:
+        lines.append("No library movements this week.")
+    else:
+        for movement in movements.movements:
+            lines.append(
+                f"- **{movement.canonical_title}** -- {movement.movement}: {movement.reason}"
+            )
+    return lines
+
+
 def _render_appendix_section(brief: WeeklyBrief) -> list[str]:
     lines = ["## Appendix -- Full Tier 1 Records"]
     if not brief.appendix:
@@ -931,12 +1180,16 @@ def _render_appendix_section(brief: WeeklyBrief) -> list[str]:
         lines.append(f"- claim_class_reason: {record.claim_class_reason}")
         lines.append(f"- confidence: {record.confidence}")
         lines.append(f"- confidence_reason: {record.confidence_reason}")
-        lines.append(f"- admission_reasons: {record.admission_reasons}")
-        lines.append(f"- exclusion_reasons: {record.exclusion_reasons}")
-        lines.append(f"- warnings: {record.warnings}")
+        lines.append(f"- admission_reasons: {_render_string_list(record.admission_reasons)}")
+        lines.append(f"- exclusion_reasons: {_render_string_list(record.exclusion_reasons)}")
+        lines.append(f"- warnings: {_render_string_list(record.warnings)}")
         lines.append("- dimension_breakdown:")
         for dim_line in record.dimension_breakdown:
             lines.append(f"  - {dim_line}")
+    lines.append("")
+    lines.append("### Reading & Study Time Method")
+    lines.append(f"- Reading time method: {brief.estimated_reading_time_method}")
+    lines.append(f"- Study time method: {brief.estimated_study_time_method}")
     return lines
 
 
@@ -948,9 +1201,19 @@ def render_markdown(brief: WeeklyBrief) -> str:
     lines: list[str] = []
     lines.append(f"# Intelligence Brief -- Week {brief.week_label}")
     lines.append("")
+    lines.append("## If You Read Nothing Else")
+    for line in brief.tldr:
+        lines.append(f"- {line}")
+    lines.append("")
     lines.append("**Status:** DRAFT -- awaiting Founder review. Nothing here is published.")
-    lines.append(f"**Estimated reading time:** {brief.estimated_reading_minutes} minutes.")
-    lines.append(f"_Method: {brief.estimated_reading_time_method}_")
+    lines.append(
+        f"**Estimated reading time:** {brief.estimated_reading_minutes} minutes "
+        "(see appendix for method)."
+    )
+    lines.append(
+        f"**Estimated study time:** {brief.estimated_study_minutes} minutes "
+        "(see appendix for method)."
+    )
     lines.append("")
     lines.append("## Executive Summary")
     for sentence in brief.executive_summary:
@@ -969,6 +1232,10 @@ def render_markdown(brief: WeeklyBrief) -> str:
     lines.extend(_render_content_opportunities_section(brief))
     lines.append("")
     lines.extend(_render_discarded_section(brief))
+    lines.append("")
+    lines.extend(_render_d1_threshold_watch_section(brief))
+    lines.append("")
+    lines.extend(_render_library_movements_section(brief))
     lines.append("")
     lines.append("## Ranking Explanation")
     lines.append(brief.ranking_explanation_pointer)

@@ -65,6 +65,46 @@
       "title": "ContentOpportunitySelection",
       "type": "object"
     },
+    "D1ThresholdWatchItem": {
+      "additionalProperties": false,
+      "description": "One Top-10 topic flagged by ``tiers.d1_would_admit_at_evidence_3`` --\ndecision-support only for the Founder's D1 threshold ruling (ADR 0004).\nNever affects ``tier1_admitted``; see\n``test_d1_threshold_watch_never_changes_tier_assignment``.",
+      "properties": {
+        "topic_id": {
+          "title": "Topic Id",
+          "type": "string"
+        },
+        "rank": {
+          "title": "Rank",
+          "type": "integer"
+        },
+        "canonical_title": {
+          "title": "Canonical Title",
+          "type": "string"
+        },
+        "evidence_type": {
+          "title": "Evidence Type",
+          "type": "string"
+        },
+        "evidence_level": {
+          "title": "Evidence Level",
+          "type": "integer"
+        },
+        "note": {
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "topic_id",
+        "rank",
+        "canonical_title",
+        "evidence_type",
+        "evidence_level",
+        "note"
+      ],
+      "title": "D1ThresholdWatchItem",
+      "type": "object"
+    },
     "DiscardedTopic": {
       "additionalProperties": false,
       "description": "One topic ranked below the Top N, with a one-line reason.",
@@ -161,6 +201,63 @@
         "what_it_would_test"
       ],
       "title": "ExperimentSuggestion",
+      "type": "object"
+    },
+    "LibraryMovement": {
+      "additionalProperties": false,
+      "description": "One topic's lifecycle movement in the persistent topic library (M6),\ne.g. newly seen, promoted from deferred, deferred, rejected, or gone\nstale -- with the reason for the movement.",
+      "properties": {
+        "topic_id": {
+          "title": "Topic Id",
+          "type": "string"
+        },
+        "canonical_title": {
+          "title": "Canonical Title",
+          "type": "string"
+        },
+        "movement": {
+          "title": "Movement",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "topic_id",
+        "canonical_title",
+        "movement",
+        "reason"
+      ],
+      "title": "LibraryMovement",
+      "type": "object"
+    },
+    "LibraryMovementsSection": {
+      "additionalProperties": false,
+      "description": "Library movements for this week. ``deferred_note`` is populated (and\n``movements`` empty) when no library-update result is wired into this\nbrief -- e.g. a standalone M5 brief with no M6 library yet -- rather than\nsilently omitting the section.",
+      "properties": {
+        "movements": {
+          "items": {
+            "$ref": "#/$defs/LibraryMovement"
+          },
+          "title": "Movements",
+          "type": "array"
+        },
+        "deferred_note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Deferred Note"
+        }
+      },
+      "title": "LibraryMovementsSection",
       "type": "object"
     },
     "RadarItem": {
@@ -530,6 +627,13 @@
       "title": "Profile Version",
       "type": "string"
     },
+    "tldr": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Tldr",
+      "type": "array"
+    },
     "executive_summary": {
       "items": {
         "type": "string"
@@ -543,6 +647,14 @@
     },
     "estimated_reading_time_method": {
       "title": "Estimated Reading Time Method",
+      "type": "string"
+    },
+    "estimated_study_minutes": {
+      "title": "Estimated Study Minutes",
+      "type": "integer"
+    },
+    "estimated_study_time_method": {
+      "title": "Estimated Study Time Method",
       "type": "string"
     },
     "tier1": {
@@ -593,6 +705,16 @@
       "title": "Discarded",
       "type": "array"
     },
+    "d1_threshold_watch": {
+      "items": {
+        "$ref": "#/$defs/D1ThresholdWatchItem"
+      },
+      "title": "D1 Threshold Watch",
+      "type": "array"
+    },
+    "library_movements": {
+      "$ref": "#/$defs/LibraryMovementsSection"
+    },
     "ranking_explanation_pointer": {
       "title": "Ranking Explanation Pointer",
       "type": "string"
@@ -617,9 +739,12 @@
     "weights_version",
     "taxonomy_version",
     "profile_version",
+    "tldr",
     "executive_summary",
     "estimated_reading_minutes",
     "estimated_reading_time_method",
+    "estimated_study_minutes",
+    "estimated_study_time_method",
     "tier1",
     "tier1_short_reason",
     "tier2",
@@ -628,6 +753,8 @@
     "experiment",
     "content_opportunities",
     "discarded",
+    "d1_threshold_watch",
+    "library_movements",
     "ranking_explanation_pointer",
     "appendix"
   ],
