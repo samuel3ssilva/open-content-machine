@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="780" height="558" viewBox="0 0 780 558" font-family="SFMono-Regular, Consolas, Menlo, monospace">
-<rect width="780" height="558" rx="10" fill="#1e2227"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="780" height="577" viewBox="0 0 780 577" font-family="SFMono-Regular, Consolas, Menlo, monospace">
+<rect width="780" height="577" rx="10" fill="#1e2227"/>
 <path d="M0 10 a10 10 0 0 1 10 -10 h760 a10 10 0 0 1 10 10 v26 h-780 z" fill="#2b3038"/>
 <circle cx="22" cy="18" r="5.5" fill="#bf616a"/>
 <circle cx="42" cy="18" r="5.5" fill="#ebcb8b"/>
@@ -31,6 +31,7 @@
 <text x="18" y="462" font-size="13" fill="#d8dee9" xml:space="preserve">- Duplicates: 2</text>
 <text x="18" y="481" font-size="13" fill="#d8dee9" xml:space="preserve">- Valid rows: 30</text>
 <text x="18" y="500" font-size="13" fill="#d8dee9" xml:space="preserve">- Invalid rows (empty): 1</text>
-<text x="18" y="519" font-size="13" fill="#7b8899" xml:space="preserve">... (full report continues: completeness, companies, roles,</text>
-<text x="18" y="538" font-size="13" fill="#7b8899" xml:space="preserve">     role families, connection timeline)</text>
+<text x="18" y="519" font-size="13" fill="#7b8899" xml:space="preserve">  (the empty row is tracked separately from the 30 data rows)</text>
+<text x="18" y="538" font-size="13" fill="#7b8899" xml:space="preserve">... (full report continues: completeness, companies, roles,</text>
+<text x="18" y="557" font-size="13" fill="#7b8899" xml:space="preserve">     role families, connection timeline)</text>
 </svg>

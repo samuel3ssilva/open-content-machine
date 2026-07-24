@@ -89,13 +89,13 @@ page](docs/PORTFOLIO_CASE_STUDY.md).
 
 ## How to read this repo
 
-- **30 seconds:** the top of this README (above), plus the two demo
-  screenshots under [Quickstart](#quickstart) and [Privacy
-  principles](#privacy-principles).
+- **30 seconds:** the top of this README, including the architecture diagram
+  above; the two terminal screenshots under [Quickstart](#quickstart) and
+  [Privacy principles](#privacy-principles) if you have a few seconds more.
 - **2 minutes:** [Architecture at a glance](#architecture-at-a-glance),
   [Privacy principles](#privacy-principles), the key decisions in
-  [`docs/adr/`](docs/adr/), and [Limitations and
-  status](#engineering-trade-offs).
+  [`docs/adr/`](docs/adr/), and [Engineering trade-offs and
+  limitations](#engineering-trade-offs).
 - **10 minutes:** [Quickstart](#quickstart), [CLI
   reference](#cli-reference), [`schemas/`](schemas/),
   [`SECURITY.md`](SECURITY.md), [`docs/threat-model.md`](docs/threat-model.md),
@@ -208,6 +208,9 @@ synthetic dataset:
 | connected_on | 100.0% |
 ...
 ```
+
+(The one empty row is tracked separately from the 30 data rows, which is why
+`valid + invalid` does not sum to the total above.)
 
 ## Architecture at a glance
 
@@ -348,9 +351,11 @@ trust boundaries, and dependency rules.
 
 ## Model workforce
 
-This project is built by a team of Claude models with a fixed division of
-labor: **Fable** handles architecture and security, **Opus** handles
-engineering design, and **Sonnet** handles implementation. See
+The Founder directs this project and owns every product, privacy, and
+publication decision. The Claude models are a supervised engineering
+workforce under a documented routing policy, with a fixed division of labor:
+**Fable** handles architecture and security, **Opus** handles engineering
+design, and **Sonnet** handles implementation. See
 [`docs/model-routing.md`](docs/model-routing.md) for the full routing rules
 and accountability model.
 
