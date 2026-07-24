@@ -97,14 +97,24 @@ def test_profile_swap_flips_relative_order() -> None:
 # --- DUPLICATE-APPEND INVARIANCE ----------------------------------------------
 
 
-def test_duplicate_append_invariance() -> None:
-    """Appending a member whose canonical reference already exists in the
-    cluster must not change the resulting RankingBreakdown at all -- even
-    when the duplicate carries a DIFFERENT publisher_id and an INDEPENDENT
+def _duplicate_append_invariance_case(
+    original_date: date, duplicate_date: date, *, expect_first_seen_change: bool
+) -> None:
+    """Shared body for the duplicate-append invariance checks below. Appending
+    a member whose canonical reference already exists in the cluster must not
+    change any SCORED field of the resulting RankingBreakdown -- even when
+    the duplicate carries a DIFFERENT publisher_id and an INDEPENDENT
     evidence_type (F2: a same-URL "duplicate" must be excluded from
-    independence/evidence accounting exactly like a "syndicated" copy is;
-    a duplicate sharing both publisher_id and evidence_type with the
-    original would pass this test even without that fix)."""
+    independence/evidence accounting exactly like a "syndicated" copy is),
+    and regardless of which of the two carries the earlier publication date
+    (R3: the content-determined origin -- the subject-published member --
+    must always win, never whichever happens to be dated earlier).
+
+    ``tie_break_key`` is compared separately: it embeds ``first_seen``, which
+    a duplicate CAN legitimately shift if it is dated earlier than the
+    original (R9 -- ordering only, never points), so it is excluded from the
+    main equality check and asserted explicitly via
+    ``expect_first_seen_change`` instead."""
     profile = _profile_with_territories(("agents", 5))
     original = _make_item(
         item_id="dup-original",
@@ -113,6 +123,8 @@ def test_duplicate_append_invariance() -> None:
         topic_tags=["agents"],
         stable_reference="https://example.com/vendor-dup/launch",
         evidence_type="announcement",
+        publication_date=original_date,
+        detection_date=original_date,
     )
     duplicate = _make_item(
         item_id="dup-mirror",
@@ -124,6 +136,8 @@ def test_duplicate_append_invariance() -> None:
         # Independent, non-subject evidence_type: must NOT flip
         # has_independent_evidence just by being appended as a duplicate.
         evidence_type="independent_analysis",
+        publication_date=duplicate_date,
+        detection_date=duplicate_date,
     )
 
     items_by_id = {original.item_id: original, duplicate.item_id: duplicate}
@@ -138,7 +152,122 @@ def test_duplicate_append_invariance() -> None:
     breakdown_after = score_topic(inputs_after, profile)
 
     assert clusters_after[0].member_roles["dup-mirror"] == "duplicate"
-    assert breakdown_before.model_dump() == breakdown_after.model_dump()
+    assert clusters_after[0].anchor_item_id == "dup-original"
+
+    before_dump = breakdown_before.model_dump()
+    after_dump = breakdown_after.model_dump()
+    before_tie_break = before_dump.pop("tie_break_key")
+    after_tie_break = after_dump.pop("tie_break_key")
+    # Every SCORED field -- points, dimensions, evidence, tier1 eligibility --
+    # must be byte-identical regardless of the duplicate's date.
+    assert before_dump == after_dump
+    if expect_first_seen_change:
+        assert before_tie_break != after_tie_break
+    else:
+        assert before_tie_break == after_tie_break
+
+
+def test_duplicate_append_invariance() -> None:
+    """Baseline case: the appended duplicate is dated AFTER the original, so
+    first_seen (min date) is unaffected by it -- tie_break_key, too, is fully
+    unchanged."""
+    _duplicate_append_invariance_case(
+        original_date=date(2026, 1, 1),
+        duplicate_date=date(2026, 1, 10),
+        expect_first_seen_change=False,
+    )
+
+
+def test_duplicate_append_invariance_earlier_dated_duplicate() -> None:
+    """R3 (Gate A correction round 2): the SAME scoring invariance must hold
+    even when the appended duplicate is dated BEFORE the original -- before
+    this fix, an earlier-dated same-URL duplicate could take over the anchor
+    and rewrite the cluster's evidence (measured: +90 points, score
+    70 -> 88), because ``_select_anchor`` picked purely by date with no
+    regard to which member was the content-determined origin of the
+    duplicate group. The previously-committed invariance test only passed by
+    an accident of ``stable_reference`` string ordering breaking a same-day
+    tie in the origin's favor -- this pins the earlier-dated case explicitly,
+    with no tie to hide behind. An earlier-dated duplicate DOES legitimately
+    shift first_seen (R9: ordering only, never points), so tie_break_key is
+    expected to change even though every scored field must not."""
+    _duplicate_append_invariance_case(
+        original_date=date(2026, 1, 10),
+        duplicate_date=date(2026, 1, 1),
+        expect_first_seen_change=True,
+    )
+
+
+# --- SYNDICATION-ORIGIN INVARIANCE (Gate A correction round 2, R2) ------------
+
+
+def test_syndication_origin_invariant_under_date_order() -> None:
+    """Two byte-identical-text artifacts -- one a first-party vendor
+    announcement, one a non-subject independent_analysis -- must produce the
+    SAME evidence_level, marketing_risk, and tier1_eligible regardless of
+    which one is dated earlier. Before this fix, date order alone flipped
+    Tier-1 admission: with the vendor dated earlier, the vendor became the
+    anchor and the analyst -- purely by coincidence of item_id ordering --
+    was marked syndicated (evidence 2, marketing_risk, Tier-1 BARRED); with
+    the analyst dated earlier, the analyst became the anchor and (because the
+    anchor is exempted from ever being marked syndicated) its near-identical
+    text was never checked at all, wrongly admitting the pair as
+    independently corroborated (evidence 4, Tier-1 ADMITTED). The fix makes
+    the vendor the origin of its own text regardless of date, so the analyst
+    is always the syndicated copy -- consistently barred in both orders."""
+    profile = _profile_with_territories(("agents", 5))
+    shared_summary = (
+        "the vendor announced a new agent harness feature with built in guardrails "
+        "for safer autonomous execution"
+    )
+
+    def _score(vendor_date: date, analyst_date: date) -> tuple[int, bool, bool]:
+        # Identical titles (not just near-identical) so the two items are
+        # guaranteed to merge into ONE cluster under cluster_items' top-level
+        # merge rule (title Jaccard >= 0.6 AND shared subject_entity_ids) --
+        # this test is about what happens INSIDE a cluster (syndication-
+        # origin selection), not about the top-level merge decision itself.
+        shared_title = "R2 Flip Test Shared Event"
+        vendor_item = _make_item(
+            item_id="r2-vendor",
+            publisher_id="vendor-r2",
+            subject_entity_ids=["vendor-r2"],
+            title=shared_title,
+            summary_normalized=shared_summary,
+            publication_date=vendor_date,
+            detection_date=vendor_date,
+            stable_reference="https://example.com/vendor-r2/announcement",
+            evidence_type="announcement",
+            topic_tags=["agents"],
+        )
+        analyst_item = _make_item(
+            item_id="r2-analyst",
+            publisher_id="indy-analyst-r2",
+            subject_entity_ids=["vendor-r2"],
+            title=shared_title,
+            summary_normalized=shared_summary,
+            publication_date=analyst_date,
+            detection_date=analyst_date,
+            stable_reference="https://example.org/indy-analyst-r2/analysis",
+            evidence_type="independent_analysis",
+            topic_tags=["agents"],
+        )
+        items_by_id = {vendor_item.item_id: vendor_item, analyst_item.item_id: analyst_item}
+        clusters = cluster_items([vendor_item, analyst_item])
+        assert len(clusters) == 1
+        cluster = clusters[0]
+        inputs = to_ranking_inputs(cluster, items_by_id)
+        breakdown = score_topic(inputs, profile)
+        return cluster.evidence_level, cluster.marketing_risk, breakdown.tier1_eligible
+
+    vendor_earlier = _score(vendor_date=date(2026, 1, 1), analyst_date=date(2026, 1, 5))
+    analyst_earlier = _score(vendor_date=date(2026, 1, 5), analyst_date=date(2026, 1, 1))
+
+    assert vendor_earlier == analyst_earlier
+    # The fix's specific, correct outcome: the analyst's near-identical text
+    # is syndication of the vendor's own announcement, not independent
+    # corroboration, in EITHER date order.
+    assert vendor_earlier == (2, True, False)
 
 
 # --- SOURCE-VOLUME INVARIANCE (decision B) ------------------------------------

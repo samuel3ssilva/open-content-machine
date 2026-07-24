@@ -22,8 +22,8 @@ invalid JSON, wrong top-level shape) raises :class:`SignalLoadError`.
 
 from __future__ import annotations
 
+import hashlib
 import json
-import re
 from pathlib import Path
 from typing import Literal
 
@@ -47,27 +47,38 @@ IssueKind = Literal[
     "invalid_value",
 ]
 
-# A tag outside the closed TOPIC_TAXONOMY is only echoed verbatim into a
-# LoadIssue when it is itself taxonomy-SHAPED (lowercase ascii letters,
-# digits, hyphens, <=32 chars) -- i.e. plausibly just a new/misspelled tag,
-# not arbitrary attacker- or user-supplied text. Anything else (e.g. an
-# email-shaped string, mixed case, unicode, or an over-long value) is
-# reported only as the literal "<non-conforming>" placeholder, once per
-# offending tag, so the count is still visible without leaking the value.
-_TAG_SHAPE_RE = re.compile(r"^[a-z0-9-]{1,32}$")
-_NON_CONFORMING_TAG_PLACEHOLDER = "<non-conforming>"
+# A tag outside the closed TOPIC_TAXONOMY is NEVER echoed verbatim into a
+# LoadIssue, in any shape -- CLAUDE.md's privacy rule ("no PII in code, logs,
+# fixtures, or error messages") is unconditional, and a taxonomy-shaped tag
+# (lowercase ascii letters, digits, hyphens) is exactly the shape of a
+# LinkedIn public-profile name slug (e.g. "maria-santos"), so a shape-based
+# allowlist for echoing is not a safe filter (Gate A correction round 2, R5:
+# the orchestrator's ruling is the strictest option -- never echo an unknown
+# tag value at all). Only the FIELD NAME and a count are reported; a short
+# stable sha256 prefix per offending tag is included for debuggability only
+# -- it is irreversible and never the tag text itself.
+_TAG_DIGEST_LENGTH = 8
+
+
+def _tag_digest(tag: str) -> str:
+    """A short, stable, irreversible fingerprint of an unrecognized tag --
+    safe to log because it cannot be reversed to the original tag text."""
+    return hashlib.sha256(tag.encode("utf-8")).hexdigest()[:_TAG_DIGEST_LENGTH]
 
 
 class LoadIssue(BaseModel):
     """A single non-fatal problem found while loading a signal item.
 
-    ``fields`` names the offending field(s), or, for ``unknown_topic_tag``,
-    the offending tag string(s) -- but ONLY when a tag is itself
-    taxonomy-shaped (see ``_TAG_SHAPE_RE``); a tag that is not taxonomy-shaped
-    could be arbitrary text (an email address, an injection attempt, etc.),
-    so it is replaced by the literal ``"<non-conforming>"`` placeholder
-    instead of being echoed verbatim. ``message`` never contains free-text
-    field values (titles, summaries, publisher ids, etc.).
+    ``fields`` names the offending field(s) only -- for ``unknown_topic_tag``
+    this is always ``["topic_tags"]``, never the offending tag string(s)
+    themselves (Gate A correction round 2, R5): a taxonomy-shaped tag
+    (lowercase letters/digits/hyphens) is exactly the shape of a LinkedIn
+    public-profile name slug (e.g. ``"maria-santos"``), so no unknown tag
+    value is ever echoed, regardless of its shape. ``message`` reports how
+    many unrecognized tags there were and, for debuggability only, a short
+    stable sha256 prefix per tag (irreversible, never the tag text). It never
+    contains free-text field values (titles, summaries, publisher ids, etc.)
+    either.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -179,19 +190,15 @@ def load_signals(path: str | Path) -> LoadResult:
 
         unknown_tags = sorted(set(raw_tags) - TOPIC_TAXONOMY)
         if unknown_tags:
-            reported_tags = [
-                tag if _TAG_SHAPE_RE.match(tag) else _NON_CONFORMING_TAG_PLACEHOLDER
-                for tag in unknown_tags
-            ]
-            non_conforming_count = sum(1 for tag in unknown_tags if not _TAG_SHAPE_RE.match(tag))
+            digests = ", ".join(_tag_digest(tag) for tag in unknown_tags)
             issues.append(
                 LoadIssue(
                     item_index=index,
                     kind="unknown_topic_tag",
-                    fields=reported_tags,
+                    fields=["topic_tags"],
                     message=(
                         f"Item references {len(unknown_tags)} topic tag(s) outside the "
-                        f"closed taxonomy ({non_conforming_count} non-conforming); skipped."
+                        f"closed taxonomy; item skipped (tag digests: {digests})."
                     ),
                 )
             )

@@ -83,9 +83,15 @@ def test_invalid_publication_date_keeps_item_with_none() -> None:
 
 
 def test_unknown_topic_tag_is_rejected() -> None:
+    """R5: the offending tag value is never echoed, even in the "fields"
+    list -- only the field name ``topic_tags`` and, for debuggability, an
+    irreversible sha256 prefix in the message. See
+    test_unknown_topic_tag_value_is_never_echoed_regardless_of_shape for the
+    dedicated privacy assertion."""
     result = load_signals(INVALID_FIXTURE)
     issue = next(i for i in result.issues if i.kind == "unknown_topic_tag")
-    assert issue.fields == ["quantum-computing"]
+    assert issue.fields == ["topic_tags"]
+    assert "quantum-computing" not in issue.message
     assert not any(item.item_id == "bad005" for item in result.items)
 
 
@@ -101,15 +107,13 @@ def test_invalid_enum_literal_is_invalid_value_with_field_name_only() -> None:
     assert not any(item.item_id == "bad006" for item in result.items)
 
 
-def test_unknown_topic_tag_taxonomy_shaped_tag_is_echoed_verbatim(tmp_path: Path) -> None:
-    """S8/F1: a taxonomy-SHAPED unknown tag (lowercase, hyphens, digits only)
-    is safe to echo verbatim -- it's plausibly just a new/misspelled tag."""
-    path = tmp_path / "signals.json"
+def _signals_file_with_tag(tmp_path: Path, item_id: str, tag: str) -> Path:
+    path = tmp_path / f"{item_id}.json"
     path.write_text(
         json.dumps(
             [
                 {
-                    "item_id": "shape-ok",
+                    "item_id": item_id,
                     "source_type": "feed",
                     "source_category": "vendor_blog",
                     "publisher_id": "vendor-shape",
@@ -118,58 +122,60 @@ def test_unknown_topic_tag_taxonomy_shaped_tag_is_echoed_verbatim(tmp_path: Path
                     "summary_normalized": "s",
                     "publication_date": "2026-06-01",
                     "detection_date": "2026-06-01",
-                    "stable_reference": "https://example.com/shape",
+                    "stable_reference": f"https://example.com/{item_id}",
                     "evidence_type": "announcement",
                     "change_class": "material_change",
                     "change_class_rationale": "n/a",
                     "action_required": "none",
                     "experiment_affordance": "not_testable",
-                    "topic_tags": ["quantum-computing"],
+                    "topic_tags": [tag],
                 }
             ]
         ),
         encoding="utf-8",
     )
+    return path
+
+
+def test_unknown_topic_tag_taxonomy_shaped_tag_is_never_echoed(tmp_path: Path) -> None:
+    """R5 (privacy): a taxonomy-SHAPED unknown tag (lowercase, hyphens,
+    digits only) is exactly the shape of a LinkedIn public-profile name slug
+    (e.g. "maria-santos") -- it must NOT be echoed verbatim just because it
+    looks like a plausible new/misspelled tag. Only the field name and an
+    irreversible sha256 prefix may appear."""
+    path = _signals_file_with_tag(tmp_path, "shape-ok", "maria-santos")
     result = load_signals(path)
     issue = next(i for i in result.issues if i.kind == "unknown_topic_tag")
-    assert issue.fields == ["quantum-computing"]
+    assert issue.fields == ["topic_tags"]
+    assert "maria-santos" not in issue.message
+    assert "maria" not in issue.message
+    assert "santos" not in issue.message
 
 
 def test_unknown_topic_tag_non_conforming_tag_is_never_leaked(tmp_path: Path) -> None:
-    """S8/F1: a tag that is NOT taxonomy-shaped (here, email-shaped) must
-    never appear verbatim in a LoadIssue -- only the literal placeholder,
-    with the non-conforming count visible in the message."""
-    path = tmp_path / "signals.json"
-    path.write_text(
-        json.dumps(
-            [
-                {
-                    "item_id": "shape-bad",
-                    "source_type": "feed",
-                    "source_category": "vendor_blog",
-                    "publisher_id": "vendor-shape",
-                    "subject_entity_ids": ["vendor-shape"],
-                    "title": "t",
-                    "summary_normalized": "s",
-                    "publication_date": "2026-06-01",
-                    "detection_date": "2026-06-01",
-                    "stable_reference": "https://example.com/shape-bad",
-                    "evidence_type": "announcement",
-                    "change_class": "material_change",
-                    "change_class_rationale": "n/a",
-                    "action_required": "none",
-                    "experiment_affordance": "not_testable",
-                    "topic_tags": ["not.a-real-tag@example.com"],
-                }
-            ]
-        ),
-        encoding="utf-8",
-    )
+    """R5 (privacy): a tag that is NOT taxonomy-shaped (here, email-shaped)
+    must also never appear verbatim in a LoadIssue -- only the field name and
+    a count/digest, exactly like the taxonomy-shaped case above."""
+    path = _signals_file_with_tag(tmp_path, "shape-bad", "not.a-real-tag@example.com")
     result = load_signals(path)
     issue = next(i for i in result.issues if i.kind == "unknown_topic_tag")
-    assert issue.fields == ["<non-conforming>"]
+    assert issue.fields == ["topic_tags"]
     assert "@example.com" not in issue.message
-    assert "1 non-conforming" in issue.message
+    assert "1 topic tag(s)" in issue.message
+
+
+def test_unknown_topic_tag_message_carries_only_a_digest_never_the_value(
+    tmp_path: Path,
+) -> None:
+    """The message may carry a short sha256 prefix for debuggability, but
+    that digest must be irreversible -- it must not simply be (or contain)
+    the tag text itself, in either taxonomy-shaped or non-conforming form."""
+    for item_id, tag in (("digest-shaped", "maria-santos"), ("digest-bad", "maria@example.com")):
+        path = _signals_file_with_tag(tmp_path, item_id, tag)
+        result = load_signals(path)
+        issue = next(i for i in result.issues if i.kind == "unknown_topic_tag")
+        assert tag not in issue.message
+        assert issue.fields == ["topic_tags"]
 
 
 def test_issues_never_contain_free_text_field_values() -> None:

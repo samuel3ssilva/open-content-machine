@@ -86,16 +86,22 @@ _EXPERIMENT_EVIDENCE_TRIGGER = frozenset(
 
 # Human-readable text for each evidence_anchor_id produced by
 # cluster._evidence_level_and_marketing_risk -- so a reader can re-derive why
-# a topic landed at its evidence_level without re-running the rubric.
+# a topic landed at its evidence_level without re-running the rubric. This
+# rubric is TOTAL (Gate A correction round 2, R1): every evidence_type, in
+# either publisher polarity, produces a non-zero level for a single-member
+# cluster except roundup/relay (never evidentiary) -- see
+# test_evidence_rubric_totality_matrix in test_intelligence_cluster.py.
 _EVIDENCE_ANCHOR_TEXT: dict[str, str] = {
-    "evid_5_first_party_plus_independent_methodology": (
-        "first-party authoritative source AND independent evidence AND a "
-        "benchmark_with_methodology or independent_implementation is present"
+    "evid_5_authoritative_plus_analysis_plus_independent_rigor": (
+        "an authoritative source (first-party or non-subject) AND a non-subject "
+        "independent_analysis AND a non-subject benchmark_with_methodology/"
+        "independent_implementation/research_paper are all present"
     ),
     "evid_4_first_party_plus_independent": (
-        "first-party source present AND independent evidence present"
+        "a first-party evidentiary source is present AND independent analysis or "
+        "independent rigorous evidence is also present"
     ),
-    "evid_4_non_subject_rigorous_evidence": (
+    "evid_4_independent_rigorous_alone": (
         "a non-subject benchmark_with_methodology, research_paper, or "
         "independent_implementation is present on its own"
     ),
@@ -103,16 +109,30 @@ _EVIDENCE_ANCHOR_TEXT: dict[str, str] = {
         "an uncorroborated first-party-authoritative source "
         "(official_doc/spec_change/deprecation_notice/security_advisory)"
     ),
+    "evid_3_non_subject_authoritative": (
+        "a third-party authoritative source about the subject (e.g. a standards "
+        "body's spec_change, or a security_advisory not published by the subject)"
+    ),
+    "evid_3_first_party_artifact": (
+        "a self-published runnable/rigorous artifact (independent_implementation, "
+        "benchmark_with_methodology, or research_paper published BY the subject) "
+        "-- real evidence, but not independently corroborated"
+    ),
     "evid_3_independent_only": (
         "independent evidence present with no first-party member in the cluster"
+    ),
+    "evid_3_other_uncorroborated": (
+        "a subject's own independent_analysis of itself, or an announcement/"
+        "release_note carried by a non-subject publisher -- weak, single-source, "
+        "uncorroborated evidence that is neither first-party promotion nor rumor"
     ),
     "evid_2_first_party_promotional": (
         "first-party promotional source only (announcement/release_note), uncorroborated"
     ),
     "evid_1_rumor": "rumor only",
     "evid_0_no_qualifying_evidence": (
-        "no first-party, independent, or rumor evidence counted (e.g. roundup/relay only, "
-        "or a self-published source whose evidence_type does not qualify)"
+        "every evidence-counting member is roundup/relay (never evidentiary), or no "
+        "evidence-counting members remain after excluding syndicated/duplicate roles"
     ),
 }
 
@@ -218,6 +238,15 @@ def _score_consequence(inputs: RankingInputs) -> DimensionScore:
     raw = _CONSEQUENCE_RAW[inputs.action_required]
     floor_applied = None
     if inputs.change_class == "breaking_change":
+        # KNOWN LIMITATION (Gate A correction round 2, R4 -- Founder-approved
+        # decision H, do not change): this floor is unconditional on
+        # change_class alone, with no evidence gate. An all-roundup/relay
+        # cluster (evidence_level 0-1, no independent or first-party source
+        # at all) can still be authored as change_class="breaking_change" and
+        # reach consequence=5 here, which can lift its total score into the
+        # 60s even with weak evidence. Gating this floor by evidence_level
+        # would change an approved rule, so it is intentionally left as-is;
+        # this is a pending Founder decision, not a bug to fix silently.
         effective = 5
         if raw != 5:
             floor_applied = (
