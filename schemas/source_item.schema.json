@@ -1,0 +1,143 @@
+{
+  "additionalProperties": false,
+  "description": "One observable fact-sheet about a single artifact (email/feed/doc item).\n\nFillable by someone who has never met the Founder: every field describes\nthe artifact itself, never how relevant or important it is. There is\ndeliberately no ``relevance``, ``marketing_risk``, or ``body`` field here.",
+  "properties": {
+    "item_id": {
+      "title": "Item Id",
+      "type": "string"
+    },
+    "source_type": {
+      "enum": [
+        "email",
+        "feed",
+        "doc"
+      ],
+      "title": "Source Type",
+      "type": "string"
+    },
+    "source_category": {
+      "title": "Source Category",
+      "type": "string"
+    },
+    "publisher_id": {
+      "title": "Publisher Id",
+      "type": "string"
+    },
+    "subject_entity_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Subject Entity Ids",
+      "type": "array"
+    },
+    "title": {
+      "title": "Title",
+      "type": "string"
+    },
+    "summary_normalized": {
+      "title": "Summary Normalized",
+      "type": "string"
+    },
+    "publication_date": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Publication Date"
+    },
+    "detection_date": {
+      "format": "date",
+      "title": "Detection Date",
+      "type": "string"
+    },
+    "stable_reference": {
+      "title": "Stable Reference",
+      "type": "string"
+    },
+    "evidence_type": {
+      "enum": [
+        "roundup",
+        "relay",
+        "rumor",
+        "announcement",
+        "release_note",
+        "official_doc",
+        "spec_change",
+        "deprecation_notice",
+        "security_advisory",
+        "independent_analysis",
+        "benchmark_with_methodology",
+        "independent_implementation",
+        "research_paper"
+      ],
+      "title": "Evidence Type",
+      "type": "string"
+    },
+    "change_class": {
+      "enum": [
+        "new_capability_class",
+        "breaking_change",
+        "material_change",
+        "incremental_update",
+        "restatement",
+        "announcement_of_intent"
+      ],
+      "title": "Change Class",
+      "type": "string"
+    },
+    "change_class_rationale": {
+      "title": "Change Class Rationale",
+      "type": "string"
+    },
+    "action_required": {
+      "enum": [
+        "migration_required",
+        "config_or_code_change",
+        "new_option_available",
+        "changes_how_to_think",
+        "none"
+      ],
+      "title": "Action Required",
+      "type": "string"
+    },
+    "experiment_affordance": {
+      "enum": [
+        "local_reproducible",
+        "requires_paid_service",
+        "not_testable"
+      ],
+      "title": "Experiment Affordance",
+      "type": "string"
+    },
+    "topic_tags": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Topic Tags",
+      "type": "array"
+    }
+  },
+  "required": [
+    "item_id",
+    "source_type",
+    "source_category",
+    "publisher_id",
+    "title",
+    "summary_normalized",
+    "detection_date",
+    "stable_reference",
+    "evidence_type",
+    "change_class",
+    "change_class_rationale",
+    "action_required",
+    "experiment_affordance"
+  ],
+  "title": "SourceItem",
+  "type": "object"
+}

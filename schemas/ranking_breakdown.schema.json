@@ -1,0 +1,159 @@
+{
+  "$defs": {
+    "DimensionScore": {
+      "additionalProperties": false,
+      "description": "One scored dimension of a :class:`RankingBreakdown`, fully explained.",
+      "properties": {
+        "dimension": {
+          "title": "Dimension",
+          "type": "string"
+        },
+        "raw_value": {
+          "title": "Raw Value",
+          "type": "integer"
+        },
+        "effective_value": {
+          "title": "Effective Value",
+          "type": "integer"
+        },
+        "cap_applied": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cap Applied"
+        },
+        "floor_applied": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Floor Applied"
+        },
+        "anchor_id": {
+          "title": "Anchor Id",
+          "type": "string"
+        },
+        "anchor_text": {
+          "title": "Anchor Text",
+          "type": "string"
+        },
+        "inputs": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Inputs",
+          "type": "object"
+        },
+        "rationale": {
+          "title": "Rationale",
+          "type": "string"
+        },
+        "weight": {
+          "title": "Weight",
+          "type": "integer"
+        },
+        "points": {
+          "title": "Points",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "dimension",
+        "raw_value",
+        "effective_value",
+        "anchor_id",
+        "anchor_text",
+        "rationale",
+        "weight",
+        "points"
+      ],
+      "title": "DimensionScore",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Full explanation of one topic's score, in fixed dimension order.",
+  "properties": {
+    "dimensions": {
+      "items": {
+        "$ref": "#/$defs/DimensionScore"
+      },
+      "title": "Dimensions",
+      "type": "array"
+    },
+    "points_total": {
+      "title": "Points Total",
+      "type": "integer"
+    },
+    "score": {
+      "maximum": 100,
+      "minimum": 0,
+      "title": "Score",
+      "type": "integer"
+    },
+    "rubric_version": {
+      "title": "Rubric Version",
+      "type": "string"
+    },
+    "weights_version": {
+      "title": "Weights Version",
+      "type": "string"
+    },
+    "taxonomy_version": {
+      "title": "Taxonomy Version",
+      "type": "string"
+    },
+    "profile_version": {
+      "title": "Profile Version",
+      "type": "string"
+    },
+    "tier1_eligible": {
+      "title": "Tier1 Eligible",
+      "type": "boolean"
+    },
+    "eligibility_reasons": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Eligibility Reasons",
+      "type": "array"
+    },
+    "first_party_authoritative_candidate": {
+      "title": "First Party Authoritative Candidate",
+      "type": "boolean"
+    },
+    "tie_break_key": {
+      "title": "Tie Break Key",
+      "type": "string"
+    },
+    "ranking_explanation": {
+      "title": "Ranking Explanation",
+      "type": "string"
+    }
+  },
+  "required": [
+    "points_total",
+    "score",
+    "rubric_version",
+    "weights_version",
+    "taxonomy_version",
+    "profile_version",
+    "tier1_eligible",
+    "first_party_authoritative_candidate",
+    "tie_break_key",
+    "ranking_explanation"
+  ],
+  "title": "RankingBreakdown",
+  "type": "object"
+}

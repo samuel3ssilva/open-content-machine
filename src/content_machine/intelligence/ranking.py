@@ -1,0 +1,425 @@
+"""Explainable, deterministic ranking over intelligence topics.
+
+Depends only on ``content_machine.intelligence.models``. This module must
+NEVER import or receive a ``TopicCluster`` -- it sees only
+:class:`~content_machine.intelligence.models.RankingInputs`, which
+structurally excludes ``cluster_size``, member counts, ``source_type``,
+``source_category``, and publisher lists. This is the core non-circularity
+guarantee of Gate A: a topic cannot score higher merely for having many
+sources, many emails, or a "popular" publisher.
+
+All arithmetic is integer-only (no floats anywhere in this module).
+``points(dim) = weight * effective_value`` (``effective_value`` in 0..5), so
+``points_total`` is in 0..500 and ``score = points_total // 5`` is in 0..100,
+exactly (``score`` is a floor division, never rounded).
+
+Deviation from the ticket's literal signature, noted explicitly: the ticket
+sketches ``rank_topics(inputs) -> list[RankedTopic]``, but ``RankedTopic``
+embeds a ``TopicCluster`` -- constructing one here would violate the
+"never import or receive TopicCluster" constraint, which is the stricter,
+explicitly non-negotiable rule. :func:`rank_topics` therefore returns
+``(RankingInputs, RankingBreakdown)`` pairs in final rank order; a caller that
+holds the corresponding ``TopicCluster`` objects (matched by ``topic_id``) can
+zip them together into ``RankedTopic`` instances if a materialized ranked
+view is needed. No such assembly happens inside this package in Gate A.
+"""
+
+from __future__ import annotations
+
+from datetime import date
+
+from content_machine.intelligence.models import (
+    DimensionScore,
+    RankingBreakdown,
+    RankingInputs,
+    RelevanceProfile,
+)
+
+RUBRIC_VERSION = "gate-a-1"
+WEIGHTS_VERSION = "gate-a-1"
+TAXONOMY_VERSION = "gate-a-1"
+
+# Sum to exactly 100 (asserted in tests/test_intelligence_ranking.py).
+WEIGHTS: dict[str, int] = {
+    "relevance": 30,
+    "magnitude": 20,
+    "consequence": 15,
+    "evidence": 15,
+    "experiment": 10,
+    "curiosity": 10,
+}
+
+_DIMENSION_ORDER = ("relevance", "magnitude", "consequence", "evidence", "experiment", "curiosity")
+
+_MAGNITUDE_RAW: dict[str, int] = {
+    "new_capability_class": 5,
+    "breaking_change": 4,
+    "material_change": 3,
+    "incremental_update": 2,
+    "restatement": 1,
+    "announcement_of_intent": 1,
+}
+
+_CONSEQUENCE_RAW: dict[str, int] = {
+    "migration_required": 5,
+    "config_or_code_change": 4,
+    "new_option_available": 4,
+    "changes_how_to_think": 3,
+    "none": 0,
+}
+
+# experiment anchor 5's evidence-type trigger set.
+_EXPERIMENT_EVIDENCE_TRIGGER = frozenset(
+    {"benchmark_with_methodology", "independent_implementation", "spec_change"}
+)
+
+
+def _score_relevance(inputs: RankingInputs, profile: RelevanceProfile) -> DimensionScore:
+    tags = set(inputs.topic_tags)
+    matched_priorities = [t.priority for t in profile.territories if t.tag in tags]
+    any_territory_match = bool(matched_priorities)
+    max_priority = max(matched_priorities, default=0)
+    tooling_overlap = bool(tags & set(profile.current_tooling))
+
+    if max_priority == 5 and tooling_overlap:
+        raw, anchor_id, anchor_text = (
+            5,
+            "rel_5",
+            "max matched territory priority == 5 AND topic_tags overlap current_tooling",
+        )
+    elif max_priority >= 4:
+        raw, anchor_id, anchor_text = (4, "rel_4", "max matched territory priority >= 4")
+    elif max_priority == 3:
+        raw, anchor_id, anchor_text = (3, "rel_3", "max matched territory priority == 3")
+    elif max_priority in (1, 2):
+        raw, anchor_id, anchor_text = (2, "rel_2", "max matched territory priority in {1, 2}")
+    elif not any_territory_match and tooling_overlap:
+        raw, anchor_id, anchor_text = (
+            1,
+            "rel_1",
+            "no territory match, but topic_tags overlap current_tooling",
+        )
+    else:
+        raw, anchor_id, anchor_text = (0, "rel_0", "no territory match and no tooling overlap")
+
+    return DimensionScore(
+        dimension="relevance",
+        raw_value=raw,
+        effective_value=raw,
+        cap_applied=None,
+        floor_applied=None,
+        anchor_id=anchor_id,
+        anchor_text=anchor_text,
+        inputs={
+            "max_territory_priority": str(max_priority),
+            "any_territory_match": str(any_territory_match),
+            "tooling_overlap": str(tooling_overlap),
+        },
+        rationale=(
+            f"Max matched territory priority={max_priority} "
+            f"(any_match={any_territory_match}), tooling_overlap={tooling_overlap}."
+        ),
+        weight=WEIGHTS["relevance"],
+        points=WEIGHTS["relevance"] * raw,
+    )
+
+
+def _score_magnitude(inputs: RankingInputs) -> DimensionScore:
+    raw = _MAGNITUDE_RAW[inputs.change_class]
+    cap = inputs.evidence_level + 1
+    effective = min(raw, cap)
+    cap_applied = None
+    if effective < raw:
+        cap_applied = (
+            f"mag_effective = min(raw {raw}, evidence {inputs.evidence_level} + 1) = {effective}"
+        )
+
+    return DimensionScore(
+        dimension="magnitude",
+        raw_value=raw,
+        effective_value=effective,
+        cap_applied=cap_applied,
+        floor_applied=None,
+        anchor_id=f"mag_{inputs.change_class}",
+        anchor_text=(
+            f"change_class={inputs.change_class} -> raw {raw}, capped at evidence_level + 1"
+        ),
+        inputs={"change_class": inputs.change_class, "evidence_level": str(inputs.evidence_level)},
+        rationale=(
+            f"change_class '{inputs.change_class}' has raw magnitude {raw}; capped to "
+            f"evidence_level ({inputs.evidence_level}) + 1 = {cap}."
+        ),
+        weight=WEIGHTS["magnitude"],
+        points=WEIGHTS["magnitude"] * effective,
+    )
+
+
+def _score_consequence(inputs: RankingInputs) -> DimensionScore:
+    raw = _CONSEQUENCE_RAW[inputs.action_required]
+    floor_applied = None
+    if inputs.change_class == "breaking_change":
+        effective = 5
+        if raw != 5:
+            floor_applied = (
+                f"consequence floored to 5 because change_class == breaking_change "
+                f"(raw was {raw})"
+            )
+    else:
+        effective = raw
+
+    return DimensionScore(
+        dimension="consequence",
+        raw_value=raw,
+        effective_value=effective,
+        cap_applied=None,
+        floor_applied=floor_applied,
+        anchor_id=f"con_{inputs.action_required}",
+        anchor_text=f"action_required={inputs.action_required} -> raw {raw}",
+        inputs={
+            "action_required": inputs.action_required,
+            "change_class": inputs.change_class,
+        },
+        rationale=(
+            f"action_required '{inputs.action_required}' has raw consequence {raw}"
+            + (
+                "; floored to 5 (breaking_change)."
+                if floor_applied
+                else "."
+            )
+        ),
+        weight=WEIGHTS["consequence"],
+        points=WEIGHTS["consequence"] * effective,
+    )
+
+
+def _score_evidence(inputs: RankingInputs) -> DimensionScore:
+    # evidence_level is a fact already derived by cluster.py from the evidence
+    # rubric (evidence_type + independence, never publisher class); this
+    # dimension simply weights that pre-computed fact.
+    value = inputs.evidence_level
+    return DimensionScore(
+        dimension="evidence",
+        raw_value=value,
+        effective_value=value,
+        cap_applied=None,
+        floor_applied=None,
+        anchor_id=f"evid_{value}",
+        anchor_text="evidence_level (0-5) derived from evidence_type + independence by cluster.py",
+        inputs={
+            "evidence_level": str(value),
+            "has_independent_evidence": str(inputs.has_independent_evidence),
+            "marketing_risk": str(inputs.marketing_risk),
+        },
+        rationale=(
+            f"evidence_level={value}, has_independent_evidence={inputs.has_independent_evidence}, "
+            f"marketing_risk={inputs.marketing_risk}."
+        ),
+        weight=WEIGHTS["evidence"],
+        points=WEIGHTS["evidence"] * value,
+    )
+
+
+def _score_experiment(inputs: RankingInputs) -> DimensionScore:
+    evidence_types = set(inputs.evidence_types)
+    if inputs.experiment_affordance == "local_reproducible" and (
+        evidence_types & _EXPERIMENT_EVIDENCE_TRIGGER
+    ):
+        raw, anchor_id, anchor_text = (
+            5,
+            "exp_5",
+            "local_reproducible AND evidence_types intersects "
+            "{benchmark_with_methodology, independent_implementation, spec_change}",
+        )
+    elif inputs.experiment_affordance == "local_reproducible":
+        raw, anchor_id, anchor_text = (4, "exp_4", "local_reproducible")
+    elif inputs.experiment_affordance == "requires_paid_service":
+        raw, anchor_id, anchor_text = (2, "exp_2", "requires_paid_service")
+    elif inputs.experiment_affordance == "not_testable" and "research_paper" in evidence_types:
+        raw, anchor_id, anchor_text = (1, "exp_1", "not_testable AND research_paper present")
+    else:
+        raw, anchor_id, anchor_text = (0, "exp_0", "otherwise")
+
+    return DimensionScore(
+        dimension="experiment",
+        raw_value=raw,
+        effective_value=raw,
+        cap_applied=None,
+        floor_applied=None,
+        anchor_id=anchor_id,
+        anchor_text=anchor_text,
+        inputs={
+            "experiment_affordance": inputs.experiment_affordance,
+            "evidence_types": ",".join(sorted(evidence_types)),
+        },
+        rationale=(
+            f"experiment_affordance={inputs.experiment_affordance}, "
+            f"evidence_types={sorted(evidence_types)}."
+        ),
+        weight=WEIGHTS["experiment"],
+        points=WEIGHTS["experiment"] * raw,
+    )
+
+
+def _score_curiosity(inputs: RankingInputs, profile: RelevanceProfile) -> DimensionScore:
+    tags = set(inputs.topic_tags)
+    matched = sum(1 for q in profile.live_questions if set(q.tags) & tags)
+    if matched >= 2:
+        raw, anchor_id = 5, "cur_5"
+    elif matched == 1:
+        raw, anchor_id = 3, "cur_3"
+    else:
+        raw, anchor_id = 0, "cur_0"
+
+    return DimensionScore(
+        dimension="curiosity",
+        raw_value=raw,
+        effective_value=raw,
+        cap_applied=None,
+        floor_applied=None,
+        anchor_id=anchor_id,
+        anchor_text=f"{matched} live_question(s) matched by topic_tags",
+        inputs={"matched_live_questions": str(matched)},
+        rationale=f"{matched} live question(s) share a tag with this topic's topic_tags.",
+        weight=WEIGHTS["curiosity"],
+        points=WEIGHTS["curiosity"] * raw,
+    )
+
+
+def _tier1_eligibility(
+    relevance_effective: int, evidence_effective: int, inputs: RankingInputs
+) -> tuple[bool, list[str], bool]:
+    """Founder-approved rule, implemented verbatim:
+
+        tier1_eligible = relevance >= 4 AND evidence >= 3
+                          AND has_independent_evidence AND not marketing_risk
+
+    Every condition (pass or fail) is recorded in the returned reasons list.
+
+    ``first_party_authoritative_candidate`` is a DIAGNOSTIC ONLY -- it never
+    changes ``tier1_eligible``. It is True exactly when the only failing
+    condition is ``has_independent_evidence`` and the topic's evidence came
+    from a first-party-authoritative source (cluster.py's evidence anchor 3:
+    official_doc/spec_change/deprecation_notice/security_advisory published by
+    the subject, no independent corroboration).
+
+    That case cannot be observed directly here (RankingInputs deliberately has
+    no ``has_first_party_authoritative`` field), but it can be proven from the
+    fields available: cluster.py only ever produces ``evidence_level == 3``
+    with ``has_independent_evidence == False`` via its anchor-3 branch (every
+    path to ``evidence_level`` 4 or 5 requires independent evidence, directly
+    or via a non-subject benchmark, which is itself independent evidence).
+    So ``evidence_level == 3 and not has_independent_evidence`` is equivalent
+    to "the cluster's only evidence is first-party-authoritative, uncorroborated"
+    -- exactly the diagnostic condition -- without needing a new field.
+    """
+    relevance_pass = relevance_effective >= 4
+    evidence_pass = evidence_effective >= 3
+    independent_pass = inputs.has_independent_evidence
+    marketing_pass = not inputs.marketing_risk
+
+    tier1_eligible = relevance_pass and evidence_pass and independent_pass and marketing_pass
+
+    rel_status = "pass" if relevance_pass else "fail"
+    evid_status = "pass" if evidence_pass else "fail"
+    indep_status = "pass" if independent_pass else "fail"
+    mktg_status = "pass" if marketing_pass else "fail"
+    reasons = [
+        f"relevance effective_value {relevance_effective} >= 4: {rel_status}",
+        f"evidence effective_value {evidence_effective} >= 3: {evid_status}",
+        f"has_independent_evidence: {indep_status}",
+        f"not marketing_risk: {mktg_status}",
+    ]
+
+    first_party_authoritative_candidate = (
+        relevance_pass
+        and evidence_pass
+        and marketing_pass
+        and not independent_pass
+        and evidence_effective == 3
+    )
+    if first_party_authoritative_candidate:
+        reasons.append(
+            "first_party_authoritative_candidate: True -- barred from tier 1 solely for "
+            "lacking independent corroboration of an official first-party source (e.g. a "
+            "vendor deprecation notice); this is a PENDING FOUNDER DECISION, not an "
+            "automatic override -- tier1_eligible remains False."
+        )
+
+    return tier1_eligible, reasons, first_party_authoritative_candidate
+
+
+def score_topic(inputs: RankingInputs, profile: RelevanceProfile) -> RankingBreakdown:
+    """Score one topic. Pure and deterministic: same inputs, same output."""
+    dimensions = [
+        _score_relevance(inputs, profile),
+        _score_magnitude(inputs),
+        _score_consequence(inputs),
+        _score_evidence(inputs),
+        _score_experiment(inputs),
+        _score_curiosity(inputs, profile),
+    ]
+    assert tuple(d.dimension for d in dimensions) == _DIMENSION_ORDER
+
+    points_total = sum(d.points for d in dimensions)
+    score = points_total // 5
+
+    relevance_effective = dimensions[0].effective_value
+    evidence_effective = dimensions[3].effective_value
+    tier1_eligible, eligibility_reasons, first_party_authoritative_candidate = _tier1_eligibility(
+        relevance_effective, evidence_effective, inputs
+    )
+
+    tie_break_key = (
+        f"points={points_total} rel={relevance_effective} evid={evidence_effective} "
+        f"first_seen={inputs.first_seen.isoformat()} topic_id={inputs.topic_id}"
+    )
+    ranking_explanation = "; ".join(
+        f"{d.dimension}={d.effective_value}({d.points}pts)" for d in dimensions
+    )
+
+    return RankingBreakdown(
+        dimensions=dimensions,
+        points_total=points_total,
+        score=score,
+        rubric_version=RUBRIC_VERSION,
+        weights_version=WEIGHTS_VERSION,
+        taxonomy_version=TAXONOMY_VERSION,
+        profile_version=profile.profile_version,
+        tier1_eligible=tier1_eligible,
+        eligibility_reasons=eligibility_reasons,
+        first_party_authoritative_candidate=first_party_authoritative_candidate,
+        tie_break_key=tie_break_key,
+        ranking_explanation=ranking_explanation,
+    )
+
+
+def rank_topics(
+    inputs: list[RankingInputs], profile: RelevanceProfile
+) -> list[tuple[RankingInputs, RankingBreakdown]]:
+    """Score and order every topic in ``inputs``.
+
+    Returns ``(RankingInputs, RankingBreakdown)`` pairs, best first. Final
+    ordering (ties broken in this exact sequence): ``points_total`` DESC ->
+    relevance ``effective_value`` DESC -> evidence ``effective_value`` DESC ->
+    ``first_seen`` ASC -> ``topic_id`` ASC. See the module docstring for why
+    this returns pairs rather than ``RankedTopic`` instances.
+    """
+    scored = [(item, score_topic(item, profile)) for item in inputs]
+
+    def _sort_key(pair: tuple[RankingInputs, RankingBreakdown]) -> tuple[int, int, int, date, str]:
+        item, breakdown = pair
+        relevance_effective = next(
+            d.effective_value for d in breakdown.dimensions if d.dimension == "relevance"
+        )
+        evidence_effective = next(
+            d.effective_value for d in breakdown.dimensions if d.dimension == "evidence"
+        )
+        return (
+            -breakdown.points_total,
+            -relevance_effective,
+            -evidence_effective,
+            item.first_seen,
+            item.topic_id,
+        )
+
+    return sorted(scored, key=_sort_key)

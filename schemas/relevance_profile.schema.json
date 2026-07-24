@@ -1,0 +1,92 @@
+{
+  "$defs": {
+    "LiveQuestion": {
+      "additionalProperties": false,
+      "description": "A question the Founder is currently trying to answer, tagged by topic.",
+      "properties": {
+        "question_id": {
+          "title": "Question Id",
+          "type": "string"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        }
+      },
+      "required": [
+        "question_id"
+      ],
+      "title": "LiveQuestion",
+      "type": "object"
+    },
+    "TerritoryPriority": {
+      "additionalProperties": false,
+      "description": "One tag the Founder has assigned a priority (0-5) within a profile.",
+      "properties": {
+        "tag": {
+          "title": "Tag",
+          "type": "string"
+        },
+        "priority": {
+          "maximum": 5,
+          "minimum": 0,
+          "title": "Priority",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "tag",
+        "priority"
+      ],
+      "title": "TerritoryPriority",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Founder priors, authored once and versioned, ONE per ranking run.\n\nThe real profile is private and must never enter this repo; see\n``examples/intelligence-profile-synthetic.json`` for the synthetic\nstand-in used by fixtures, tests, and the loader's documented default.",
+  "properties": {
+    "profile_version": {
+      "title": "Profile Version",
+      "type": "string"
+    },
+    "territories": {
+      "items": {
+        "$ref": "#/$defs/TerritoryPriority"
+      },
+      "title": "Territories",
+      "type": "array"
+    },
+    "live_questions": {
+      "items": {
+        "$ref": "#/$defs/LiveQuestion"
+      },
+      "title": "Live Questions",
+      "type": "array"
+    },
+    "current_tooling": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Current Tooling",
+      "type": "array"
+    },
+    "experiment_budget": {
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "title": "Experiment Budget",
+      "type": "string"
+    }
+  },
+  "required": [
+    "profile_version",
+    "experiment_budget"
+  ],
+  "title": "RelevanceProfile",
+  "type": "object"
+}
