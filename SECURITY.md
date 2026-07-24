@@ -16,8 +16,11 @@ data in reports.
 2. **No credentials in the repository.** Secrets come from `.env` (git-ignored);
    `.env.example` documents the shape with empty values.
 3. **No network calls by default.** The demo and tests run fully offline with
-   `MockProvider`. Only `content_machine/providers/` may perform network I/O,
-   and only when the user configures a key.
+   `MockProvider`. Only `content_machine/providers/` may perform network I/O
+   — and in the current release the Anthropic/OpenAI provider stubs contain
+   no network code path at all; they raise `NotImplementedError` even when a
+   key is configured. The only exercised provider is the offline
+   `MockProvider`.
 4. **PII never crosses the model boundary.** Names, emails, and profile URLs are
    removed before any provider call (see `docs/privacy.md`, ADR 0003).
 5. **No secrets or personal values in logs or error messages.** Errors reference

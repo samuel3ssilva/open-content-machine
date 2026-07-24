@@ -33,17 +33,23 @@ classification and handling rules).
 
 ## Status
 
-- **v0.0.1** is tagged and released: the bootstrap synthetic pipeline
-  (`validate` → `anonymize` → `report`, fully offline, against the shipped
-  synthetic dataset).
-- Sprint 1 additions — `audience inspect --dry-run`, deterministic role
-  classification, the expanded private report, and `audience export-public`
-  — are merged on `main` but **not yet in a tagged release**.
-- **`v0.1.0` will be tagged only after the pipeline validates a private, real
-  connections export locally** (dry-run first, then explicit Founder
-  authorization for a real run — see
-  [`docs/real-data-runbook.md`](docs/real-data-runbook.md)). No real personal
-  data has been processed by this project yet.
+- **v0.0.1** is tagged; Sprint 1.x additions (`audience inspect --dry-run`,
+  deterministic role classification, the expanded private report,
+  `audience export-public`, `audience evaluate-review`,
+  `audience compare-classifiers`, `source inspect`) are merged on `main` but
+  **not yet in a tagged release**.
+- Current quality gates (as of 2026-07-23): **329 tests passing**, `ruff`
+  clean, `mypy` clean, CI green on GitHub Actions.
+- **Real-data status (precise claims):** Under explicit Founder authorization,
+  the pipeline has processed one private, real connections export **locally**
+  (a metadata-only dry-run, then one real local run; outputs live outside
+  this repository). **No real personal data has ever been committed to this
+  repository, and the shipped pipeline has never transmitted personal data to
+  an external model — the default provider is offline and the vendor provider
+  stubs contain no network code path.** All public examples, fixtures, and
+  demos use synthetic data. `v0.1.0` will be tagged only after the remaining
+  release gates in [`docs/release-gates-v0.1.0.md`](docs/release-gates-v0.1.0.md)
+  pass.
 
 Live one-page dashboard: [MVP Status](docs/MVP_STATUS.md). See
 [`ROADMAP.md`](ROADMAP.md) for the full build order and

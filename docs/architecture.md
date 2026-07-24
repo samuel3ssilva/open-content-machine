@@ -102,15 +102,22 @@ title/company pairs into audience segments via `ModelProvider`, with structured
 outputs validated against `schemas/`, confidence levels, and an explicit
 "inferred" marker on every derived field.
 
-## 5. CLI contract (this sprint)
+## 5. CLI contract (current)
 
 ```
 content-machine --help
 content-machine version
+content-machine demo                            # runs the full flow on examples/synthetic-connections.csv
 content-machine audience validate <file.csv>    # schema + quality report, exit 0/1
 content-machine audience anonymize <file.csv> [-o out.json]
 content-machine audience report <file.csv> [-o report.md] [--json report.json]
-content-machine demo                            # runs the full flow on examples/synthetic-connections.csv
+
+# Sprint 1.x additions
+content-machine audience inspect <file.csv> --dry-run              # privacy-safe, read-only structural inspection
+content-machine audience export-public <report.json> -o <out.json> [--md <out.md>]  # sanitize a private report
+content-machine audience evaluate-review <review.csv>               # aggregate a private Founder review CSV
+content-machine audience compare-classifiers <fixture.csv> --baseline <snapshot.json>  # diff current classifier against a baseline
+content-machine source inspect <folder> --dry-run --output-dir <dir>  # metadata-safe private source-folder inventory
 ```
 
 All commands work offline, with no API key, and print actionable errors

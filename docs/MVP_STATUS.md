@@ -1,6 +1,23 @@
 # MVP Status — Painel Oficial
 
-Atualizado: 2026-07-22 · Release atual: **v0.0.1** · Branch: `main` · CI: verde
+Atualizado: 2026-07-23 · Release atual: **v0.0.1** · Branch: `main` · CI: verde
+
+## Public summary (English)
+
+- `v0.0.1` is tagged and released; Sprint 1.x additions are merged on `main`
+  but not yet in a tagged release.
+- Current quality gates: 329 automated tests passing, `ruff` clean, `mypy`
+  clean, CI green on GitHub Actions.
+- One Founder-authorized real local run of a private connections export has
+  been completed (metadata-only dry-run first, then one real run); outputs
+  live outside this repository, nothing real was committed, and the shipped
+  pipeline made no network calls (offline provider only).
+- Editorial/content work (positioning, voice, drafts, published posts) is a
+  human-led, AI-assisted workflow carried out **outside the shipped
+  codebase** — see the clarifying note under Creator Intelligence below; no
+  positioning/voice/oracle modules exist in `src/`.
+- `v0.1.0` is pending the remaining release gates in
+  [`release-gates-v0.1.0.md`](release-gates-v0.1.0.md).
 
 Legenda: ✅ concluído · 🔄 em andamento · ⬜ não iniciado · 🔒 aguarda autorização do Founder
 
@@ -57,6 +74,13 @@ marcada). Nenhum dado real foi processado.
 - ✅ Founder autorizou análise qualitativa de 4 pacotes (STORY permanece bloqueado)
 
 ## Creator Intelligence
+
+> **Nota:** os itens ✅ abaixo (Creator Intelligence e Content MVP) foram
+> produzidos pelo fluxo editorial supervisionado do Founder, com apoio de IA
+> em sessões fora do código versionado — **não** por módulos de software
+> shipados. As fases correspondentes (Positioning & Creator Profile, Voice
+> Vault, Oracle etc.) permanecem ⬜ não iniciadas como código em
+> [`ROADMAP.md`](../ROADMAP.md).
 
 - ✅ Extração determinística
 - ✅ Síntese qualitativa (4 pacotes; STORY nunca usado)
