@@ -1,0 +1,260 @@
+"""Data contracts for the Intelligence Brief module (Gate A).
+
+Three separate object families keep the ranking from being circular
+(non-negotiable, see the Gate A ticket):
+
+* :class:`SourceItem` -- observable facts about one artifact (email, feed
+  entry, or doc), fillable by someone who has never met the Founder, does not
+  know the ranking weights, and cannot see the desired ordering. Deliberately
+  has NO relevance/marketing_risk/body field.
+* :class:`TopicCluster` -- facts DERIVED from the corpus by
+  :mod:`content_machine.intelligence.cluster`. Never authored in a fixture.
+* :class:`RelevanceProfile` -- the Founder's priors, authored once per run.
+
+Relevance and curiosity are computed as a JOIN between an item's
+``topic_tags`` and the profile's tags in :mod:`content_machine.intelligence.ranking`
+-- never asserted directly on an item.
+
+This package imports only the standard library and Pydantic (see the module
+docstrings in ``loader.py``/``cluster.py``/``ranking.py`` for the intra-package
+dependency direction). Nothing outside this package imports it in Gate A: no
+network code, no provider imports, no LLM, no CLI command.
+"""
+
+from __future__ import annotations
+
+from datetime import date
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+# Closed, generic tag vocabulary. Unknown tags are a validation error at load
+# time (content_machine.intelligence.loader), never silently accepted.
+TOPIC_TAXONOMY: frozenset[str] = frozenset(
+    {
+        "agents",
+        "harnesses",
+        "skills",
+        "agent-cli",
+        "mcp",
+        "browser-agents",
+        "computer-use",
+        "evals",
+        "multi-agent",
+        "hooks-guardrails",
+        "memory-context",
+        "security-boundaries",
+        "local-first",
+        "careers-skills",
+    }
+)
+
+SourceType = Literal["email", "feed", "doc"]
+
+EvidenceType = Literal[
+    "roundup",
+    "relay",
+    "rumor",
+    "announcement",
+    "release_note",
+    "official_doc",
+    "spec_change",
+    "deprecation_notice",
+    "security_advisory",
+    "independent_analysis",
+    "benchmark_with_methodology",
+    "independent_implementation",
+    "research_paper",
+]
+
+ChangeClass = Literal[
+    "new_capability_class",
+    "breaking_change",
+    "material_change",
+    "incremental_update",
+    "restatement",
+    "announcement_of_intent",
+]
+
+ActionRequired = Literal[
+    "migration_required",
+    "config_or_code_change",
+    "new_option_available",
+    "changes_how_to_think",
+    "none",
+]
+
+ExperimentAffordance = Literal["local_reproducible", "requires_paid_service", "not_testable"]
+
+
+class SourceItem(BaseModel):
+    """One observable fact-sheet about a single artifact (email/feed/doc item).
+
+    Fillable by someone who has never met the Founder: every field describes
+    the artifact itself, never how relevant or important it is. There is
+    deliberately no ``relevance``, ``marketing_risk``, or ``body`` field here.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    item_id: str
+    source_type: SourceType
+    source_category: str
+    publisher_id: str
+    subject_entity_ids: list[str] = Field(default_factory=list)
+    title: str
+    summary_normalized: str
+    publication_date: date | None = None
+    detection_date: date
+    # Opaque; URL-shaped for feeds, "email:<slug>" for email. Do NOT require
+    # URL shape -- see content_machine.intelligence.normalize.normalize_canonical_reference.
+    stable_reference: str
+    evidence_type: EvidenceType
+    change_class: ChangeClass
+    change_class_rationale: str
+    action_required: ActionRequired
+    experiment_affordance: ExperimentAffordance
+    topic_tags: list[str] = Field(default_factory=list)
+
+
+class TerritoryPriority(BaseModel):
+    """One tag the Founder has assigned a priority (0-5) within a profile."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tag: str
+    priority: int = Field(ge=0, le=5)
+
+
+class LiveQuestion(BaseModel):
+    """A question the Founder is currently trying to answer, tagged by topic."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    question_id: str
+    tags: list[str] = Field(default_factory=list)
+
+
+class RelevanceProfile(BaseModel):
+    """Founder priors, authored once and versioned, ONE per ranking run.
+
+    The real profile is private and must never enter this repo; see
+    ``examples/intelligence-profile-synthetic.json`` for the synthetic
+    stand-in used by fixtures, tests, and the loader's documented default.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    profile_version: str
+    territories: list[TerritoryPriority] = Field(default_factory=list)
+    live_questions: list[LiveQuestion] = Field(default_factory=list)
+    current_tooling: list[str] = Field(default_factory=list)
+    experiment_budget: Literal["low", "medium", "high"]
+
+
+class TopicCluster(BaseModel):
+    """Facts DERIVED from the corpus by :mod:`content_machine.intelligence.cluster`.
+
+    Never authored directly in a fixture -- every field here is computed from
+    a group of merged :class:`SourceItem` records. ``topic_id`` identifies the
+    cluster only within a single run (see the identity docstring on
+    :func:`content_machine.intelligence.cluster.cluster_items`); persistent
+    cross-run identity is out of scope for Gate A and lands at M6.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    topic_id: str
+    cluster_fingerprint: str
+    canonical_title: str
+    anchor_item_id: str
+    member_ids: list[str] = Field(default_factory=list)
+    member_roles: dict[str, str] = Field(default_factory=dict)
+    duplication_reasons: list[str] = Field(default_factory=list)
+    subject_entity_ids: list[str] = Field(default_factory=list)
+    independent_publisher_count: int = 0
+    has_independent_evidence: bool = False
+    has_first_party_authoritative: bool = False
+    evidence_level: int = Field(default=0, ge=0, le=5)
+    marketing_risk: bool = False
+    first_seen: date
+    last_seen: date
+    cluster_size: int = 0
+    topic_tags: list[str] = Field(default_factory=list)
+    evidence_types: list[str] = Field(default_factory=list)
+
+
+class RankingInputs(BaseModel):
+    """The ONLY thing ``ranking.py`` receives about a topic.
+
+    Structurally excludes ``cluster_size``, member count, ``source_type``,
+    ``source_category``, and publisher lists -- so the ranking arithmetic
+    cannot become a popularity count. ``first_seen`` is used ONLY for
+    tie-breaking, never for points.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    topic_id: str
+    topic_tags: list[str] = Field(default_factory=list)
+    change_class: str
+    action_required: str
+    evidence_level: int = Field(ge=0, le=5)
+    has_independent_evidence: bool
+    marketing_risk: bool
+    experiment_affordance: str
+    evidence_types: list[str] = Field(default_factory=list)
+    first_seen: date
+
+
+class DimensionScore(BaseModel):
+    """One scored dimension of a :class:`RankingBreakdown`, fully explained."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    dimension: str
+    raw_value: int
+    effective_value: int
+    cap_applied: str | None = None
+    floor_applied: str | None = None
+    anchor_id: str
+    anchor_text: str
+    inputs: dict[str, str] = Field(default_factory=dict)
+    rationale: str
+    weight: int
+    points: int
+
+
+class RankingBreakdown(BaseModel):
+    """Full explanation of one topic's score, in fixed dimension order."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    dimensions: list[DimensionScore] = Field(default_factory=list)
+    points_total: int
+    score: int = Field(ge=0, le=100)
+    rubric_version: str
+    weights_version: str
+    taxonomy_version: str
+    profile_version: str
+    tier1_eligible: bool
+    eligibility_reasons: list[str] = Field(default_factory=list)
+    first_party_authoritative_candidate: bool
+    tie_break_key: str
+    ranking_explanation: str
+
+
+class RankedTopic(BaseModel):
+    """A :class:`TopicCluster` paired with its rank and full score breakdown.
+
+    Not constructed anywhere in Gate A code (``ranking.py`` must never import
+    or receive ``TopicCluster`` -- see its module docstring); this model
+    exists so the shape is frozen and its JSON Schema can be published ahead
+    of the milestone (M4+) that assembles it.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    rank: int
+    cluster: TopicCluster
+    breakdown: RankingBreakdown
