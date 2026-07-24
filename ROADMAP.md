@@ -2,8 +2,14 @@
 
 The approved build order for Open Content Machine. Each phase ships as its
 own module, following the pattern in [`docs/architecture.md`](docs/architecture.md):
-pure module + CLI subcommand + schemas in `schemas/`. Only Phase 1 is in
-progress; everything else is planned and unstarted.
+pure module + CLI subcommand + schemas in `schemas/`.
+
+Content and positioning artifacts produced to date (see
+[`docs/MVP_STATUS.md`](docs/MVP_STATUS.md)) come from a human-led,
+AI-assisted editorial workflow carried out outside this codebase, not from
+shipped software. **As software**, only Phase 1 is in progress; every later
+phase below — including Positioning & Creator Profile and Voice Vault — is
+planned and unstarted as code.
 
 ## 1. Foundation & security — in progress
 

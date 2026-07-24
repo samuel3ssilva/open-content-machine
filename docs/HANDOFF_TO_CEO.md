@@ -1,5 +1,9 @@
 # CTO Handoff
 
+*Historical snapshot (2026-07-22) of the bootstrap sprint — figures (84 tests,
+20 commits) are from that date. For current status see
+[`MVP_STATUS.md`](MVP_STATUS.md).*
+
 Sprint: Bootstrap + Audience Intelligence MVP · Date: 2026-07-22
 CTO: Claude (session led by Fable 5)
 

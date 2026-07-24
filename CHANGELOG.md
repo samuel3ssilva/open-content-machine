@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+
+- Portfolio readiness pass: public status alignment across README,
+  `docs/MVP_STATUS.md`, `ROADMAP.md`, `SECURITY.md`, and
+  `docs/architecture.md`; rebuilt README top and navigation; added
+  `docs/PORTFOLIO_CASE_STUDY.md`; added synthetic architecture/CLI/output
+  visuals under `docs/assets/`. Current suite: 329 tests, all passing.
+
 ### Added (creator intelligence workflow — process only, no private findings)
 
 - Generic documentation of the creator-intelligence workflow (inventory →
