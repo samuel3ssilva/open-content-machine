@@ -135,15 +135,23 @@ authoring item's `contains_benefit_or_performance_claim` flag feeds
 `marketing_risk` as one of two presence-fact inputs (the other being
 `first_party_promotional`) — see D-fix below.
 
-### D5 — no decision recorded under this label
+### D5 — Escalation policy: the prior non-escalation is ratified
 
-No source comment, test docstring, or commit message in this repository
-references a Founder decision "D5" (checked across `cluster.py`,
-`ranking.py`, `models.py`, all `tests/test_intelligence_*.py`, and
-`git log --all`). D1–D4 and D6 are all independently attested in code and
-tests; D5 is not. This ADR records that gap rather than inventing content
-for it — if a D5 decision exists, it needs to be re-supplied by the
-Founder and added here in a follow-up.
+D5 is a process decision rather than a scoring rule, which is why it leaves
+no trace in the ranking code or its tests. During the previous gate, a
+reviewer recommended escalating a privacy question (unrecognized topic-tag
+values appearing in load-issue output) to the highest-risk review tier. The
+orchestrator declined, on the grounds that the escalation triggers are
+reviewer disagreement or a *change* to a security/privacy boundary, whereas
+this was *enforcement* of the standing rule that errors reference field
+names and never field values — a rule whose most conservative reading
+already dictated the answer. The strictest option was applied instead: no
+unrecognized tag value is ever echoed, in any shape.
+
+The decision ratifies that judgment. The operative precedent for future
+gates: escalate when a boundary would move or when reviewers deadlock, not
+when the standing rule already determines the outcome and the conservative
+reading is available.
 
 ### D6 — Repetition and coverage are not evidence; no "quiet beats popular" guarantee either way
 
@@ -181,6 +189,7 @@ in `tests/test_intelligence_ranking.py` and
 - **Leave D1 unimplemented and undocumented** — rejected: M4 would
   otherwise have to re-derive the waiver's unreachability from scratch,
   or worse, implement it verbatim without realizing it never fires.
-- **Guess at D5's content to keep this ADR "complete"** — rejected:
-  fabricating a Founder decision is worse than an honest gap; see the D5
-  section above.
+- **Guess at D5's content to keep this ADR "complete"** — rejected when
+  D5's text was not available to the implementer; the gap was recorded
+  honestly instead, and later filled from the decision as issued rather
+  than reconstructed from the code.
