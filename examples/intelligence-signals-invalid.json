@@ -49,7 +49,8 @@
     "change_class_rationale": "n/a",
     "action_required": "none",
     "experiment_affordance": "not_testable",
-    "topic_tags": ["agents"]
+    "topic_tags": ["agents"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "bad004",
@@ -67,7 +68,8 @@
     "change_class_rationale": "n/a",
     "action_required": "none",
     "experiment_affordance": "not_testable",
-    "topic_tags": ["agents"]
+    "topic_tags": ["agents"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "bad005",
@@ -85,7 +87,8 @@
     "change_class_rationale": "n/a",
     "action_required": "none",
     "experiment_affordance": "not_testable",
-    "topic_tags": ["quantum-computing"]
+    "topic_tags": ["quantum-computing"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "bad006",
@@ -103,6 +106,7 @@
     "change_class_rationale": "n/a",
     "action_required": "none",
     "experiment_affordance": "not_testable",
-    "topic_tags": ["agents"]
+    "topic_tags": ["agents"],
+    "contains_benefit_or_performance_claim": false
   }
 ]

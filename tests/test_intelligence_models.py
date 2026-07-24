@@ -129,6 +129,7 @@ def _signals_file_with_tag(tmp_path: Path, item_id: str, tag: str) -> Path:
                     "action_required": "none",
                     "experiment_affordance": "not_testable",
                     "topic_tags": [tag],
+                    "contains_benefit_or_performance_claim": False,
                 }
             ]
         ),
@@ -281,9 +282,39 @@ def test_source_item_rejects_extra_fields() -> None:
                 "action_required": "none",
                 "experiment_affordance": "not_testable",
                 "topic_tags": [],
+                "contains_benefit_or_performance_claim": False,
                 "extra_field": "not allowed",
             }
         )
+
+
+def test_contains_benefit_or_performance_claim_is_required() -> None:
+    """Opus F2/F3: contains_benefit_or_performance_claim must have no
+    default -- an item that omits it is a validation error, not a silent
+    'no claim'. This also means the loader reports it as a missing_field
+    issue (never a crash) for a signals file that omits it, exactly like any
+    other required SourceItem field."""
+    payload = {
+        "item_id": "x",
+        "source_type": "feed",
+        "source_category": "vendor_blog",
+        "publisher_id": "vendor-x",
+        "subject_entity_ids": [],
+        "title": "t",
+        "summary_normalized": "s",
+        "detection_date": "2026-01-01",
+        "stable_reference": "https://example.com/x",
+        "evidence_type": "announcement",
+        "change_class": "material_change",
+        "change_class_rationale": "n/a",
+        "action_required": "none",
+        "experiment_affordance": "not_testable",
+        "topic_tags": [],
+    }
+    with pytest.raises(ValidationError):
+        SourceItem.model_validate(payload)
+    # Adding the field back makes it valid.
+    SourceItem.model_validate({**payload, "contains_benefit_or_performance_claim": False})
 
 
 def test_relevance_profile_rejects_extra_fields() -> None:

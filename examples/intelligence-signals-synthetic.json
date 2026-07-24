@@ -15,7 +15,8 @@
     "change_class_rationale": "New guardrail configuration surface on an existing harness; not a new capability class.",
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
-    "topic_tags": ["agents", "harnesses"]
+    "topic_tags": ["agents", "harnesses"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item002",
@@ -33,7 +34,8 @@
     "change_class_rationale": "Restates the vendor announcement verbatim.",
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
-    "topic_tags": ["agents", "harnesses"]
+    "topic_tags": ["agents", "harnesses"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item003",
@@ -51,7 +53,8 @@
     "change_class_rationale": "Restates the vendor announcement in a weekly roundup.",
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
-    "topic_tags": ["agents", "harnesses"]
+    "topic_tags": ["agents", "harnesses"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item004",
@@ -69,7 +72,8 @@
     "change_class_rationale": "Trade-press relay of the vendor announcement with added commentary.",
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
-    "topic_tags": ["agents", "harnesses"]
+    "topic_tags": ["agents", "harnesses"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item005",
@@ -87,7 +91,8 @@
     "change_class_rationale": "A new product announcement with no independent validation available.",
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
-    "topic_tags": ["agents", "computer-use"]
+    "topic_tags": ["agents", "computer-use"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item006",
@@ -105,7 +110,8 @@
     "change_class_rationale": "Existing tool call framing stops working; every integration must migrate.",
     "action_required": "migration_required",
     "experiment_affordance": "local_reproducible",
-    "topic_tags": ["agent-cli", "mcp"]
+    "topic_tags": ["agent-cli", "mcp"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item007",
@@ -123,7 +129,8 @@
     "change_class_rationale": "The legacy plugin API will stop working on the stated removal date.",
     "action_required": "migration_required",
     "experiment_affordance": "not_testable",
-    "topic_tags": ["harnesses"]
+    "topic_tags": ["harnesses"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item008",
@@ -141,7 +148,8 @@
     "change_class_rationale": "New independently measured reliability characteristics for an existing harness.",
     "action_required": "changes_how_to_think",
     "experiment_affordance": "local_reproducible",
-    "topic_tags": ["evals", "harnesses"]
+    "topic_tags": ["evals", "harnesses"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item009",
@@ -159,7 +167,8 @@
     "change_class_rationale": "Independent corroboration of the vendor's own guardrail announcement.",
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
-    "topic_tags": ["agents", "harnesses"]
+    "topic_tags": ["agents", "harnesses"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item010",
@@ -177,7 +186,8 @@
     "change_class_rationale": "Cosmetic redesign with no functional or capability impact.",
     "action_required": "none",
     "experiment_affordance": "not_testable",
-    "topic_tags": ["careers-skills"]
+    "topic_tags": ["careers-skills"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item011",
@@ -195,7 +205,8 @@
     "change_class_rationale": "Roundup mention of the vendor's own cosmetic redesign.",
     "action_required": "none",
     "experiment_affordance": "not_testable",
-    "topic_tags": ["careers-skills"]
+    "topic_tags": ["careers-skills"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item012",
@@ -213,7 +224,8 @@
     "change_class_rationale": "Roundup mention of the vendor's own cosmetic redesign.",
     "action_required": "none",
     "experiment_affordance": "not_testable",
-    "topic_tags": ["careers-skills"]
+    "topic_tags": ["careers-skills"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item013",
@@ -231,7 +243,8 @@
     "change_class_rationale": "Brief trade-press mention of the vendor's own cosmetic redesign.",
     "action_required": "none",
     "experiment_affordance": "not_testable",
-    "topic_tags": ["careers-skills"]
+    "topic_tags": ["careers-skills"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item014",
@@ -249,7 +262,8 @@
     "change_class_rationale": "Reframes how harness security should be evaluated across the ecosystem.",
     "action_required": "changes_how_to_think",
     "experiment_affordance": "not_testable",
-    "topic_tags": ["harnesses", "hooks-guardrails"]
+    "topic_tags": ["harnesses", "hooks-guardrails"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item015",
@@ -267,7 +281,8 @@
     "change_class_rationale": "A new reference implementation for local tool sandboxing.",
     "action_required": "config_or_code_change",
     "experiment_affordance": "local_reproducible",
-    "topic_tags": ["computer-use", "local-first"]
+    "topic_tags": ["computer-use", "local-first"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item016",
@@ -285,7 +300,8 @@
     "change_class_rationale": "A new tool is released with accompanying release notes.",
     "action_required": "new_option_available",
     "experiment_affordance": "local_reproducible",
-    "topic_tags": ["mcp"]
+    "topic_tags": ["mcp"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item017",
@@ -303,7 +319,8 @@
     "change_class_rationale": "Mirrored copy of the same release notes on a regional subdomain.",
     "action_required": "new_option_available",
     "experiment_affordance": "local_reproducible",
-    "topic_tags": ["mcp"]
+    "topic_tags": ["mcp"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item018",
@@ -321,7 +338,8 @@
     "change_class_rationale": "A new sandboxing feature for the vendor's own agent platform.",
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
-    "topic_tags": ["agents", "computer-use"]
+    "topic_tags": ["agents", "computer-use"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item019",
@@ -339,7 +357,8 @@
     "change_class_rationale": "A new sandboxing feature for a different vendor's own agent platform.",
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
-    "topic_tags": ["agents", "computer-use"]
+    "topic_tags": ["agents", "computer-use"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item020",
@@ -357,7 +376,8 @@
     "change_class_rationale": "A wire-service roundup of a proposal with no primary source in this corpus.",
     "action_required": "none",
     "experiment_affordance": "not_testable",
-    "topic_tags": ["multi-agent", "security-boundaries"]
+    "topic_tags": ["multi-agent", "security-boundaries"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item021",
@@ -375,7 +395,8 @@
     "change_class_rationale": "Republishes the wire story verbatim.",
     "action_required": "none",
     "experiment_affordance": "not_testable",
-    "topic_tags": ["multi-agent", "security-boundaries"]
+    "topic_tags": ["multi-agent", "security-boundaries"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item022",
@@ -393,7 +414,8 @@
     "change_class_rationale": "Republishes the wire story verbatim.",
     "action_required": "none",
     "experiment_affordance": "not_testable",
-    "topic_tags": ["multi-agent", "security-boundaries"]
+    "topic_tags": ["multi-agent", "security-boundaries"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item023",
@@ -411,7 +433,8 @@
     "change_class_rationale": "Adds independent framing but is still a relay of the same wire story.",
     "action_required": "none",
     "experiment_affordance": "not_testable",
-    "topic_tags": ["multi-agent", "security-boundaries"]
+    "topic_tags": ["multi-agent", "security-boundaries"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item024",
@@ -429,7 +452,8 @@
     "change_class_rationale": "A new product announcement with no independent validation available.",
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
-    "topic_tags": ["agents", "memory-context"]
+    "topic_tags": ["agents", "memory-context"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item025",
@@ -447,7 +471,8 @@
     "change_class_rationale": "Independent (competitor-authored, non-subject) corroboration of the announcement.",
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
-    "topic_tags": ["agents", "memory-context"]
+    "topic_tags": ["agents", "memory-context"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item026",
@@ -465,7 +490,8 @@
     "change_class_rationale": "Reframes how multi-agent coordination should be evaluated.",
     "action_required": "changes_how_to_think",
     "experiment_affordance": "not_testable",
-    "topic_tags": ["multi-agent", "evals"]
+    "topic_tags": ["multi-agent", "evals"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item027",
@@ -483,7 +509,8 @@
     "change_class_rationale": "Introduces an entirely new category of capability, not an increment.",
     "action_required": "config_or_code_change",
     "experiment_affordance": "requires_paid_service",
-    "topic_tags": ["computer-use"]
+    "topic_tags": ["computer-use"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item028",
@@ -501,7 +528,8 @@
     "change_class_rationale": "Newsletter relay of the vendor's own memory-layer announcement.",
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
-    "topic_tags": ["memory-context", "agents"]
+    "topic_tags": ["memory-context", "agents"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item029",
@@ -519,7 +547,8 @@
     "change_class_rationale": "Newsletter relay of the vendor's own memory-layer announcement.",
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
-    "topic_tags": ["memory-context", "agents"]
+    "topic_tags": ["memory-context", "agents"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item030",
@@ -537,7 +566,8 @@
     "change_class_rationale": "Weekly-digest roundup mention of the vendor's own memory-layer announcement.",
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
-    "topic_tags": ["memory-context", "agents"]
+    "topic_tags": ["memory-context", "agents"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item031",
@@ -555,7 +585,8 @@
     "change_class_rationale": "Newsletter relay of the vendor's own memory-layer announcement.",
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
-    "topic_tags": ["memory-context", "agents"]
+    "topic_tags": ["memory-context", "agents"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item032",
@@ -573,7 +604,8 @@
     "change_class_rationale": "Newsletter relay of the vendor's own memory-layer announcement.",
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
-    "topic_tags": ["memory-context", "agents"]
+    "topic_tags": ["memory-context", "agents"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item033",
@@ -591,7 +623,8 @@
     "change_class_rationale": "The vendor's own first-party announcement of the memory layer.",
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
-    "topic_tags": ["memory-context", "agents"]
+    "topic_tags": ["memory-context", "agents"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item034",
@@ -609,7 +642,8 @@
     "change_class_rationale": "Changes MCP transport negotiation behavior for existing integrations.",
     "action_required": "config_or_code_change",
     "experiment_affordance": "not_testable",
-    "topic_tags": ["mcp"]
+    "topic_tags": ["mcp"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item035",
@@ -627,7 +661,8 @@
     "change_class_rationale": "Changes MCP transport negotiation behavior for existing integrations.",
     "action_required": "config_or_code_change",
     "experiment_affordance": "not_testable",
-    "topic_tags": ["mcp"]
+    "topic_tags": ["mcp"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item036",
@@ -645,7 +680,8 @@
     "change_class_rationale": "A new packaging tool for an existing capability; not itself a new class.",
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
-    "topic_tags": ["skills", "agent-cli"]
+    "topic_tags": ["skills", "agent-cli"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item037",
@@ -663,7 +699,8 @@
     "change_class_rationale": "A new rate limit policy for the public API; not a breaking change since existing limits are unaffected.",
     "action_required": "config_or_code_change",
     "experiment_affordance": "not_testable",
-    "topic_tags": ["security-boundaries"]
+    "topic_tags": ["security-boundaries"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item038",
@@ -681,7 +718,8 @@
     "change_class_rationale": "Independent corroboration of the vendor's own rate-limit policy change.",
     "action_required": "config_or_code_change",
     "experiment_affordance": "not_testable",
-    "topic_tags": ["security-boundaries"]
+    "topic_tags": ["security-boundaries"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item039",
@@ -699,7 +737,8 @@
     "change_class_rationale": "New independently measured characteristics of the vendor's rate-limit policy change.",
     "action_required": "config_or_code_change",
     "experiment_affordance": "local_reproducible",
-    "topic_tags": ["security-boundaries"]
+    "topic_tags": ["security-boundaries"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item040",
@@ -717,7 +756,8 @@
     "change_class_rationale": "An unverified rumor of intent, with no confirmation from the vendor or any independent source.",
     "action_required": "none",
     "experiment_affordance": "not_testable",
-    "topic_tags": ["agents"]
+    "topic_tags": ["agents"],
+    "contains_benefit_or_performance_claim": false
   },
   {
     "item_id": "item041",
@@ -735,6 +775,7 @@
     "change_class_rationale": "Documented change in existing API endpoint behavior; not a breaking change since the old behavior remains available during a transition window.",
     "action_required": "config_or_code_change",
     "experiment_affordance": "not_testable",
-    "topic_tags": ["security-boundaries"]
+    "topic_tags": ["security-boundaries"],
+    "contains_benefit_or_performance_claim": false
   }
 ]

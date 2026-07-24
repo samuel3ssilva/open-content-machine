@@ -110,9 +110,25 @@ class SourceItem(BaseModel):
     ``change_class`` -- but unlike ``change_class`` it is a narrow yes/no
     question anyone reading the artifact can verify ("does this text claim a
     benefit or a performance characteristic?"), not a judgment call about
-    significance. It feeds ``marketing_risk`` for ``first_party_commentary``
-    evidence (see ``cluster._evidence_level_and_marketing_risk``) and is
-    otherwise inert.
+    significance. It is REQUIRED, with no default: an unfilled field must
+    never be silently interpreted as "clean" (Opus F2/F3) -- every authored
+    item must state whether it carries such a claim, even when the answer is
+    False. It feeds ``marketing_risk`` (see
+    ``cluster._evidence_level_and_marketing_risk``) whenever this item is the
+    cluster's ``first_party_commentary`` member (the subject analysing
+    itself), and is otherwise inert.
+
+    Authoring guidance for downstream release notes: a non-subject
+    ``release_note`` can genuinely be a PRIMARY ARTIFACT of the publishing
+    project, not mere secondary news about someone else -- e.g. a downstream
+    project's own release note stating "upgraded to VendorA 3.0, requires
+    migration" is that downstream project's first-party artifact, even
+    though it is also coverage of VendorA. To be scored as such (rather than
+    D2's ``secondary_news_uncorroborated``), the downstream project MUST be
+    listed in that item's own ``subject_entity_ids`` -- publisher_id alone is
+    not enough, since evidence polarity is judged per (item, cluster-subject)
+    pair, and a cluster's ``subject_entity_ids`` is the union of every
+    member's.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -136,10 +152,12 @@ class SourceItem(BaseModel):
     experiment_affordance: ExperimentAffordance
     topic_tags: list[str] = Field(default_factory=list)
     # D4: whether this artifact itself contains a benefit-or-performance
-    # claim -- an authored-but-observable fact (see class docstring). Only
-    # consulted when this item is the cluster's first_party_commentary
-    # (self-authored independent_analysis) member; inert otherwise.
-    contains_benefit_or_performance_claim: bool = False
+    # claim -- an authored-but-observable fact (see class docstring).
+    # REQUIRED, no default (Opus F2/F3): an unfilled field must never
+    # silently mean "no claim". Only consulted when this item is the
+    # cluster's first_party_commentary (self-authored independent_analysis)
+    # member; inert otherwise.
+    contains_benefit_or_performance_claim: bool
 
 
 class TerritoryPriority(BaseModel):

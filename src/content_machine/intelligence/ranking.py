@@ -79,9 +79,21 @@ _CONSEQUENCE_RAW: dict[str, int] = {
     "none": 0,
 }
 
-# experiment anchor 5's evidence-type trigger set.
+# experiment anchor 5's evidence-type trigger set. official_api_behavior_change
+# is a locally reproducible, directly-verifiable artifact class exactly like
+# spec_change (both describe a concrete, testable change to behavior) -- it
+# was added to the evidence taxonomy and the authoritative-types set
+# (cluster.py) but omitted here, which meant local_reproducible +
+# official_api_behavior_change scored experiment 4 instead of 5, a 10-point
+# penalty relative to the equivalent spec_change case. See
+# test_experiment_official_api_behavior_change_matches_spec_change_parity.
 _EXPERIMENT_EVIDENCE_TRIGGER = frozenset(
-    {"benchmark_with_methodology", "independent_implementation", "spec_change"}
+    {
+        "benchmark_with_methodology",
+        "independent_implementation",
+        "spec_change",
+        "official_api_behavior_change",
+    }
 )
 
 # Human-readable text for each evidence_anchor_id produced by
@@ -130,9 +142,10 @@ _EVIDENCE_ANCHOR_TEXT: dict[str, str] = {
         "contains_benefit_or_performance_claim flag is set"
     ),
     "evid_1_secondary_news_uncorroborated": (
-        "an isolated announcement/release_note about a non-subject, carried by a "
-        "non-subject publisher, with no first-party or independent corroboration "
-        "anywhere in the cluster (Founder decision D2)"
+        "uncorroborated secondary news (any number of outlets; repetition is not "
+        "evidence): an announcement/release_note about a non-subject, carried by "
+        "a non-subject publisher, with no first-party or independent "
+        "corroboration anywhere in the cluster (Founder decision D2)"
     ),
     "evid_1_rumor": "rumor only",
     "evid_0_no_qualifying_evidence": (
@@ -370,7 +383,8 @@ def _score_experiment(inputs: RankingInputs) -> DimensionScore:
             5,
             "exp_5",
             "local_reproducible AND evidence_types intersects "
-            "{benchmark_with_methodology, independent_implementation, spec_change}",
+            "{benchmark_with_methodology, independent_implementation, spec_change, "
+            "official_api_behavior_change}",
         )
     elif inputs.experiment_affordance == "local_reproducible":
         raw, anchor_id, anchor_text = (4, "exp_4", "local_reproducible")

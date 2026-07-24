@@ -44,6 +44,7 @@ def _make_item(**overrides: object) -> SourceItem:
         "action_required": "none",
         "experiment_affordance": "not_testable",
         "topic_tags": [],
+        "contains_benefit_or_performance_claim": False,
     }
     base.update(overrides)
     return SourceItem.model_validate(base)
@@ -446,6 +447,14 @@ def test_third_party_security_advisory_reaches_level_3_not_0() -> None:
     assert cluster.evidence_anchor_id == "evid_3_non_subject_authoritative"
     assert cluster.has_independent_evidence is False
     assert cluster.independent_publisher_count == 0
+    # Founder decision D3 fix (Opus F1): non_subject_authoritative is the one
+    # evidence_level-3 branch that used to be excluded from
+    # has_direct_artifact_or_independent_source with no other effect than
+    # suppressing third-party authoritative sources from the breaking-change
+    # consequence floor -- see
+    # test_consequence_floor_fires_for_a_third_party_security_advisory_breaking_change
+    # in test_intelligence_ranking.py for the end-to-end ranking measurement.
+    assert cluster.has_direct_artifact_or_independent_source is True
 
 
 def test_non_subject_authoritative_and_first_party_artifact_never_flip_independence() -> None:
@@ -692,7 +701,14 @@ def test_repetition_of_relay_copies_is_not_evidence() -> None:
     exact same non-evidentiary wire story must produce the SAME
     evidence_level (0) as a single relay item -- repeating a relay pickup
     can never manufacture evidentiary weight, no matter how many times it is
-    repeated."""
+    repeated.
+
+    This only proves "relay is never evidence at any count" -- relay/roundup
+    are level 0 by construction regardless of repetition, so it does not by
+    itself show that repeating a genuinely EVIDENTIARY type doesn't compound
+    the level. See
+    test_repetition_of_distinct_non_subject_announcements_does_not_compound_evidence
+    for that complementary claim."""
     single = _make_item(
         item_id="repeat-relay-1",
         publisher_id="relay-outlet-1",
@@ -724,6 +740,56 @@ def test_repetition_of_relay_copies_is_not_evidence() -> None:
         single_cluster.evidence_anchor_id
         == many_cluster.evidence_anchor_id
         == "evid_0_no_qualifying_evidence"
+    )
+
+
+def test_repetition_of_distinct_non_subject_announcements_does_not_compound_evidence() -> None:
+    """D6: repetition is not evidence, for a genuinely evidentiary type too.
+    Five DISTINCT non-subject ``announcement`` items -- five different
+    outlets, five different stable_references -- about the same quiet
+    subject must still land at evidence_level 1
+    (``evid_1_secondary_news_uncorroborated``), the SAME level a single such
+    item gets. Unlike the all-relay repetition test above, these items ARE
+    individually evidentiary (D2: an isolated non-subject announcement is
+    level-1 evidence) -- this proves that even repeating a real evidentiary
+    signal five times over five distinct outlets does not compound the
+    level, since the rubric only reads presence flags (a bool), never a
+    count."""
+    single = _make_item(
+        item_id="repeat-announcement-1",
+        publisher_id="announcement-outlet-1",
+        subject_entity_ids=["repeat-announcement-subject"],
+        title="Repetition Announcement Test Event Outlet One",
+        summary_normalized=(
+            "outlet one reports that the repeat announcement subject shipped something new"
+        ),
+        stable_reference="https://example.net/announcement-outlet-1/repeat-announcement-event",
+        evidence_type="announcement",
+    )
+    many = [single] + [
+        _make_item(
+            item_id=f"repeat-announcement-{i}",
+            publisher_id=f"announcement-outlet-{i}",
+            subject_entity_ids=["repeat-announcement-subject"],
+            title=f"Repetition Announcement Test Event Outlet {i}",
+            summary_normalized=(
+                f"outlet {i} reports that the repeat announcement subject shipped something new"
+            ),
+            stable_reference=(
+                f"https://example.net/announcement-outlet-{i}/repeat-announcement-event"
+            ),
+            evidence_type="announcement",
+        )
+        for i in range(2, 6)
+    ]
+    single_cluster = cluster_items([single])[0]
+    many_cluster = cluster_items(many)[0]
+    assert len(many_cluster.member_ids) == 5
+    assert single_cluster.evidence_level == many_cluster.evidence_level == 1
+    assert (
+        single_cluster.evidence_anchor_id
+        == many_cluster.evidence_anchor_id
+        == "evid_1_secondary_news_uncorroborated"
     )
 
 
@@ -810,6 +876,84 @@ def test_self_authored_analysis_never_contributes_to_independence_or_level_4() -
     assert cluster.evidence_anchor_id == "evid_3_first_party_authoritative"
     assert cluster.has_independent_evidence is False
     assert cluster.independent_publisher_count == 0
+
+
+# --- marketing_risk (spec Section 5.2): a presence fact cleared only by ------
+# --- genuine independent evidence, never by which rubric branch fires -------
+
+
+def test_vendor_announcement_plus_own_benchmark_keeps_marketing_risk_true() -> None:
+    """Spec Section 5.2 / Founder decision: a vendor's own announcement
+    alongside the SAME vendor's own (self-published, non-independent)
+    benchmark must keep marketing_risk=True even though the cluster lands at
+    evidence_level 3 (evid_3_first_party_artifact) -- a self-published
+    benchmark is exactly the "vendor self-benchmark never qualifies to clear
+    marketing_risk" class. Before this fix, landing at evidence_level 3
+    (because SOME first-party evidentiary signal outranked the promotional
+    one) silently cleared marketing_risk to False with no independent source
+    anywhere in the cluster."""
+    shared_title = "Marketing Risk Vendor Announcement Plus Own Benchmark Event"
+    announcement = _make_item(
+        item_id="mkt-vendor-announcement",
+        publisher_id="mkt-vendor",
+        subject_entity_ids=["mkt-vendor"],
+        title=shared_title,
+        summary_normalized="mkt vendor announced a brand new capability for its platform",
+        stable_reference="https://example.com/mkt-vendor/announcement",
+        evidence_type="announcement",
+    )
+    own_benchmark = _make_item(
+        item_id="mkt-vendor-benchmark",
+        publisher_id="mkt-vendor",
+        subject_entity_ids=["mkt-vendor"],
+        title=shared_title,
+        summary_normalized="mkt vendor published its own benchmark with a claimed methodology",
+        stable_reference="https://example.com/mkt-vendor/benchmark",
+        evidence_type="benchmark_with_methodology",
+    )
+    clusters = cluster_items([announcement, own_benchmark])
+    assert len(clusters) == 1
+    cluster = clusters[0]
+    assert cluster.evidence_level == 3
+    assert cluster.evidence_anchor_id == "evid_3_first_party_artifact"
+    assert cluster.has_independent_evidence is False
+    assert cluster.marketing_risk is True
+
+
+def test_vendor_announcement_plus_third_party_independent_analysis_clears_marketing_risk() -> (
+    None
+):
+    """Spec Section 5.2 counterpart: the SAME vendor announcement, but
+    corroborated by a genuine THIRD-PARTY independent_analysis (not the
+    vendor analysing itself, and not a self-published artifact), DOES clear
+    marketing_risk -- an independent, non-subject source is exactly what the
+    spec requires to lift the flag."""
+    shared_title = "Marketing Risk Vendor Announcement Plus Independent Analysis Event"
+    announcement = _make_item(
+        item_id="mkt-vendor-announcement-2",
+        publisher_id="mkt-vendor-2",
+        subject_entity_ids=["mkt-vendor-2"],
+        title=shared_title,
+        summary_normalized="mkt vendor two announced a brand new capability for its platform",
+        stable_reference="https://example.com/mkt-vendor-2/announcement",
+        evidence_type="announcement",
+    )
+    independent_analysis = _make_item(
+        item_id="mkt-independent-analysis",
+        publisher_id="mkt-independent-analyst",
+        subject_entity_ids=["mkt-vendor-2"],
+        title=shared_title,
+        summary_normalized=(
+            "an independent analyst reviewed mkt vendor two's new capability in detail"
+        ),
+        stable_reference="https://example.com/mkt-independent-analyst/review",
+        evidence_type="independent_analysis",
+    )
+    clusters = cluster_items([announcement, independent_analysis])
+    assert len(clusters) == 1
+    cluster = clusters[0]
+    assert cluster.has_independent_evidence is True
+    assert cluster.marketing_risk is False
 
 
 # --- Founder decision D1: official_api_behavior_change is authoritative -----

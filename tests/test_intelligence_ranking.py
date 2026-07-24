@@ -70,6 +70,7 @@ def _make_item(**overrides: object) -> SourceItem:
         "action_required": "none",
         "experiment_affordance": "not_testable",
         "topic_tags": [],
+        "contains_benefit_or_performance_claim": False,
     }
     base.update(overrides)
     return SourceItem.model_validate(base)
@@ -184,6 +185,36 @@ def test_magnitude_effective_uncapped_when_raw_below_evidence_plus_one() -> None
     assert mag.raw_value == 2
     assert mag.effective_value == 2
     assert mag.cap_applied is None
+
+
+# --- experiment trigger set (Opus F4) ------------------------------------------
+
+
+def test_experiment_official_api_behavior_change_matches_spec_change_parity() -> None:
+    """Opus F4: official_api_behavior_change was added to the evidence
+    taxonomy, the authoritative-types set, the schema, and a fixture item
+    (item041), but was omitted from _EXPERIMENT_EVIDENCE_TRIGGER --
+    local_reproducible + spec_change scored experiment 5, while
+    local_reproducible + official_api_behavior_change scored experiment 4 (a
+    10-point penalty), even though an API behavior change is exactly as
+    locally reproducible/directly verifiable as a spec change. This pins
+    parity between the two evidence types once experiment_affordance is
+    local_reproducible."""
+    spec_change_inputs = _make_inputs(
+        experiment_affordance="local_reproducible",
+        evidence_types=["spec_change"],
+    )
+    api_behavior_change_inputs = _make_inputs(
+        experiment_affordance="local_reproducible",
+        evidence_types=["official_api_behavior_change"],
+    )
+    profile = _profile()
+    spec_breakdown = score_topic(spec_change_inputs, profile)
+    api_breakdown = score_topic(api_behavior_change_inputs, profile)
+    spec_exp = next(d for d in spec_breakdown.dimensions if d.dimension == "experiment")
+    api_exp = next(d for d in api_breakdown.dimensions if d.dimension == "experiment")
+    assert spec_exp.effective_value == api_exp.effective_value == 5
+    assert spec_exp.anchor_id == api_exp.anchor_id == "exp_5"
 
 
 # --- consequence floor (Founder decision D3) ----------------------------------
@@ -350,6 +381,114 @@ def test_consequence_floor_fires_for_a_genuine_first_party_authoritative_breakin
     assert con.effective_value == 5
 
 
+def test_consequence_floor_fires_for_a_third_party_security_advisory_breaking_change() -> None:
+    """D3 fix (Opus F1), end-to-end through cluster.py: a THIRD-PARTY
+    (non-subject) security_advisory authored as breaking_change now also
+    reaches the consequence floor. Before the fix,
+    has_direct_artifact_or_independent_source excluded
+    non_subject_authoritative with no effect other than suppressing exactly
+    this case (evidence_level >= 3 already implies one of
+    first_party_authoritative/first_party_artifact/independent evidence in
+    every other branch) -- a third-party security advisory declaring a
+    breaking change scored consequence 0 / a lower total, while the
+    first-party equivalent
+    (test_consequence_floor_fires_for_a_genuine_first_party_authoritative_breaking_change)
+    scored consequence 5. Same relevance/experiment/curiosity setup as both
+    sibling regression tests above, so only the consequence dimension
+    differs."""
+    third_party_advisory = _make_item(
+        item_id="d3-third-party-advisory",
+        source_type="feed",
+        source_category="security_research",
+        publisher_id="d3-security-research-lab",
+        subject_entity_ids=["d3-advisory-subject"],
+        title="D3 Third Party Security Advisory Breaking Change Test Event",
+        summary_normalized=(
+            "a third party security research lab published an advisory about a breaking change"
+        ),
+        publication_date=date(2026, 1, 1),
+        detection_date=date(2026, 1, 1),
+        stable_reference="https://example.com/d3-security-research-lab/advisory",
+        evidence_type="security_advisory",
+        change_class="breaking_change",
+        change_class_rationale="A genuine, non-subject-authoritative breaking change.",
+        action_required="none",
+        experiment_affordance="local_reproducible",
+        topic_tags=["agents", "harnesses"],
+    )
+    cluster = cluster_items([third_party_advisory])[0]
+    assert cluster.evidence_level == 3
+    assert cluster.evidence_anchor_id == "evid_3_non_subject_authoritative"
+    assert cluster.has_direct_artifact_or_independent_source is True
+
+    profile = RelevanceProfile.model_validate(
+        {
+            "profile_version": "v1",
+            "territories": [{"tag": "agents", "priority": 5}],
+            "live_questions": [
+                {"question_id": "q1", "tags": ["agents"]},
+                {"question_id": "q2", "tags": ["harnesses"]},
+            ],
+            "current_tooling": ["agents"],
+            "experiment_budget": "medium",
+        }
+    )
+    inputs = to_ranking_inputs(cluster, {"d3-third-party-advisory": third_party_advisory})
+    breakdown = score_topic(inputs, profile)
+    con = next(d for d in breakdown.dimensions if d.dimension == "consequence")
+
+    assert con.floor_applied is not None
+    assert con.effective_value == 5
+
+
+def test_consequence_floor_still_does_not_fire_for_relay_only_breaking_change() -> None:
+    """D3 regression pin, restated directly against the fix in this round:
+    a relay-only breaking_change cluster must still NOT get the consequence
+    floor after adding non_subject_authoritative to
+    has_direct_artifact_or_independent_source -- relay/roundup are excluded
+    from the authoritative-types accounting entirely (never evidentiary), so
+    they can never set has_non_subject_authoritative either."""
+    relay_only = _make_item(
+        item_id="d3-relay-only-2",
+        source_type="feed",
+        source_category="wire_service",
+        publisher_id="d3-relay-outlet-2",
+        subject_entity_ids=["d3-relay-subject-2"],
+        title="D3 Relay Only Breaking Change Test Event Two",
+        summary_normalized=(
+            "a relay outlet mentions a second breaking change event with no primary source"
+        ),
+        publication_date=date(2026, 1, 1),
+        detection_date=date(2026, 1, 1),
+        stable_reference="https://example.net/d3-relay-outlet-2/breaking-change-event",
+        evidence_type="relay",
+        change_class="breaking_change",
+        change_class_rationale="Authored as breaking_change despite having no primary source.",
+        action_required="none",
+        experiment_affordance="local_reproducible",
+        topic_tags=["agents", "harnesses"],
+    )
+    cluster = cluster_items([relay_only])[0]
+    assert cluster.evidence_level == 0
+    assert cluster.has_direct_artifact_or_independent_source is False
+
+    profile = RelevanceProfile.model_validate(
+        {
+            "profile_version": "v1",
+            "territories": [{"tag": "agents", "priority": 5}],
+            "live_questions": [],
+            "current_tooling": ["agents"],
+            "experiment_budget": "medium",
+        }
+    )
+    inputs = to_ranking_inputs(cluster, {"d3-relay-only-2": relay_only})
+    breakdown = score_topic(inputs, profile)
+    con = next(d for d in breakdown.dimensions if d.dimension == "consequence")
+
+    assert con.floor_applied is None
+    assert con.effective_value == 0
+
+
 # --- marketing_risk / tier1 ----------------------------------------------------
 
 
@@ -510,27 +649,59 @@ def test_frequency_of_repeated_coverage_adds_zero_points_item001() -> None:
 def test_quiet_subject_can_win_on_relevance_consequence_and_evidence() -> None:
     """D6 clause: a quiet subject CAN win on relevance/consequence/evidence.
     item007 (cluster_size 1: a single, quiet, uncorroborated first-party
-    deprecation notice) decisively outranks item010's cluster (cluster_size
-    4: an off-territory cosmetic redesign with three syndicated/relay
-    pickups) -- despite having strictly FEWER members. This is not a
-    guarantee that quiet always wins (see
-    test_coverage_contributes_zero_points_to_the_vendor_announcement, where
-    a well-covered announcement wins a tie on relevance) -- only that
-    cluster size itself never decides it either way."""
+    deprecation notice, breaking_change + migration_required, on-territory at
+    'harnesses' priority 5) decisively outranks item034's cluster
+    (cluster_size 1: also quiet/uncorroborated, but an ON-TERRITORY
+    'mcp'-priority-4 material_change spec change) -- both clusters are the
+    SAME cluster_size, so the win cannot be explained by coverage/repetition;
+    it comes from item007 being genuinely more relevant and more
+    consequential, while landing at the same evidence level.
+
+    The comparator here is deliberately NOT item010 (an OFF-territory,
+    priority-0 cosmetic redesign): comparing against an off-territory topic
+    would make any on-territory topic win trivially on relevance alone,
+    which is exactly the "rigged comparison" a sibling test's docstring
+    warns about -- see
+    test_coverage_contributes_zero_points_to_the_vendor_announcement. This is
+    not a guarantee that quiet always wins (see that same sibling test,
+    where a well-covered announcement wins a tie on relevance) -- only that
+    a quiet, uncorroborated but genuinely stronger topic CAN beat another
+    genuinely on-territory quiet topic."""
     result = load_signals(VALID_FIXTURE)
     items_by_id = {item.item_id: item for item in result.items}
     profile = _profile()
     clusters = cluster_items(result.items)
 
     quiet = next(c for c in clusters if c.anchor_item_id == "item007")
-    popular = next(c for c in clusters if c.anchor_item_id == "item010")
-    assert quiet.cluster_size == 1
-    assert popular.cluster_size == 4
-    assert quiet.cluster_size < popular.cluster_size
+    on_territory_comparator = next(c for c in clusters if c.anchor_item_id == "item034")
+    assert quiet.cluster_size == on_territory_comparator.cluster_size == 1
 
     quiet_breakdown = score_topic(to_ranking_inputs(quiet, items_by_id), profile)
-    popular_breakdown = score_topic(to_ranking_inputs(popular, items_by_id), profile)
-    assert quiet_breakdown.points_total > popular_breakdown.points_total
+    comparator_breakdown = score_topic(
+        to_ranking_inputs(on_territory_comparator, items_by_id), profile
+    )
+    rel_quiet = next(
+        d.effective_value for d in quiet_breakdown.dimensions if d.dimension == "relevance"
+    )
+    rel_comparator = next(
+        d.effective_value for d in comparator_breakdown.dimensions if d.dimension == "relevance"
+    )
+    con_quiet = next(
+        d.effective_value for d in quiet_breakdown.dimensions if d.dimension == "consequence"
+    )
+    con_comparator = next(
+        d.effective_value for d in comparator_breakdown.dimensions if d.dimension == "consequence"
+    )
+    evid_quiet = next(
+        d.effective_value for d in quiet_breakdown.dimensions if d.dimension == "evidence"
+    )
+    evid_comparator = next(
+        d.effective_value for d in comparator_breakdown.dimensions if d.dimension == "evidence"
+    )
+    assert rel_quiet > rel_comparator
+    assert con_quiet > con_comparator
+    assert evid_quiet == evid_comparator
+    assert quiet_breakdown.points_total > comparator_breakdown.points_total
 
 
 def test_announcement_can_win_on_real_relevance_and_independent_corroboration() -> None:
@@ -561,7 +732,7 @@ def test_announcement_can_win_on_real_relevance_and_independent_corroboration() 
     rel_quiet = next(
         d.effective_value for d in quiet_breakdown.dimensions if d.dimension == "relevance"
     )
-    assert rel_announcement >= rel_quiet
+    assert rel_announcement > rel_quiet
     assert announcement_breakdown.points_total > quiet_breakdown.points_total
 
 
