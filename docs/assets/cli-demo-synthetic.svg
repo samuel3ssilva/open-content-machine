@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="780" height="558" viewBox="0 0 780 558" font-family="SFMono-Regular, Consolas, Menlo, monospace">
+<rect width="780" height="558" rx="10" fill="#1e2227"/>
+<path d="M0 10 a10 10 0 0 1 10 -10 h760 a10 10 0 0 1 10 10 v26 h-780 z" fill="#2b3038"/>
+<circle cx="22" cy="18" r="5.5" fill="#bf616a"/>
+<circle cx="42" cy="18" r="5.5" fill="#ebcb8b"/>
+<circle cx="62" cy="18" r="5.5" fill="#a3be8c"/>
+<text x="390" y="22" text-anchor="middle" font-size="12" fill="#7b8899">content-machine — offline demo on synthetic data</text>
+<text x="18" y="63" font-size="13" fill="#7b8899">$</text>
+<text x="34" y="63" font-size="13" fill="#a3be8c">content-machine audience validate examples/synthetic-connections.csv</text>
+<text x="18" y="82" font-size="13" fill="#d8dee9" xml:space="preserve">File: examples/synthetic-connections.csv</text>
+<text x="18" y="101" font-size="13" fill="#d8dee9" xml:space="preserve">Encoding: utf-8-sig</text>
+<text x="18" y="120" font-size="13" fill="#d8dee9" xml:space="preserve">Skipped preamble lines: 3</text>
+<text x="18" y="139" font-size="13" fill="#d8dee9" xml:space="preserve">Rows parsed: 30</text>
+<text x="18" y="158" font-size="13" fill="#d8dee9" xml:space="preserve">Columns present: company, connected_on, email, first_name, last_name,</text>
+<text x="18" y="177" font-size="13" fill="#d8dee9" xml:space="preserve">                 position, url</text>
+<text x="18" y="196" font-size="13" fill="#d8dee9" xml:space="preserve">Columns missing: (none)</text>
+<text x="18" y="215" font-size="13" fill="#d8dee9" xml:space="preserve">Duplicates detected: 2</text>
+<text x="18" y="234" font-size="13" fill="#d8dee9" xml:space="preserve">Issues by kind:</text>
+<text x="18" y="253" font-size="13" fill="#d8dee9" xml:space="preserve">  missing_value: 27</text>
+<text x="18" y="272" font-size="13" fill="#d8dee9" xml:space="preserve">  empty_row: 1</text>
+<text x="18" y="291" font-size="13" fill="#d8dee9" xml:space="preserve">  parse_error: 0</text>
+<text x="18" y="310" font-size="13" fill="#7b8899" xml:space="preserve"></text>
+<text x="18" y="329" font-size="13" fill="#7b8899">$</text>
+<text x="34" y="329" font-size="13" fill="#a3be8c">content-machine demo</text>
+<text x="18" y="348" font-size="13" fill="#88c0d0" xml:space="preserve"># Audience Report</text>
+<text x="18" y="367" font-size="13" fill="#d8dee9" xml:space="preserve"></text>
+<text x="18" y="386" font-size="13" fill="#88c0d0" xml:space="preserve">## Totals</text>
+<text x="18" y="405" font-size="13" fill="#d8dee9" xml:space="preserve"></text>
+<text x="18" y="424" font-size="13" fill="#d8dee9" xml:space="preserve">- Total rows: 30</text>
+<text x="18" y="443" font-size="13" fill="#d8dee9" xml:space="preserve">- Unique connections: 28</text>
+<text x="18" y="462" font-size="13" fill="#d8dee9" xml:space="preserve">- Duplicates: 2</text>
+<text x="18" y="481" font-size="13" fill="#d8dee9" xml:space="preserve">- Valid rows: 30</text>
+<text x="18" y="500" font-size="13" fill="#d8dee9" xml:space="preserve">- Invalid rows (empty): 1</text>
+<text x="18" y="519" font-size="13" fill="#7b8899" xml:space="preserve">... (full report continues: completeness, companies, roles,</text>
+<text x="18" y="538" font-size="13" fill="#7b8899" xml:space="preserve">     role families, connection timeline)</text>
+</svg>

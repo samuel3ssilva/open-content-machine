@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="668" viewBox="0 0 840 668" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif">
+<rect width="840" height="668" rx="12" fill="#ffffff" stroke="#d0d7de"/>
+<text x="30" y="40" font-size="19" font-weight="600" fill="#24292f">Open Content Machine — Audience Intelligence pipeline</text>
+<text x="30" y="60" font-size="13" fill="#57606a">Local-first · offline by default · every stage below runs on your machine</text>
+<defs><marker id="a" markerWidth="10" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#8b949e"/></marker></defs>
+<rect x="60" y="74" width="380" height="64" rx="8" fill="#eceff4" stroke="#4c566a" stroke-width="1.4"/>
+<text x="76" y="98" font-size="15" font-weight="600" fill="#4c566a">1. Authorized local input</text>
+<text x="76" y="115" font-size="11.5" fill="#424a53">LinkedIn-style connections CSV — explicit source</text>
+<text x="76" y="130" font-size="11.5" fill="#424a53">approval, never committed</text>
+<line x1="250" y1="138" x2="250" y2="170" stroke="#8b949e" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="60" y="172" width="380" height="64" rx="8" fill="#e8f1fa" stroke="#2e6fa3" stroke-width="1.4"/>
+<text x="76" y="196" font-size="15" font-weight="600" fill="#2e6fa3">2. Validation</text>
+<text x="76" y="213" font-size="11.5" fill="#424a53">content-machine audience validate — structural checks;</text>
+<text x="76" y="228" font-size="11.5" fill="#424a53">errors cite rows/columns, never values</text>
+<line x1="250" y1="236" x2="250" y2="268" stroke="#8b949e" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="60" y="270" width="380" height="64" rx="8" fill="#eaf6ec" stroke="#2f7d43" stroke-width="1.4"/>
+<text x="76" y="294" font-size="15" font-weight="600" fill="#2f7d43">3. Privacy controls</text>
+<text x="76" y="311" font-size="11.5" fill="#424a53">anonymize: drop names / emails / URLs → pseudonymous</text>
+<text x="76" y="326" font-size="11.5" fill="#424a53">ids; strip_for_model() allowlist at the model boundary</text>
+<line x1="250" y1="334" x2="250" y2="366" stroke="#8b949e" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="60" y="368" width="380" height="64" rx="8" fill="#e8f1fa" stroke="#2e6fa3" stroke-width="1.4"/>
+<text x="76" y="392" font-size="15" font-weight="600" fill="#2e6fa3">4. Structured evidence</text>
+<text x="76" y="409" font-size="11.5" fill="#424a53">deterministic role/seniority classification + aggregate</text>
+<text x="76" y="424" font-size="11.5" fill="#424a53">report (Markdown / JSON)</text>
+<line x1="250" y1="432" x2="250" y2="464" stroke="#8b949e" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="60" y="466" width="380" height="64" rx="8" fill="#fdf3e3" stroke="#a4700c" stroke-width="1.4"/>
+<text x="76" y="490" font-size="15" font-weight="600" fill="#a4700c">5. Human review</text>
+<text x="76" y="507" font-size="11.5" fill="#424a53">Founder reviews outputs; approval of analysis ≠ approval</text>
+<text x="76" y="522" font-size="11.5" fill="#424a53">of publication</text>
+<line x1="250" y1="530" x2="250" y2="562" stroke="#8b949e" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="60" y="564" width="380" height="64" rx="8" fill="#eceff4" stroke="#4c566a" stroke-width="1.4"/>
+<text x="76" y="588" font-size="15" font-weight="600" fill="#4c566a">6. Approved output</text>
+<text x="76" y="605" font-size="11.5" fill="#424a53">audience export-public — sanitized, shareable artifact;</text>
+<text x="76" y="620" font-size="11.5" fill="#424a53">publication always manual</text>
+<rect x="486" y="182" width="300" height="204" rx="8" fill="#fbfcfd" stroke="#8b949e" stroke-width="1.2" stroke-dasharray="6 4"/>
+<text x="502" y="208" font-size="14" font-weight="600" fill="#24292f">Model boundary (providers/)</text>
+<text x="502" y="232" font-size="12" fill="#424a53">• Only module allowed network I/O</text>
+<text x="502" y="251" font-size="12" fill="#424a53">• Default provider: offline MockProvider</text>
+<text x="502" y="270" font-size="12" fill="#424a53">• Data crosses only via strip_for_model()</text>
+<text x="502" y="289" font-size="12" fill="#424a53">  field allowlist — no names, emails, URLs</text>
+<text x="502" y="308" font-size="12" fill="#424a53">• Demo and full test suite run with</text>
+<text x="502" y="327" font-size="12" fill="#424a53">  no API key and no network</text>
+<line x1="440" y1="239" x2="486" y2="239" stroke="#8b949e" stroke-width="1.2" stroke-dasharray="4 4"/>
+</svg>
