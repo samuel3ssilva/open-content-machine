@@ -1,0 +1,32 @@
+{
+  "profile_version": "synthetic-1",
+  "territories": [
+    { "tag": "agents", "priority": 5 },
+    { "tag": "harnesses", "priority": 5 },
+    { "tag": "skills", "priority": 4 },
+    { "tag": "mcp", "priority": 4 },
+    { "tag": "agent-cli", "priority": 3 },
+    { "tag": "hooks-guardrails", "priority": 3 },
+    { "tag": "evals", "priority": 2 },
+    { "tag": "multi-agent", "priority": 2 },
+    { "tag": "memory-context", "priority": 1 },
+    { "tag": "browser-agents", "priority": 1 },
+    { "tag": "careers-skills", "priority": 0 }
+  ],
+  "live_questions": [
+    {
+      "question_id": "q_harness_permissions",
+      "tags": ["harnesses", "hooks-guardrails", "security-boundaries"]
+    },
+    {
+      "question_id": "q_agent_memory",
+      "tags": ["memory-context", "agents"]
+    },
+    {
+      "question_id": "q_skill_packaging",
+      "tags": ["skills", "agent-cli"]
+    }
+  ],
+  "current_tooling": ["agents", "harnesses", "skills", "mcp"],
+  "experiment_budget": "medium"
+}

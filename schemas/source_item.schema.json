@@ -1,0 +1,149 @@
+{
+  "additionalProperties": false,
+  "description": "One observable fact-sheet about a single artifact (email/feed/doc item).\n\nFillable by someone who has never met the Founder and cannot see the\nRELEVANCE or EVIDENCE rubric: every field describes the artifact itself,\nnever how relevant or important it is, and there is deliberately no\n``relevance``, ``marketing_risk``, or ``body`` field here. ``change_class``,\n``action_required``, and ``experiment_affordance`` are, however, AUTHORED\nenums -- a human judgment call about the artifact, not an observable fact\nin the same sense as ``publisher_id`` or ``evidence_type``. That is a\nknown, documented Gate A limitation: the only check on an authored enum\nis the free-text ``change_class_rationale`` field (surfaced in the\nmagnitude dimension's ``inputs`` -- see ``ranking.py``), which a human\nreviewer can audit but the system does not itself verify.\n\n``contains_benefit_or_performance_claim`` (Founder decision D4) is a\nsimilarly AUTHORED-but-checkable observable fact, not an inference: a\ndeterministic pipeline cannot itself classify prose as a benefit/\nperformance claim, so a human fills this in the same way they fill\n``change_class`` -- but unlike ``change_class`` it is a narrow yes/no\nquestion anyone reading the artifact can verify (\"does this text claim a\nbenefit or a performance characteristic?\"), not a judgment call about\nsignificance. It is REQUIRED, with no default: an unfilled field must\nnever be silently interpreted as \"clean\" (Opus F2/F3) -- every authored\nitem must state whether it carries such a claim, even when the answer is\nFalse. It feeds ``marketing_risk`` (see\n``cluster._evidence_level_and_marketing_risk``) whenever this item is the\ncluster's ``first_party_commentary`` member (the subject analysing\nitself), and is otherwise inert.\n\nAuthoring guidance for downstream release notes: a non-subject\n``release_note`` can genuinely be a PRIMARY ARTIFACT of the publishing\nproject, not mere secondary news about someone else -- e.g. a downstream\nproject's own release note stating \"upgraded to VendorA 3.0, requires\nmigration\" is that downstream project's first-party artifact, even\nthough it is also coverage of VendorA. To be scored as such (rather than\nD2's ``secondary_news_uncorroborated``), the downstream project MUST be\nlisted in that item's own ``subject_entity_ids`` -- publisher_id alone is\nnot enough, since evidence polarity is judged per (item, cluster-subject)\npair, and a cluster's ``subject_entity_ids`` is the union of every\nmember's.",
+  "properties": {
+    "item_id": {
+      "title": "Item Id",
+      "type": "string"
+    },
+    "source_type": {
+      "enum": [
+        "email",
+        "feed",
+        "doc"
+      ],
+      "title": "Source Type",
+      "type": "string"
+    },
+    "source_category": {
+      "title": "Source Category",
+      "type": "string"
+    },
+    "publisher_id": {
+      "title": "Publisher Id",
+      "type": "string"
+    },
+    "subject_entity_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Subject Entity Ids",
+      "type": "array"
+    },
+    "title": {
+      "title": "Title",
+      "type": "string"
+    },
+    "summary_normalized": {
+      "title": "Summary Normalized",
+      "type": "string"
+    },
+    "publication_date": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Publication Date"
+    },
+    "detection_date": {
+      "format": "date",
+      "title": "Detection Date",
+      "type": "string"
+    },
+    "stable_reference": {
+      "title": "Stable Reference",
+      "type": "string"
+    },
+    "evidence_type": {
+      "enum": [
+        "roundup",
+        "relay",
+        "rumor",
+        "announcement",
+        "release_note",
+        "official_doc",
+        "spec_change",
+        "deprecation_notice",
+        "security_advisory",
+        "official_api_behavior_change",
+        "independent_analysis",
+        "benchmark_with_methodology",
+        "independent_implementation",
+        "research_paper"
+      ],
+      "title": "Evidence Type",
+      "type": "string"
+    },
+    "change_class": {
+      "enum": [
+        "new_capability_class",
+        "breaking_change",
+        "material_change",
+        "incremental_update",
+        "restatement",
+        "announcement_of_intent"
+      ],
+      "title": "Change Class",
+      "type": "string"
+    },
+    "change_class_rationale": {
+      "title": "Change Class Rationale",
+      "type": "string"
+    },
+    "action_required": {
+      "enum": [
+        "migration_required",
+        "config_or_code_change",
+        "new_option_available",
+        "changes_how_to_think",
+        "none"
+      ],
+      "title": "Action Required",
+      "type": "string"
+    },
+    "experiment_affordance": {
+      "enum": [
+        "local_reproducible",
+        "requires_paid_service",
+        "not_testable"
+      ],
+      "title": "Experiment Affordance",
+      "type": "string"
+    },
+    "topic_tags": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Topic Tags",
+      "type": "array"
+    },
+    "contains_benefit_or_performance_claim": {
+      "title": "Contains Benefit Or Performance Claim",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "item_id",
+    "source_type",
+    "source_category",
+    "publisher_id",
+    "title",
+    "summary_normalized",
+    "detection_date",
+    "stable_reference",
+    "evidence_type",
+    "change_class",
+    "change_class_rationale",
+    "action_required",
+    "experiment_affordance",
+    "contains_benefit_or_performance_claim"
+  ],
+  "title": "SourceItem",
+  "type": "object"
+}

@@ -30,6 +30,13 @@ from content_machine.audience.run_comparison import (  # noqa: E402
     RunComparison,
 )
 from content_machine.ingestion.csv_loader import RawConnection  # noqa: E402
+from content_machine.intelligence.models import (  # noqa: E402
+    RankedTopic,
+    RankingBreakdown,
+    RelevanceProfile,
+    SourceItem,
+    TopicCluster,
+)
 from content_machine.privacy.anonymizer import AnonymizedConnection  # noqa: E402
 from content_machine.sources.contracts import SourceReference  # noqa: E402
 from content_machine.sources.inventory import (  # noqa: E402
@@ -53,6 +60,11 @@ _MODELS = {
     "source_inventory.schema.json": SourceInventory,
     "inventory_entry.schema.json": InventoryEntry,
     "source_reference.schema.json": SourceReference,
+    "source_item.schema.json": SourceItem,
+    "relevance_profile.schema.json": RelevanceProfile,
+    "topic_cluster.schema.json": TopicCluster,
+    "ranking_breakdown.schema.json": RankingBreakdown,
+    "ranked_topic.schema.json": RankedTopic,
 }
 
 

@@ -1,0 +1,126 @@
+{
+  "additionalProperties": false,
+  "description": "Facts DERIVED from the corpus by :mod:`content_machine.intelligence.cluster`.\n\nNever authored directly in a fixture -- every field here is computed from\na group of merged :class:`SourceItem` records. ``topic_id`` identifies the\ncluster only within a single run (see the identity docstring on\n:func:`content_machine.intelligence.cluster.cluster_items`); persistent\ncross-run identity is out of scope for Gate A and lands at M6.",
+  "properties": {
+    "topic_id": {
+      "title": "Topic Id",
+      "type": "string"
+    },
+    "cluster_fingerprint": {
+      "title": "Cluster Fingerprint",
+      "type": "string"
+    },
+    "canonical_title": {
+      "title": "Canonical Title",
+      "type": "string"
+    },
+    "anchor_item_id": {
+      "title": "Anchor Item Id",
+      "type": "string"
+    },
+    "member_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Member Ids",
+      "type": "array"
+    },
+    "member_roles": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Member Roles",
+      "type": "object"
+    },
+    "duplication_reasons": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Duplication Reasons",
+      "type": "array"
+    },
+    "subject_entity_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Subject Entity Ids",
+      "type": "array"
+    },
+    "independent_publisher_count": {
+      "default": 0,
+      "title": "Independent Publisher Count",
+      "type": "integer"
+    },
+    "has_independent_evidence": {
+      "default": false,
+      "title": "Has Independent Evidence",
+      "type": "boolean"
+    },
+    "has_first_party_authoritative": {
+      "default": false,
+      "title": "Has First Party Authoritative",
+      "type": "boolean"
+    },
+    "has_direct_artifact_or_independent_source": {
+      "default": false,
+      "title": "Has Direct Artifact Or Independent Source",
+      "type": "boolean"
+    },
+    "evidence_level": {
+      "default": 0,
+      "maximum": 5,
+      "minimum": 0,
+      "title": "Evidence Level",
+      "type": "integer"
+    },
+    "evidence_anchor_id": {
+      "default": "",
+      "title": "Evidence Anchor Id",
+      "type": "string"
+    },
+    "marketing_risk": {
+      "default": false,
+      "title": "Marketing Risk",
+      "type": "boolean"
+    },
+    "first_seen": {
+      "format": "date",
+      "title": "First Seen",
+      "type": "string"
+    },
+    "last_seen": {
+      "format": "date",
+      "title": "Last Seen",
+      "type": "string"
+    },
+    "cluster_size": {
+      "default": 0,
+      "title": "Cluster Size",
+      "type": "integer"
+    },
+    "topic_tags": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Topic Tags",
+      "type": "array"
+    },
+    "evidence_types": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Evidence Types",
+      "type": "array"
+    }
+  },
+  "required": [
+    "topic_id",
+    "cluster_fingerprint",
+    "canonical_title",
+    "anchor_item_id",
+    "first_seen",
+    "last_seen"
+  ],
+  "title": "TopicCluster",
+  "type": "object"
+}

@@ -1,0 +1,308 @@
+{
+  "$defs": {
+    "DimensionScore": {
+      "additionalProperties": false,
+      "description": "One scored dimension of a :class:`RankingBreakdown`, fully explained.",
+      "properties": {
+        "dimension": {
+          "title": "Dimension",
+          "type": "string"
+        },
+        "raw_value": {
+          "title": "Raw Value",
+          "type": "integer"
+        },
+        "effective_value": {
+          "title": "Effective Value",
+          "type": "integer"
+        },
+        "cap_applied": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cap Applied"
+        },
+        "floor_applied": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Floor Applied"
+        },
+        "anchor_id": {
+          "title": "Anchor Id",
+          "type": "string"
+        },
+        "anchor_text": {
+          "title": "Anchor Text",
+          "type": "string"
+        },
+        "inputs": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Inputs",
+          "type": "object"
+        },
+        "rationale": {
+          "title": "Rationale",
+          "type": "string"
+        },
+        "weight": {
+          "title": "Weight",
+          "type": "integer"
+        },
+        "points": {
+          "title": "Points",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "dimension",
+        "raw_value",
+        "effective_value",
+        "anchor_id",
+        "anchor_text",
+        "rationale",
+        "weight",
+        "points"
+      ],
+      "title": "DimensionScore",
+      "type": "object"
+    },
+    "RankingBreakdown": {
+      "additionalProperties": false,
+      "description": "Full explanation of one topic's score, in fixed dimension order.",
+      "properties": {
+        "dimensions": {
+          "items": {
+            "$ref": "#/$defs/DimensionScore"
+          },
+          "title": "Dimensions",
+          "type": "array"
+        },
+        "points_total": {
+          "title": "Points Total",
+          "type": "integer"
+        },
+        "score": {
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Score",
+          "type": "integer"
+        },
+        "rubric_version": {
+          "title": "Rubric Version",
+          "type": "string"
+        },
+        "weights_version": {
+          "title": "Weights Version",
+          "type": "string"
+        },
+        "taxonomy_version": {
+          "title": "Taxonomy Version",
+          "type": "string"
+        },
+        "profile_version": {
+          "title": "Profile Version",
+          "type": "string"
+        },
+        "tier1_eligible": {
+          "title": "Tier1 Eligible",
+          "type": "boolean"
+        },
+        "eligibility_reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Eligibility Reasons",
+          "type": "array"
+        },
+        "first_party_authoritative_candidate": {
+          "title": "First Party Authoritative Candidate",
+          "type": "boolean"
+        },
+        "tie_break_key": {
+          "title": "Tie Break Key",
+          "type": "string"
+        },
+        "ranking_explanation": {
+          "title": "Ranking Explanation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "points_total",
+        "score",
+        "rubric_version",
+        "weights_version",
+        "taxonomy_version",
+        "profile_version",
+        "tier1_eligible",
+        "first_party_authoritative_candidate",
+        "tie_break_key",
+        "ranking_explanation"
+      ],
+      "title": "RankingBreakdown",
+      "type": "object"
+    },
+    "TopicCluster": {
+      "additionalProperties": false,
+      "description": "Facts DERIVED from the corpus by :mod:`content_machine.intelligence.cluster`.\n\nNever authored directly in a fixture -- every field here is computed from\na group of merged :class:`SourceItem` records. ``topic_id`` identifies the\ncluster only within a single run (see the identity docstring on\n:func:`content_machine.intelligence.cluster.cluster_items`); persistent\ncross-run identity is out of scope for Gate A and lands at M6.",
+      "properties": {
+        "topic_id": {
+          "title": "Topic Id",
+          "type": "string"
+        },
+        "cluster_fingerprint": {
+          "title": "Cluster Fingerprint",
+          "type": "string"
+        },
+        "canonical_title": {
+          "title": "Canonical Title",
+          "type": "string"
+        },
+        "anchor_item_id": {
+          "title": "Anchor Item Id",
+          "type": "string"
+        },
+        "member_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Member Ids",
+          "type": "array"
+        },
+        "member_roles": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Member Roles",
+          "type": "object"
+        },
+        "duplication_reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Duplication Reasons",
+          "type": "array"
+        },
+        "subject_entity_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Subject Entity Ids",
+          "type": "array"
+        },
+        "independent_publisher_count": {
+          "default": 0,
+          "title": "Independent Publisher Count",
+          "type": "integer"
+        },
+        "has_independent_evidence": {
+          "default": false,
+          "title": "Has Independent Evidence",
+          "type": "boolean"
+        },
+        "has_first_party_authoritative": {
+          "default": false,
+          "title": "Has First Party Authoritative",
+          "type": "boolean"
+        },
+        "has_direct_artifact_or_independent_source": {
+          "default": false,
+          "title": "Has Direct Artifact Or Independent Source",
+          "type": "boolean"
+        },
+        "evidence_level": {
+          "default": 0,
+          "maximum": 5,
+          "minimum": 0,
+          "title": "Evidence Level",
+          "type": "integer"
+        },
+        "evidence_anchor_id": {
+          "default": "",
+          "title": "Evidence Anchor Id",
+          "type": "string"
+        },
+        "marketing_risk": {
+          "default": false,
+          "title": "Marketing Risk",
+          "type": "boolean"
+        },
+        "first_seen": {
+          "format": "date",
+          "title": "First Seen",
+          "type": "string"
+        },
+        "last_seen": {
+          "format": "date",
+          "title": "Last Seen",
+          "type": "string"
+        },
+        "cluster_size": {
+          "default": 0,
+          "title": "Cluster Size",
+          "type": "integer"
+        },
+        "topic_tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Topic Tags",
+          "type": "array"
+        },
+        "evidence_types": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Types",
+          "type": "array"
+        }
+      },
+      "required": [
+        "topic_id",
+        "cluster_fingerprint",
+        "canonical_title",
+        "anchor_item_id",
+        "first_seen",
+        "last_seen"
+      ],
+      "title": "TopicCluster",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "A :class:`TopicCluster` paired with its rank and full score breakdown.\n\nNot constructed anywhere in Gate A code (``ranking.py`` must never import\nor receive ``TopicCluster`` -- see its module docstring); this model\nexists so the shape is frozen and its JSON Schema can be published ahead\nof the milestone (M4+) that assembles it.",
+  "properties": {
+    "rank": {
+      "title": "Rank",
+      "type": "integer"
+    },
+    "cluster": {
+      "$ref": "#/$defs/TopicCluster"
+    },
+    "breakdown": {
+      "$ref": "#/$defs/RankingBreakdown"
+    }
+  },
+  "required": [
+    "rank",
+    "cluster",
+    "breakdown"
+  ],
+  "title": "RankedTopic",
+  "type": "object"
+}
