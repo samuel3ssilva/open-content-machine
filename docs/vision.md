@@ -32,20 +32,23 @@ trustworthy way to understand which developments deserve attention, study,
 or action.** Reading everything is not an option; outsourcing judgment to
 generic rankings loses personal context.
 
-The primary near-term output is therefore a **weekly Intelligence Brief**:
-the system collects signals from authorized sources, clusters and
-deduplicates coverage of the same event, ranks topics with an explainable
-personal-relevance model (never by mention frequency alone), verifies
-evidence for what ranks highest, and delivers a small set of tiered topics
+The primary near-term output is therefore a **weekly Intelligence Brief**
+(planned; see the roadmap's next-build-focus section for status): the system
+will collect signals from authorized sources, cluster and deduplicate
+coverage of the same event, rank topics with an explainable
+personal-relevance model (never by mention frequency alone), verify
+evidence for what ranks highest, and deliver a small set of tiered topics
 with study recommendations, one practical experiment, and content
 opportunities — ending in a human-review state. Publication is always a
 separate, manual, human decision.
 
-The intended flow: authorized sources → signal detection → clustering and
-deduplication → personal relevance ranking → evidence verification →
+The full intended flow — authorized sources → signal detection → clustering
+and deduplication → personal relevance ranking → evidence verification →
 learning recommendations → practical experiments → adaptive creator
 interview → evidence-backed point of view → publication-ready content →
-human approval.
+human approval — is the longer arc: everything from the adaptive interview
+onward belongs to the later editorial phases of the roadmap, not to the
+near-term brief.
 
 ## Inputs
 
