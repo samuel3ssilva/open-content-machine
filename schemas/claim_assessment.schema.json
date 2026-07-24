@@ -1,0 +1,40 @@
+{
+  "additionalProperties": false,
+  "description": "M4 (ADR 0004): deterministic fact/hypothesis/marketing classification\nplus a confidence assessment, both derived ONLY from existing\n:class:`RankingInputs` fields -- no model, no prose parsing. See\n:mod:`content_machine.intelligence.tiers` for the derivation and\n``claim_class_reason``/``confidence_reason`` for which inputs drove each\nverdict.",
+  "properties": {
+    "claim_class": {
+      "enum": [
+        "fact",
+        "hypothesis",
+        "marketing"
+      ],
+      "title": "Claim Class",
+      "type": "string"
+    },
+    "claim_class_reason": {
+      "title": "Claim Class Reason",
+      "type": "string"
+    },
+    "confidence": {
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ],
+      "title": "Confidence",
+      "type": "string"
+    },
+    "confidence_reason": {
+      "title": "Confidence Reason",
+      "type": "string"
+    }
+  },
+  "required": [
+    "claim_class",
+    "claim_class_reason",
+    "confidence",
+    "confidence_reason"
+  ],
+  "title": "ClaimAssessment",
+  "type": "object"
+}

@@ -130,6 +130,7 @@ def _signals_file_with_tag(tmp_path: Path, item_id: str, tag: str) -> Path:
                     "experiment_affordance": "not_testable",
                     "topic_tags": [tag],
                     "contains_benefit_or_performance_claim": False,
+                    "claim_directly_verifiable_in_artifact": False,
                 }
             ]
         ),
@@ -283,6 +284,7 @@ def test_source_item_rejects_extra_fields() -> None:
                 "experiment_affordance": "not_testable",
                 "topic_tags": [],
                 "contains_benefit_or_performance_claim": False,
+                "claim_directly_verifiable_in_artifact": False,
                 "extra_field": "not allowed",
             }
         )
@@ -310,11 +312,41 @@ def test_contains_benefit_or_performance_claim_is_required() -> None:
         "action_required": "none",
         "experiment_affordance": "not_testable",
         "topic_tags": [],
+        "claim_directly_verifiable_in_artifact": False,
     }
     with pytest.raises(ValidationError):
         SourceItem.model_validate(payload)
     # Adding the field back makes it valid.
     SourceItem.model_validate({**payload, "contains_benefit_or_performance_claim": False})
+
+
+def test_claim_directly_verifiable_in_artifact_is_required() -> None:
+    """D1 (ADR 0004): claim_directly_verifiable_in_artifact must have no
+    default, on the same precedent as contains_benefit_or_performance_claim
+    (Opus F2/F3) -- an item that omits it is a validation error, not a silent
+    'not verifiable'."""
+    payload = {
+        "item_id": "x",
+        "source_type": "feed",
+        "source_category": "vendor_blog",
+        "publisher_id": "vendor-x",
+        "subject_entity_ids": [],
+        "title": "t",
+        "summary_normalized": "s",
+        "detection_date": "2026-01-01",
+        "stable_reference": "https://example.com/x",
+        "evidence_type": "announcement",
+        "change_class": "material_change",
+        "change_class_rationale": "n/a",
+        "action_required": "none",
+        "experiment_affordance": "not_testable",
+        "topic_tags": [],
+        "contains_benefit_or_performance_claim": False,
+    }
+    with pytest.raises(ValidationError):
+        SourceItem.model_validate(payload)
+    # Adding the field back makes it valid.
+    SourceItem.model_validate({**payload, "claim_directly_verifiable_in_artifact": False})
 
 
 def test_relevance_profile_rejects_extra_fields() -> None:

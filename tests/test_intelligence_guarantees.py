@@ -41,6 +41,7 @@ def _make_item(**overrides: object) -> SourceItem:
         "experiment_affordance": "not_testable",
         "topic_tags": [],
         "contains_benefit_or_performance_claim": False,
+        "claim_directly_verifiable_in_artifact": False,
     }
     base.update(overrides)
     return SourceItem.model_validate(base)
