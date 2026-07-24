@@ -62,7 +62,7 @@ about what "metadata-safe" means at the byte level:
 
 The inventory records file names, sizes, dates, a MIME guess, the duplicate
 hash, and a provisional privacy category — see
-[`docs/source-approval-gate.md`](docs/source-approval-gate.md) for the full
+[`docs/source-approval-gate.md`](source-approval-gate.md) for the full
 category lattice and gate.
 
 ```bash
@@ -97,7 +97,7 @@ Analysis of any file requires the Founder to set `approved_for_analysis`
 explicitly, per file, in that private CSV — the full gate (including why
 category D files can never be approved, and why category C needs a written
 note) is defined in
-[`docs/source-approval-gate.md`](docs/source-approval-gate.md).
+[`docs/source-approval-gate.md`](source-approval-gate.md).
 
 ## Deleting everything
 
