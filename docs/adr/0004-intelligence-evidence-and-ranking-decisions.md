@@ -171,6 +171,24 @@ evidence level. See the `test_*` functions under the "D6" comment headers
 in `tests/test_intelligence_ranking.py` and
 `tests/test_intelligence_cluster.py`.
 
+### D7 — Library retention scope: `canonical_title` only in v0.1; a normalized summary is deferred, not forbidden
+
+`library.py`'s `TopicLibraryEntry` persists only `canonical_title` as prose
+in v0.1 — it does not persist a `summary_normalized` field, even though
+spec Sections 3/8 authorize persisting a normalized (generated) summary and
+such a summary is not a raw body under Founder decision D (which forbids
+raw bodies, not every derived string). This is a conservative
+retention-scope choice: the gate erred toward the smaller persisted-field
+surface rather than adding a new persisted prose field mid-sprint. A
+normalized summary may be added in v0.2 to support editorial
+reconsideration of a `deferred`/`stale` entry without re-fetching the
+original signal. This does not move any trust boundary (the field, if
+added, would still be a locally-generated derived string, never a raw
+body/title, and still subject to the same no-raw-bodies test), so it does
+not require Fable sign-off. `test_no_raw_bodies_or_prose_beyond_canonical_title_is_persisted`
+pins today's (smaller) v0.1 field set; its docstring states that choice
+explicitly rather than declaring a normalized summary forbidden forever.
+
 ## Consequences
 
 - D1 remains formally recorded but inert until the Founder rules on (a) or

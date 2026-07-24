@@ -313,7 +313,15 @@ def test_every_audit_event_has_a_non_empty_reason() -> None:
 def test_no_raw_bodies_or_prose_beyond_canonical_title_is_persisted() -> None:
     """Only the allowlisted fields may appear; item titles, summaries, and
     change_class_rationale text (which could carry a full artifact body)
-    must never leak into the persisted entry."""
+    must never leak into the persisted entry.
+
+    This pins the v0.1 field set as a conservative RETENTION-SCOPE choice,
+    not a declaration that a normalized summary is forbidden forever: spec
+    Sections 3/8 authorize persisting a normalized (generated) summary
+    (it is not a raw body under Founder decision D), and one may be added
+    in v0.2 for editorial reconsideration -- see ADR 0004 D7. If that
+    happens, this test's ``forbidden_fields`` set is expected to gain a
+    new entry rather than stay frozen at today's field list."""
     tiered, ranked, clusters, items = _build_week(
         [{"topic_id": "t1", "title": "Topic One", "rank": 1, "tier": "tier_1", "score": 80}]
     )
@@ -654,6 +662,71 @@ def test_append_score_history_and_audit_rows_are_append_only_across_two_runs(
     assert any('"score":91' in line for line in score_lines)
 
 
+# --- library_movements_for_brief: brief-facing adapter suppresses noise -----
+
+
+def test_first_run_created_rows_are_suppressed_from_brief_movements() -> None:
+    """F-C: a first run's plain 'created' -> 'new' rows must NOT surface as
+    brief-facing library movements (they'd otherwise duplicate the Tier
+    1/2/3 lists the brief already renders). They still exist in the full
+    audit log (new_audit_rows) -- only the brief-facing adapter suppresses
+    them."""
+    tiered, ranked, clusters, items = _build_week(
+        [
+            {"topic_id": "t1", "title": "Topic One", "rank": 1, "tier": "tier_1", "score": 80},
+            {"topic_id": "t2", "title": "Topic Two", "rank": 4, "tier": "tier_2", "score": 60},
+        ]
+    )
+    result = update_library(tiered, ranked, clusters, items, "2026-W10", [])
+    # The full audit log still records both 'created' events.
+    assert len(result.new_audit_rows) == 2
+    assert all(row.event_type == "created" for row in result.new_audit_rows)
+
+    movements = library_movements_for_brief(result)
+    assert movements.movements == []
+    assert movements.deferred_note is not None
+    assert "first run" in movements.deferred_note
+    assert "no library movements this week" in movements.deferred_note
+    # This is NOT the "M6 not wired in" deferral note -- the library IS wired
+    # in here, there just happened to be nothing brief-worthy this week.
+    assert "not wired" not in movements.deferred_note
+    assert "M6" not in movements.deferred_note
+
+
+def test_a_week_with_only_score_changes_also_states_no_movements() -> None:
+    """A continuing topic whose data-driven status is already stable (only
+    its score changes) must not surface a movement either -- score_change
+    bookkeeping was already suppressed before this fix; this confirms it
+    still is. Week 1 is always 'new'; week 2 always transitions away from
+    'new' to the data-driven bucket (recomputed every week by construction),
+    so the "nothing changed" case is only reachable from week 3 onward, once
+    the data-driven bucket itself is stable."""
+    tiered1, ranked1, clusters1, items1 = _build_week(
+        [{"topic_id": "t1", "title": "Topic One", "rank": 4, "tier": "tier_2", "score": 60}]
+    )
+    week1 = update_library(tiered1, ranked1, clusters1, items1, "2026-W10", [])
+    tiered2, ranked2, clusters2, items2 = _build_week(
+        [{"topic_id": "t1", "title": "Topic One", "rank": 4, "tier": "tier_2", "score": 61}]
+    )
+    week2 = update_library(tiered2, ranked2, clusters2, items2, "2026-W11", week1.entries)
+    assert week2.entries[0].lifecycle_status == "study_queue"  # tier_2 + fact -> study_queue
+
+    tiered3, ranked3, clusters3, items3 = _build_week(
+        [{"topic_id": "t1", "title": "Topic One", "rank": 4, "tier": "tier_2", "score": 62}]
+    )
+    week3 = update_library(tiered3, ranked3, clusters3, items3, "2026-W12", week2.entries)
+    # Same data-driven bucket both weeks (tier_2 + 'fact' -> study_queue) --
+    # only the score changed, so THIS WEEK's new rows are score_change only,
+    # not a lifecycle_transition (checked on new_audit_rows, not cumulative
+    # audit_events, since week 2's transition is still in history).
+    assert week3.entries[0].lifecycle_status == week2.entries[0].lifecycle_status
+    assert all(row.event_type == "score_change" for row in week3.new_audit_rows)
+    assert len(week3.new_audit_rows) == 1
+    movements = library_movements_for_brief(week3)
+    assert movements.movements == []
+    assert movements.deferred_note == "no library movements this week (first run / no transitions)"
+
+
 # --- two-week simulation (Founder mandatory test) ---------------------------
 
 
@@ -715,8 +788,8 @@ def test_two_week_simulation_promotion_deferral_rejection_and_stale() -> None:
         by_id["t_ordinary"],  # left as-is
     ]
 
-    # Week 2, 5 weeks later (>= STALE_WEEKS): t_stale is simply absent.
-    week2_label = "2026-W25"
+    # Week 2, STALE_WEEKS later (>= STALE_WEEKS): t_stale is simply absent.
+    week2_label = f"2026-W{20 + STALE_WEEKS}"
     week2_specs = [
         {
             "topic_id": "t_promote",

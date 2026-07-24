@@ -30,7 +30,13 @@ from content_machine.intelligence.models import (
     TopicCluster,
 )
 from content_machine.intelligence.ranking import rank_topics, score_topic
-from content_machine.intelligence.tiers import TOP_N, assign_tiers
+from content_machine.intelligence.tiers import (
+    TOP_N,
+    assign_tiers,
+    build_tiered_topic,
+    d1_exception_fires,
+    d1_would_admit_at_evidence_3,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 VALID_FIXTURE = REPO_ROOT / "examples" / "intelligence-signals-synthetic.json"
@@ -325,6 +331,9 @@ _RUBRIC_JARGON_TOKENS = (
     "raw consequence",
     "effective_value",
     "floored to 5",
+    "evidence_level=",
+    "marketing_risk=",
+    "has_independent_evidence=",
 )
 
 
@@ -375,6 +384,43 @@ def test_tier2_explanation_is_the_authored_rationale_not_rubric_mechanics() -> N
         assert item.explanation == expected
         for token in _RUBRIC_JARGON_TOKENS:
             assert token not in item.explanation
+
+
+def test_tier2_practical_consequence_and_principal_evidence_are_human_not_rubric_mechanics() -> (
+    None
+):
+    """F-B: 'practical_consequence' and 'principal_evidence' used to be the
+    consequence/evidence dimensions' raw rationale strings verbatim (e.g.
+    "action_required 'migration_required' has raw consequence 5" and
+    "evidence_level=4 (...); has_independent_evidence=True,
+    marketing_risk=False") -- the same jargon class the Founder already
+    rejected once for Tier 1. Both must now be human templates built from
+    already-computed structured fields, with no rubric-jargon substrings."""
+    brief = _brief_from_real_fixture()
+    assert brief.tier2
+    for item in brief.tier2:
+        for token in _RUBRIC_JARGON_TOKENS:
+            assert token not in item.practical_consequence
+            assert token not in item.principal_evidence
+        # Sanity: both are non-empty, human-authored sentences, not blank.
+        assert item.practical_consequence
+        assert item.principal_evidence
+        assert item.confidence in item.principal_evidence
+
+
+def test_dimension_rationales_for_tier2_still_live_in_the_appendix_dimension_breakdown() -> None:
+    """F-B: the raw consequence/evidence rationale strings must not be LOST
+    -- Tier 2 topics that also happen to be Tier 1 don't exist (disjoint
+    tiers), so this asserts the raw mechanics survive in ranking's own
+    RankingBreakdown -- available to any caller via the same dimensions the
+    Appendix already renders for Tier 1 (see
+    test_dimension_rationales_still_live_in_the_appendix)."""
+    clusters, items_by_id, ranked = _real_fixture_pipeline()
+    for _inputs, breakdown in ranked:
+        consequence = next(d for d in breakdown.dimensions if d.dimension == "consequence")
+        evidence = next(d for d in breakdown.dimensions if d.dimension == "evidence")
+        assert consequence.rationale
+        assert evidence.rationale
 
 
 def test_dimension_rationales_still_live_in_the_appendix() -> None:
@@ -689,6 +735,47 @@ def test_d1_threshold_watch_never_changes_tier_assignment() -> None:
     assert {t.topic_id for t in brief_again.tier1} == tier1_topic_ids
     assert {item.topic_id for item in brief_again.d1_threshold_watch} == watch_topic_ids
 
+    # De-tautologized (QA #2): the disjointness asserted above is guaranteed
+    # BY CONSTRUCTION -- `_build_d1_threshold_watch` (brief.py) explicitly
+    # skips any topic that is already `tier1_admitted`, so watch_topic_ids
+    # can never overlap tier1_topic_ids regardless of what `tier1_admitted`
+    # itself is computed from; it would pass even if the diagnostic were
+    # wrongly folded into admission. This hand-built case proves the
+    # STRONGER, non-tautological invariant directly against
+    # `tiers.build_tiered_topic`: a topic that satisfies
+    # `d1_would_admit_at_evidence_3` (evidence_level == 3, otherwise a full
+    # D1 match) but fails the REAL D1 exception (needs evidence_level >= 4)
+    # and fails base admission (no independent evidence) must NOT be
+    # `tier1_admitted`. If `tiers.py`'s `tier1_admitted = base_admitted or
+    # d1_fires` were instead `... or d1_would_at_3`, the assertions below
+    # would flip and this test would fail.
+    anchor = _make_item(
+        evidence_type="spec_change",
+        claim_directly_verifiable_in_artifact=True,
+        change_class="breaking_change",
+        action_required="migration_required",
+    )
+    d1_watch_inputs = _make_inputs(
+        evidence_level=3,
+        has_independent_evidence=False,
+        has_first_party_authoritative=True,
+        has_direct_artifact_or_independent_source=True,
+        marketing_risk=False,
+        change_class="breaking_change",
+        action_required="migration_required",
+        evidence_anchor_id="evid_3_first_party_authoritative",
+    )
+    cluster = _make_cluster()
+    breakdown = score_topic(d1_watch_inputs, _profile())
+    assert d1_exception_fires(anchor, d1_watch_inputs, breakdown) is False
+    assert d1_would_admit_at_evidence_3(anchor, d1_watch_inputs, breakdown) is True
+    assert breakdown.tier1_eligible is False  # base admission fails: no independent evidence
+
+    topic = build_tiered_topic(1, cluster, d1_watch_inputs, breakdown, anchor)
+    assert topic.tier_assignment.d1_would_admit_at_evidence_3 is True
+    assert topic.tier_assignment.tier1_admitted is False
+    assert topic.tier_assignment.tier != "tier_1"
+
 
 def test_d1_threshold_watch_empty_is_representable() -> None:
     """When no Top-10 topic satisfies the diagnostic, the list is empty and
@@ -767,6 +854,113 @@ def test_library_movements_states_deferred_to_m6_when_none_wired_in() -> None:
     markdown = render_markdown(brief)
     section = _extract_markdown_section(markdown, "## Library Movements")
     assert "deferred to the topic library (M6)" in section
+
+
+def test_library_movements_render_end_to_end_when_wired_in() -> None:
+    """F-C(b): when build_weekly_brief receives a REAL library_movements
+    argument (the M5/M6 wiring point), it renders those movements -- not the
+    M6-deferral note -- in both Markdown and JSON. Reuses
+    test_intelligence_library.py's two-week simulation building blocks so
+    this exercises a genuine update_library() result (promotion, a rejected
+    reappearance, and staleness), not a hand-rolled movements list."""
+    from content_machine.intelligence.library import (
+        SCORE_CHANGE_TRIGGER_THRESHOLD,
+        STALE_WEEKS,
+        library_movements_for_brief,
+        update_library,
+    )
+    from tests.test_intelligence_library import _build_week
+
+    week1_tiered, week1_ranked, week1_clusters, week1_items = _build_week(
+        [
+            {
+                "topic_id": "t_promote",
+                "title": "Deferred Then Promoted",
+                "rank": 4,
+                "tier": "tier_2",
+                "score": 55,
+            },
+            {
+                "topic_id": "t_reject",
+                "title": "Rejected Topic",
+                "rank": 1,
+                "tier": "tier_1",
+                "score": 70,
+            },
+            {
+                "topic_id": "t_stale",
+                "title": "Will Go Stale",
+                "rank": 8,
+                "tier": "tier_3",
+                "score": 40,
+            },
+        ]
+    )
+    week1 = update_library(week1_tiered, week1_ranked, week1_clusters, week1_items, "2026-W20", [])
+    by_id = {e.topic_id: e for e in week1.entries}
+    prior_entries = [
+        by_id["t_promote"].model_copy(update={"lifecycle_status": "deferred"}),
+        by_id["t_reject"].model_copy(update={"lifecycle_status": "rejected"}),
+        by_id["t_stale"],  # left as-is; will go stale from absence
+    ]
+
+    week2_label = f"2026-W{20 + STALE_WEEKS}"
+    week2_tiered, week2_ranked, week2_clusters, week2_items = _build_week(
+        [
+            {
+                "topic_id": "t_promote",
+                "title": "Deferred Then Promoted",
+                "rank": 4,
+                "tier": "tier_2",
+                "score": 55 + SCORE_CHANGE_TRIGGER_THRESHOLD,
+                "claim_class": "fact",
+            },
+            {
+                "topic_id": "t_reject",
+                "title": "Rejected Topic",
+                "rank": 1,
+                "tier": "tier_1",
+                "score": 95,
+            },
+            # t_stale is absent this week.
+        ]
+    )
+    week2 = update_library(
+        week2_tiered, week2_ranked, week2_clusters, week2_items, week2_label, prior_entries
+    )
+    movements_section = library_movements_for_brief(week2)
+
+    brief = build_weekly_brief(
+        week2_tiered,
+        week2_ranked,
+        week2_clusters,
+        week2_items,
+        week2_label,
+        library_movements=movements_section,
+    )
+    assert brief.library_movements.deferred_note is None
+    assert brief.library_movements.movements
+
+    movements_by_topic = {m.topic_id: m for m in brief.library_movements.movements}
+    assert movements_by_topic["t_promote"].movement == "study_queue"
+    assert "promoted from deferred" in movements_by_topic["t_promote"].reason
+    assert movements_by_topic["t_reject"].movement == "rejected"
+    assert "stays suppressed" in movements_by_topic["t_reject"].reason
+    assert movements_by_topic["t_stale"].movement == "stale"
+    assert "no new evidence" in movements_by_topic["t_stale"].reason
+
+    markdown = render_markdown(brief)
+    section = _extract_markdown_section(markdown, "## Library Movements")
+    for movement in movements_by_topic.values():
+        assert movement.canonical_title in section
+        assert movement.reason in section
+
+    payload = json.loads(render_json(brief))
+    rendered = payload["library_movements"]["movements"]
+    assert len(rendered) == len(movements_by_topic)
+    rendered_reasons = {m["reason"] for m in rendered}
+    for movement in movements_by_topic.values():
+        assert movement.reason in rendered_reasons
 
 
 # --- Product F9/F10/F12: appendix method placement, radar title, list ------

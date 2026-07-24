@@ -122,6 +122,30 @@ _ACTION_REQUIRED_HUMAN_PHRASE: dict[str, str] = {
     "none": "requires no immediate action",
 }
 
+# --- human phrases for Tier 2's practical_consequence/principal_evidence ----
+# lines (F-B fix): plain-English severity/evidence-quality words keyed off
+# already-computed structured values (the consequence dimension's
+# effective_value, and evidence_level) -- never the dimension rationale's
+# debug-trace prose ("action_required '...' has raw consequence N",
+# "evidence_level=N (...); has_independent_evidence=..., marketing_risk=...").
+_CONSEQUENCE_SEVERITY_PHRASE: dict[int, str] = {
+    5: "high-impact",
+    4: "significant",
+    3: "moderate",
+    2: "minor",
+    1: "minor",
+    0: "negligible",
+}
+
+_EVIDENCE_LEVEL_HUMAN_PHRASE: dict[int, str] = {
+    5: "very strong evidence: an authoritative source plus rigorous independent analysis",
+    4: "strong evidence: a first-party source or rigorous independent evidence",
+    3: "a single first-party authoritative source",
+    2: "limited evidence",
+    1: "weak, largely uncorroborated evidence",
+    0: "no meaningful evidence",
+}
+
 # --- D1 threshold-watch diagnostic (decision-support only, ADR 0004/D1) -----
 D1_THRESHOLD_WATCH_NOTE = (
     "Would become Tier-1 eligible if D1's threshold were evidence_level >= 3 instead of >= 4 "
@@ -466,6 +490,45 @@ def _human_why_it_matters(inputs: RankingInputs, claim: ClaimAssessment) -> str:
     )
 
 
+def _human_practical_consequence(inputs: RankingInputs, consequence: DimensionScore) -> str:
+    """F-B: Tier 2's practical-consequence line, human prose built only from
+    already-computed structured fields (the action_required phrase, the
+    consequence dimension's effective_value as a severity word, and whether
+    a breaking-change floor applied) -- never the dimension's raw rationale
+    ("action_required '...' has raw consequence N")."""
+    action_phrase = _ACTION_REQUIRED_HUMAN_PHRASE.get(
+        inputs.action_required, inputs.action_required
+    )
+    severity = _CONSEQUENCE_SEVERITY_PHRASE.get(consequence.effective_value, "unclear")
+    sentence = f"{action_phrase.capitalize()} -- {severity} practical consequence."
+    if consequence.floor_applied is not None:
+        sentence += (
+            " Treated as high-impact because it is a breaking change confirmed by a direct "
+            "artifact or an independent source."
+        )
+    return sentence
+
+
+def _human_principal_evidence(inputs: RankingInputs, claim: ClaimAssessment) -> str:
+    """F-B: Tier 2's principal-evidence line, human prose built only from
+    already-computed structured fields (evidence_level in words,
+    has_independent_evidence, claim_class, confidence) -- never the
+    dimension's raw rationale ("evidence_level=N (...); "
+    "has_independent_evidence=..., marketing_risk=...")."""
+    evidence_phrase = _EVIDENCE_LEVEL_HUMAN_PHRASE.get(
+        inputs.evidence_level, f"evidence level {inputs.evidence_level}"
+    )
+    independence_phrase = (
+        "independently corroborated"
+        if inputs.has_independent_evidence
+        else "not independently corroborated"
+    )
+    return (
+        f"{evidence_phrase.capitalize()}, {independence_phrase}. "
+        f"Classified as {claim.claim_class} at {claim.confidence} confidence."
+    )
+
+
 def _build_tier1_lean(
     topic: TieredTopic, breakdown: RankingBreakdown, inputs: RankingInputs, anchor: SourceItem
 ) -> Tier1LeanItem:
@@ -486,16 +549,17 @@ def _build_tier1_lean(
     )
 
 
-def _build_tier2(topic: TieredTopic, breakdown: RankingBreakdown, anchor: SourceItem) -> Tier2Item:
+def _build_tier2(
+    topic: TieredTopic, breakdown: RankingBreakdown, inputs: RankingInputs, anchor: SourceItem
+) -> Tier2Item:
     consequence = _dimension(breakdown, "consequence")
-    evidence = _dimension(breakdown, "evidence")
     return Tier2Item(
         rank=topic.rank,
         topic_id=topic.topic_id,
         canonical_title=topic.canonical_title,
         explanation=_human_what_changed(anchor),
-        practical_consequence=consequence.rationale,
-        principal_evidence=evidence.rationale,
+        practical_consequence=_human_practical_consequence(inputs, consequence),
+        principal_evidence=_human_principal_evidence(inputs, topic.claim),
         confidence=topic.claim.confidence,
         recommended_action=topic.tier_assignment.recommended_action,
     )
@@ -947,6 +1011,7 @@ def build_weekly_brief(
         _build_tier2(
             t,
             breakdown_by_topic_id[t.topic_id],
+            inputs_by_topic_id[t.topic_id],
             _anchor_for_topic(t.topic_id, clusters_by_topic_id, items_by_id),
         )
         for t in tier2_topics

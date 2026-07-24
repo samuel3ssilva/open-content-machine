@@ -65,6 +65,22 @@ Lifecycle (exactly these ten statuses): ``new``, ``ranked``,
 Every lifecycle transition and every score change appends an audit event
 with a reason; score history is append-only (a later week's entry only ever
 grows the ``score_history`` list, never edits or removes a prior row).
+
+Deferred to v0.2 (not implemented in Gate B) -- deliberately, not forgotten:
+
+- The ``merged`` lifecycle status and its ``merged_into`` cross-week merge
+  (spec §8 F6): two entries later recognized as the same underlying topic
+  are never consolidated here; each keeps its own independent history.
+- Score **decay** by freshness (spec §8): ``freshness`` (``urgent`` /
+  ``time_sensitive`` / ``evergreen``) is computed and persisted on every
+  entry, but nothing in this module reduces ``current_score`` over time
+  based on it -- it is intentionally unused for scoring/staleness today.
+- A structured **professional-relevance** field on the entry: only
+  ``evidence_level`` is a structured (non-prose) quality signal today;
+  there is no separate structured field capturing relevance to the
+  Founder's professional territory (``editorial_territory`` is a list of
+  tag strings carried over from ``RankingInputs.topic_tags``, not a
+  purpose-built relevance field).
 """
 
 from __future__ import annotations
@@ -84,16 +100,19 @@ from content_machine.intelligence.models import (
     TopicCluster,
 )
 
-# --- constants (Founder-stated, documented here) ----------------------------
+# --- constants (per approved spec §8: stale threshold = 8 weeks; -----------
+# reconsideration score-change trigger = ±15 points; configurable) ----------
 
 #: How many consecutive weeks of absence from the Top-10 signals before a
-#: non-frozen entry is marked ``stale``.
-STALE_WEEKS = 3
+#: non-frozen entry is marked ``stale``. Per approved spec §8 (stale: 8
+#: weeks); configurable.
+STALE_WEEKS = 8
 
 #: Minimum score increase (points) that automatically returns a ``deferred``
 #: entry to a data-driven status on its own (one of the two implemented
-#: Founder triggers -- see the module docstring).
-SCORE_CHANGE_TRIGGER_THRESHOLD = 10
+#: Founder triggers -- see the module docstring). Per approved spec §8
+#: (reconsideration score trigger: ±15 points); configurable.
+SCORE_CHANGE_TRIGGER_THRESHOLD = 15
 
 LifecycleStatus = Literal[
     "new",
@@ -159,8 +178,14 @@ class AuditEvent(BaseModel):
 
 class TopicLibraryEntry(BaseModel):
     """One topic's persistent library record. Minimum fields only (Founder
-    decision D): NEVER a raw body, item title, or ``summary_normalized`` --
-    see ``test_no_raw_bodies_or_prose_beyond_canonical_title_is_persisted``.
+    decision D): NEVER a raw body or an item title beyond the topic's own
+    ``canonical_title``. A normalized (generated) summary is NOT a raw body
+    and spec Sections 3/8 authorize persisting one, but this module
+    deliberately omits it in v0.1 as a conservative retention-scope choice,
+    not a permanent prohibition -- see ADR 0004 D7 and
+    ``test_no_raw_bodies_or_prose_beyond_canonical_title_is_persisted``,
+    which pins today's (smaller) field set rather than declaring a
+    normalized summary forbidden forever.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -637,14 +662,29 @@ def update_library(
     )
 
 
+#: Rendered when this week's audit rows contain no BRIEF-FACING movement
+#: (e.g. the very first run, where every row is a plain ``created`` -> "new"
+#: entry, or a week where nothing promoted/deferred/rejected/went stale).
+NO_LIBRARY_MOVEMENTS_NOTE = "no library movements this week (first run / no transitions)"
+
+
 def library_movements_for_brief(result: LibraryUpdateResult) -> LibraryMovementsSection:
-    """Adapt this week's new audit rows (every row except plain
-    ``score_change`` bookkeeping) into a
+    """Adapt this week's new audit rows into a
     :class:`content_machine.intelligence.brief.LibraryMovementsSection` for
     :func:`content_machine.intelligence.brief.build_weekly_brief`'s optional
     ``library_movements`` parameter -- the M5/M6 wiring point. ``brief.py``
     itself never imports this module; the CALLER runs :func:`update_library`
-    and passes the adapted section in."""
+    and passes the adapted section in.
+
+    Only MEANINGFUL transitions are brief-facing (promoted-from-deferred,
+    deferred, rejected/rejected-reappearance, stale). Plain ``score_change``
+    bookkeeping and plain ``created`` ("new") rows are suppressed here -- a
+    first run would otherwise emit one "new" line per topic, duplicating the
+    Tier 1/2/3 lists the brief already renders (they still live in the full
+    audit log; this function only adapts what's brief-facing). When nothing
+    meaningful happened this week (including the common first-run case),
+    ``movements`` is empty and ``deferred_note`` states that explicitly --
+    never the M6-not-wired-in note (see ``NO_LIBRARY_MOVEMENTS_NOTE``)."""
     entries_by_id = {e.topic_id: e for e in result.entries}
     movements = [
         LibraryMovement(
@@ -654,9 +694,10 @@ def library_movements_for_brief(result: LibraryUpdateResult) -> LibraryMovements
             reason=row.reason,
         )
         for row in result.new_audit_rows
-        if row.event_type != "score_change"
+        if row.event_type not in ("score_change", "created") and row.to_status != "new"
     ]
-    return LibraryMovementsSection(movements=movements, deferred_note=None)
+    deferred_note = NO_LIBRARY_MOVEMENTS_NOTE if not movements else None
+    return LibraryMovementsSection(movements=movements, deferred_note=deferred_note)
 
 
 # ------------------------------ persistence -----------------------------------

@@ -84,7 +84,7 @@
     }
   },
   "additionalProperties": false,
-  "description": "One topic's persistent library record. Minimum fields only (Founder\ndecision D): NEVER a raw body, item title, or ``summary_normalized`` --\nsee ``test_no_raw_bodies_or_prose_beyond_canonical_title_is_persisted``.",
+  "description": "One topic's persistent library record. Minimum fields only (Founder\ndecision D): NEVER a raw body or an item title beyond the topic's own\n``canonical_title``. A normalized (generated) summary is NOT a raw body\nand spec Sections 3/8 authorize persisting one, but this module\ndeliberately omits it in v0.1 as a conservative retention-scope choice,\nnot a permanent prohibition -- see ADR 0004 D7 and\n``test_no_raw_bodies_or_prose_beyond_canonical_title_is_persisted``,\nwhich pins today's (smaller) field set rather than declaring a\nnormalized summary forbidden forever.",
   "properties": {
     "topic_id": {
       "title": "Topic Id",
