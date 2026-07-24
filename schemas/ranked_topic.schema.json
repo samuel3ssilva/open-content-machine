@@ -220,6 +220,11 @@
           "title": "Has First Party Authoritative",
           "type": "boolean"
         },
+        "has_direct_artifact_or_independent_source": {
+          "default": false,
+          "title": "Has Direct Artifact Or Independent Source",
+          "type": "boolean"
+        },
         "evidence_level": {
           "default": 0,
           "maximum": 5,

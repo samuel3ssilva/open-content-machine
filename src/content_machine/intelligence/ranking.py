@@ -121,13 +121,18 @@ _EVIDENCE_ANCHOR_TEXT: dict[str, str] = {
     "evid_3_independent_only": (
         "independent evidence present with no first-party member in the cluster"
     ),
-    "evid_3_other_uncorroborated": (
-        "a subject's own independent_analysis of itself, or an announcement/"
-        "release_note carried by a non-subject publisher -- weak, single-source, "
-        "uncorroborated evidence that is neither first-party promotion nor rumor"
-    ),
     "evid_2_first_party_promotional": (
         "first-party promotional source only (announcement/release_note), uncorroborated"
+    ),
+    "evid_2_first_party_commentary": (
+        "the subject's own independent_analysis of itself (Founder decision D4) -- not "
+        "independent, capped at level 2; marketing_risk is True only when the item's "
+        "contains_benefit_or_performance_claim flag is set"
+    ),
+    "evid_1_secondary_news_uncorroborated": (
+        "an isolated announcement/release_note about a non-subject, carried by a "
+        "non-subject publisher, with no first-party or independent corroboration "
+        "anywhere in the cluster (Founder decision D2)"
     ),
     "evid_1_rumor": "rumor only",
     "evid_0_no_qualifying_evidence": (
@@ -235,26 +240,60 @@ def _score_magnitude(inputs: RankingInputs) -> DimensionScore:
 
 
 def _score_consequence(inputs: RankingInputs) -> DimensionScore:
+    """Founder decision D3 (supersedes the Gate A correction round 2, R4
+    "KNOWN LIMITATION"/decision H note that used to live here): the
+    breaking-change floor no longer fires unconditionally on ``change_class``
+    alone. It fires ONLY when ALL of:
+
+    1. ``change_class == "breaking_change"``;
+    2. ``evidence_level >= 3``;
+    3. ``has_direct_artifact_or_independent_source`` is True -- a first-party
+       authoritative/artifact member or genuine independent evidence exists
+       in the cluster (see ``cluster._evidence_level_and_marketing_risk``).
+
+    Relay, roundup, or repetition alone can never satisfy (2) or (3): an
+    all-relay cluster has ``evidence_level`` 0-1 and
+    ``has_direct_artifact_or_independent_source`` False by construction, so
+    authoring it as ``breaking_change`` no longer lifts consequence to 5.
+    When the gate does not fire, consequence falls back to the normal
+    ``action_required`` mapping and ``floor_applied`` stays ``None`` -- there
+    is no partial/soft floor.
+    """
     raw = _CONSEQUENCE_RAW[inputs.action_required]
+    floor_gate = (
+        inputs.change_class == "breaking_change"
+        and inputs.evidence_level >= 3
+        and inputs.has_direct_artifact_or_independent_source
+    )
     floor_applied = None
-    if inputs.change_class == "breaking_change":
-        # KNOWN LIMITATION (Gate A correction round 2, R4 -- Founder-approved
-        # decision H, do not change): this floor is unconditional on
-        # change_class alone, with no evidence gate. An all-roundup/relay
-        # cluster (evidence_level 0-1, no independent or first-party source
-        # at all) can still be authored as change_class="breaking_change" and
-        # reach consequence=5 here, which can lift its total score into the
-        # 60s even with weak evidence. Gating this floor by evidence_level
-        # would change an approved rule, so it is intentionally left as-is;
-        # this is a pending Founder decision, not a bug to fix silently.
+    if floor_gate:
         effective = 5
         if raw != 5:
             floor_applied = (
-                f"consequence floored to 5 because change_class == breaking_change "
+                "consequence floored to 5 because change_class == breaking_change AND "
+                f"evidence_level {inputs.evidence_level} >= 3 AND "
+                "has_direct_artifact_or_independent_source is True "
                 f"(raw was {raw})"
             )
     else:
         effective = raw
+
+    if inputs.change_class == "breaking_change" and not floor_gate:
+        floor_gate_note = (
+            "breaking_change floor NOT applied: evidence_level "
+            f"{inputs.evidence_level} >= 3 is "
+            f"{'true' if inputs.evidence_level >= 3 else 'false'}, "
+            "has_direct_artifact_or_independent_source is "
+            f"{inputs.has_direct_artifact_or_independent_source} -- at least one gate "
+            "condition failed"
+        )
+    elif floor_gate:
+        floor_gate_note = (
+            "breaking_change floor applied: evidence_level >= 3 and "
+            "has_direct_artifact_or_independent_source are both true"
+        )
+    else:
+        floor_gate_note = "breaking_change floor not applicable: change_class != breaking_change"
 
     return DimensionScore(
         dimension="consequence",
@@ -267,11 +306,17 @@ def _score_consequence(inputs: RankingInputs) -> DimensionScore:
         inputs={
             "action_required": inputs.action_required,
             "change_class": inputs.change_class,
+            "evidence_level": str(inputs.evidence_level),
+            "has_direct_artifact_or_independent_source": str(
+                inputs.has_direct_artifact_or_independent_source
+            ),
+            "breaking_change_floor_gate": floor_gate_note,
         },
         rationale=(
             f"action_required '{inputs.action_required}' has raw consequence {raw}"
             + (
-                "; floored to 5 (breaking_change)."
+                "; floored to 5 (breaking_change, evidence >= 3, direct artifact/independent "
+                "source present)."
                 if floor_applied
                 else "."
             )
@@ -382,6 +427,25 @@ def _score_curiosity(inputs: RankingInputs, profile: RelevanceProfile) -> Dimens
     )
 
 
+# FOUNDER DECISION D1 -- RECORDED FOR M4, NOT IMPLEMENTED HERE. Tier
+# admission itself (which tier a topic is placed into) is out of scope for
+# this module; ranking.py computes ``tier1_eligible`` per the rule below and
+# stops there. When M4 implements tier admission, it must honor this
+# contract:
+#
+#   Tier 1 may waive the independent-source requirement only when
+#   evidence_type in {deprecation_notice, security_advisory,
+#   official_spec_change, official_api_behavior_change} AND evidence >= 4
+#   AND practical_consequence >= 4 AND marketing_risk is False AND the claim
+#   is directly verifiable in the artifact AND first_party_authoritative is
+#   True. Benefit, performance, vendor self-benchmark, institutional opinion,
+#   and promotional announcements never qualify. The absence of independent
+#   analysis must remain explicit in the output.
+#
+# Nothing in this module implements the waiver above -- ``tier1_eligible``
+# below still requires ``has_independent_evidence`` unconditionally; the
+# ``first_party_authoritative_candidate`` diagnostic flags the narrow case
+# the waiver is meant for without ever admitting it to Tier 1 itself.
 def _tier1_eligibility(
     relevance_effective: int, evidence_effective: int, inputs: RankingInputs
 ) -> tuple[bool, list[str], bool]:

@@ -117,19 +117,39 @@ _INDEPENDENT_EVIDENCE_TYPES = frozenset(
         "research_paper",
     }
 )
-# "official_doc|spec_change|deprecation_notice|security_advisory" -- the
-# AUTHORITATIVE evidence types. Published BY a cluster subject: evidence
-# anchor 3 ("first-party authoritative"). Published by a THIRD PARTY about a
-# subject (e.g. a standards body's spec change, or a security advisory about
-# a vendor): also evidence anchor 3 ("non-subject authoritative") -- real,
-# uncorroborated third-party evidence, distinct from independent analysis or
-# rigorous corroboration, but never level 0 (Gate A correction round 2, R1).
+# "official_doc|spec_change|deprecation_notice|security_advisory|
+# official_api_behavior_change" -- the AUTHORITATIVE evidence types.
+# Published BY a cluster subject: evidence anchor 3 ("first-party
+# authoritative"). Published by a THIRD PARTY about a subject (e.g. a
+# standards body's spec change, or a security advisory about a vendor): also
+# evidence anchor 3 ("non-subject authoritative") -- real, uncorroborated
+# third-party evidence, distinct from independent analysis or rigorous
+# corroboration, but never level 0 (Gate A correction round 2, R1).
+# ``official_api_behavior_change`` was added for Founder decision D1 (see
+# ranking.py's Tier-1 eligibility docstring for the M4 contract that names
+# it); it is authoritative here for the same reason official_doc/spec_change
+# are, and is exercised by the fixture item using it.
 _AUTHORITATIVE_TYPES = frozenset(
-    {"deprecation_notice", "security_advisory", "official_doc", "spec_change"}
+    {
+        "deprecation_notice",
+        "security_advisory",
+        "official_doc",
+        "spec_change",
+        "official_api_behavior_change",
+    }
 )
 # "announcement|release_note" published BY the subject -- evidence anchor 2
 # (marketing_risk is set here, and ONLY here).
 _FIRST_PARTY_PROMOTIONAL_TYPES = frozenset({"announcement", "release_note"})
+# "announcement|release_note" published by a NON-subject, with no other
+# qualifying evidence in the cluster -- Founder decision D2: isolated,
+# uncorroborated secondary news about someone else is weak, single-source
+# evidence, evidence anchor 1 (``evid_1_secondary_news_uncorroborated``,
+# distinct from ``evid_1_rumor``). If the SAME item is clustered with a
+# first-party authoritative/artifact member or genuine independent evidence,
+# those higher branches fire instead -- this flag only decides the anchor
+# when it is the cluster's BEST signal.
+_SECONDARY_NEWS_TYPES = frozenset({"announcement", "release_note"})
 # "independent_implementation|benchmark_with_methodology|research_paper" --
 # the RIGOROUS/reproducible types. Published BY the subject: a self-published
 # runnable/rigorous artifact (evidence anchor 3, the item015 class -- still
@@ -309,14 +329,15 @@ def _evidence_level_and_marketing_risk(
     members_sorted: list[SourceItem],
     member_roles: dict[str, str],
     subject_entity_ids: frozenset[str],
-) -> tuple[int, bool, bool, int, str]:
+) -> tuple[int, bool, bool, int, str, bool]:
     """Compute the evidence rubric (0-5) plus its anchor id, ``marketing_risk``,
-    whether a first-party-authoritative source is present, and the distinct
-    independent publisher count -- all excluding syndicated and duplicate
-    members, which contribute zero to every evidentiary signal.
+    whether a first-party-authoritative source is present, the distinct
+    independent publisher count, and (Founder decision D3)
+    ``has_direct_artifact_or_independent_source`` -- all excluding syndicated
+    and duplicate members, which contribute zero to every evidentiary signal.
 
     TOTAL over evidence_type x publisher-polarity (Gate A correction round 2,
-    R1): every one of the 13 evidence types, in either polarity, lands above
+    R1): every one of the 14 evidence types, in either polarity, lands above
     0 for a single-member cluster EXCEPT ``roundup``/``relay`` (never
     evidentiary) -- see ``test_evidence_rubric_totality_matrix``. Presence
     flags, computed only over evidence-counting members (role not in
@@ -331,7 +352,7 @@ def _evidence_level_and_marketing_risk(
       not flip ``has_independent_evidence``/Tier-1 admission on its own.
     * ``first_party_promotional``    -- publisher IS a subject, type in
       ``_FIRST_PARTY_PROMOTIONAL_TYPES``. ``marketing_risk`` is set ONLY
-      here.
+      here (and, conditionally, at ``first_party_commentary`` below).
     * ``first_party_artifact``       -- publisher IS a subject, type in
       ``_RIGOROUS_TYPES`` -- a self-published runnable/rigorous artifact
       (the item015 class). Real evidence, but self-published: raises the
@@ -343,22 +364,24 @@ def _evidence_level_and_marketing_risk(
       requirement.
     * ``independent_analysis``       -- type == ``independent_analysis``,
       published by a non-subject.
+    * ``first_party_commentary``     -- (Founder decision D4) type ==
+      ``independent_analysis``, published BY a cluster subject -- i.e. the
+      subject analysing itself. This is NOT independent (``_is_independent``
+      already excludes it, since publisher is a subject) and is capped at
+      evidence level 2, never 3+ -- it replaces the old
+      ``evid_3_other_uncorroborated`` branch's self-analysis half.
+      ``marketing_risk`` is set for it ONLY when the authoring item's
+      ``contains_benefit_or_performance_claim`` flag is True.
+    * ``secondary_news_uncorroborated`` -- (Founder decision D2) type in
+      ``_SECONDARY_NEWS_TYPES`` (announcement/release_note), published by a
+      NON-subject, with no first-party or independent signal anywhere else
+      in the cluster. An isolated, uncorroborated news item about someone
+      else is weak single-source evidence -- level 1, distinct from
+      ``rumor``. If ANY higher-branch signal is also present in the cluster,
+      that branch fires instead (see the rubric below): this flag only ever
+      decides the outcome when it is the cluster's best evidence.
     * ``rumor``                      -- type == ``rumor`` (no publisher
       condition; unchanged from before this fix).
-    * ``other_uncorroborated``       -- the residual cells the six flags
-      above do not name: a subject's own ``independent_analysis`` of itself
-      (self-analysis is not independent, but it is also not literal
-      promotional copy, so it is not folded into ``marketing_risk``), and an
-      ``announcement``/``release_note`` carried by a NON-subject publisher
-      (third-party coverage shaped like a promotional type, but not the
-      subject's own promotion). Both are real but weak, single-source,
-      uncorroborated evidence -- treated at the same level as a standalone
-      ``independent_analysis`` (level 3), and explicitly NEVER
-      ``marketing_risk`` (that flag is reserved for the subject's own
-      promotional copy only). This is a documented Gate-A judgment call
-      closing the totality matrix's remaining 3 (of 26) cells, which the
-      correction-round-2 ticket's six named flags did not individually
-      cover; see ``test_evidence_rubric_totality_matrix``.
 
     Rubric (first hit wins, most-evidenced first -- mirrors the
     ``categorize()`` pattern in ``sources.inventory``: an explainable,
@@ -373,15 +396,25 @@ def _evidence_level_and_marketing_risk(
        independent_rigorous alone is rigorous/reproducible enough to earn
        level 4 without first-party corroboration.
     3. first_party_authoritative OR non_subject_authoritative OR
-       first_party_artifact OR independent_analysis OR other_uncorroborated
-       -- any single-source evidentiary signal that is not literal
-       first-party promotion, not rumor, and does not clear level 4/5 on its
-       own.
-    2. first_party_promotional only, uncorroborated -- ``marketing_risk =
-       True`` (here and ONLY here).
-    1. rumor only.
+       first_party_artifact OR independent_analysis -- any single-source
+       evidentiary signal that is not literal first-party promotion, not
+       self-authored commentary, not secondary news, not rumor, and does not
+       clear level 4/5 on its own.
+    2. first_party_promotional -- ``marketing_risk = True`` (unconditional).
+       Otherwise first_party_commentary -- capped here (D4), never 3+;
+       ``marketing_risk`` set only when the authoring item's
+       ``contains_benefit_or_performance_claim`` is True.
+    1. secondary_news_uncorroborated (D2) or rumor -- isolated, uncorroborated
+       single-source coverage of someone else, or an unconfirmed rumor.
     0. ONLY roundup/relay members, or no evidence-counting members left after
        role exclusion.
+
+    ``has_direct_artifact_or_independent_source`` (D3) is the derived FACT
+    the breaking-change consequence floor in ``ranking.py`` is gated on: True
+    when the cluster has a first-party authoritative or first-party-artifact
+    member, OR genuine independent evidence (``independent_publisher_count >
+    0``). It is a fact, never a count, and never roundup/relay/duplicate/
+    syndicated -- those never contribute to it.
     """
     independent_publishers: set[str] = set()
     has_first_party_authoritative = False
@@ -390,8 +423,10 @@ def _evidence_level_and_marketing_risk(
     has_first_party_artifact = False
     has_independent_rigorous = False
     has_independent_analysis = False
+    has_first_party_commentary = False
+    has_first_party_commentary_claim = False
+    has_secondary_news_uncorroborated = False
     has_rumor = False
-    has_other_uncorroborated = False
 
     for member in members_sorted:
         if member_roles[member.item_id] in _EVIDENCE_EXCLUDED_ROLES:
@@ -411,7 +446,7 @@ def _evidence_level_and_marketing_risk(
             if by_subject:
                 has_first_party_promotional = True
             else:
-                has_other_uncorroborated = True
+                has_secondary_news_uncorroborated = True
         elif evidence_type in _RIGOROUS_TYPES:
             if by_subject:
                 has_first_party_artifact = True
@@ -419,7 +454,9 @@ def _evidence_level_and_marketing_risk(
                 has_independent_rigorous = True
         elif evidence_type == "independent_analysis":
             if by_subject:
-                has_other_uncorroborated = True
+                has_first_party_commentary = True
+                if member.contains_benefit_or_performance_claim:
+                    has_first_party_commentary_claim = True
             else:
                 has_independent_analysis = True
         elif evidence_type == "rumor":
@@ -428,6 +465,10 @@ def _evidence_level_and_marketing_risk(
 
     has_any_first_party = (
         has_first_party_authoritative or has_first_party_promotional or has_first_party_artifact
+    )
+    independent_publisher_count = len(independent_publishers)
+    has_direct_artifact_or_independent_source = (
+        has_first_party_authoritative or has_first_party_artifact or independent_publisher_count > 0
     )
 
     marketing_risk = False
@@ -451,7 +492,6 @@ def _evidence_level_and_marketing_risk(
         or has_non_subject_authoritative
         or has_first_party_artifact
         or has_independent_analysis
-        or has_other_uncorroborated
     ):
         evidence_level = 3
         if has_first_party_authoritative:
@@ -460,14 +500,19 @@ def _evidence_level_and_marketing_risk(
             anchor_id = "evid_3_non_subject_authoritative"
         elif has_first_party_artifact:
             anchor_id = "evid_3_first_party_artifact"
-        elif has_independent_analysis:
-            anchor_id = "evid_3_independent_only"
         else:
-            anchor_id = "evid_3_other_uncorroborated"
+            anchor_id = "evid_3_independent_only"
     elif has_first_party_promotional:
         evidence_level = 2
         marketing_risk = True
         anchor_id = "evid_2_first_party_promotional"
+    elif has_first_party_commentary:
+        evidence_level = 2
+        marketing_risk = has_first_party_commentary_claim
+        anchor_id = "evid_2_first_party_commentary"
+    elif has_secondary_news_uncorroborated:
+        evidence_level = 1
+        anchor_id = "evid_1_secondary_news_uncorroborated"
     elif has_rumor:
         evidence_level = 1
         anchor_id = "evid_1_rumor"
@@ -479,8 +524,9 @@ def _evidence_level_and_marketing_risk(
         evidence_level,
         marketing_risk,
         has_first_party_authoritative,
-        len(independent_publishers),
+        independent_publisher_count,
         anchor_id,
+        has_direct_artifact_or_independent_source,
     )
 
 
@@ -521,6 +567,7 @@ def _build_cluster(members: list[SourceItem], duplication_reasons: set[str]) -> 
         has_first_party_authoritative,
         independent_publisher_count,
         evidence_anchor_id,
+        has_direct_artifact_or_independent_source,
     ) = _evidence_level_and_marketing_risk(members_sorted, member_roles, subject_set)
 
     # topic_tags and evidence_types are built from "real" sources only:
@@ -556,6 +603,7 @@ def _build_cluster(members: list[SourceItem], duplication_reasons: set[str]) -> 
         independent_publisher_count=independent_publisher_count,
         has_independent_evidence=independent_publisher_count > 0,
         has_first_party_authoritative=has_first_party_authoritative,
+        has_direct_artifact_or_independent_source=has_direct_artifact_or_independent_source,
         evidence_level=evidence_level,
         evidence_anchor_id=evidence_anchor_id,
         marketing_risk=marketing_risk,
@@ -640,6 +688,7 @@ def to_ranking_inputs(cluster: TopicCluster, items_by_id: dict[str, SourceItem])
         evidence_anchor_id=cluster.evidence_anchor_id,
         has_independent_evidence=cluster.has_independent_evidence,
         has_first_party_authoritative=cluster.has_first_party_authoritative,
+        has_direct_artifact_or_independent_source=cluster.has_direct_artifact_or_independent_source,
         marketing_risk=cluster.marketing_risk,
         experiment_affordance=anchor.experiment_affordance,
         evidence_types=cluster.evidence_types,

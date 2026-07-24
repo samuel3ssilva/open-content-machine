@@ -270,13 +270,17 @@ def test_syndication_origin_invariant_under_date_order() -> None:
     assert vendor_earlier == (2, True, False)
 
 
-# --- SOURCE-VOLUME INVARIANCE (decision B) ------------------------------------
+# --- SOURCE-VOLUME INVARIANCE (decision B; D6 clause "cluster size adds
+# zero points") ----------------------------------------------------------------
 
 
-def test_source_volume_invariance_gmail_heavy_topic() -> None:
-    """5 email-source items + 1 feed item on a subject must produce a
-    byte-identical RankingBreakdown to 1 email item + 1 feed item on that
-    subject -- source *count* must never leak into the score."""
+def test_cluster_size_adds_zero_points_gmail_heavy_topic() -> None:
+    """D6: cluster size adds zero points. 5 email-source items + 1 feed item
+    on a subject (cluster_size 6) must produce a byte-identical
+    RankingBreakdown to 1 email item + 1 feed item on that subject
+    (cluster_size 2) -- source *count* must never leak into the score.
+    ``RankingInputs`` structurally excludes ``cluster_size`` entirely (see
+    ``models.py``); this proves the exclusion actually holds end-to-end."""
     profile = _profile_with_territories(("memory-context", 4))
 
     def feed_item() -> SourceItem:

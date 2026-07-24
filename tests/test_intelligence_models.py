@@ -28,7 +28,7 @@ PROFILE_FIXTURE = REPO_ROOT / "examples" / "intelligence-profile-synthetic.json"
 def test_valid_fixture_loads_whole_with_no_issues() -> None:
     result = load_signals(VALID_FIXTURE)
     assert result.issues == []
-    assert len(result.items) == 40
+    assert len(result.items) == 41
     assert all(isinstance(item, SourceItem) for item in result.items)
 
 

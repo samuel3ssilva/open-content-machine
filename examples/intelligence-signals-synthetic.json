@@ -718,5 +718,23 @@
     "action_required": "none",
     "experiment_affordance": "not_testable",
     "topic_tags": ["agents"]
+  },
+  {
+    "item_id": "item041",
+    "source_type": "doc",
+    "source_category": "project_docs",
+    "publisher_id": "vendor-n",
+    "subject_entity_ids": ["vendor-n"],
+    "title": "VendorN Publishes Official API Behavior Change For Rate Limiting Endpoint",
+    "summary_normalized": "vendor n published documentation describing a behavior change to its public api rate limiting endpoint with no independent coverage yet",
+    "publication_date": "2026-07-11",
+    "detection_date": "2026-07-11",
+    "stable_reference": "https://example.com/vendor-n/docs/api-behavior-change-rate-limit",
+    "evidence_type": "official_api_behavior_change",
+    "change_class": "material_change",
+    "change_class_rationale": "Documented change in existing API endpoint behavior; not a breaking change since the old behavior remains available during a transition window.",
+    "action_required": "config_or_code_change",
+    "experiment_affordance": "not_testable",
+    "topic_tags": ["security-boundaries"]
   }
 ]

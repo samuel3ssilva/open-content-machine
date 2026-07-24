@@ -1,6 +1,6 @@
 {
   "additionalProperties": false,
-  "description": "One observable fact-sheet about a single artifact (email/feed/doc item).\n\nFillable by someone who has never met the Founder and cannot see the\nRELEVANCE or EVIDENCE rubric: every field describes the artifact itself,\nnever how relevant or important it is, and there is deliberately no\n``relevance``, ``marketing_risk``, or ``body`` field here. ``change_class``,\n``action_required``, and ``experiment_affordance`` are, however, AUTHORED\nenums -- a human judgment call about the artifact, not an observable fact\nin the same sense as ``publisher_id`` or ``evidence_type``. That is a\nknown, documented Gate A limitation: the only check on an authored enum\nis the free-text ``change_class_rationale`` field (surfaced in the\nmagnitude dimension's ``inputs`` -- see ``ranking.py``), which a human\nreviewer can audit but the system does not itself verify.",
+  "description": "One observable fact-sheet about a single artifact (email/feed/doc item).\n\nFillable by someone who has never met the Founder and cannot see the\nRELEVANCE or EVIDENCE rubric: every field describes the artifact itself,\nnever how relevant or important it is, and there is deliberately no\n``relevance``, ``marketing_risk``, or ``body`` field here. ``change_class``,\n``action_required``, and ``experiment_affordance`` are, however, AUTHORED\nenums -- a human judgment call about the artifact, not an observable fact\nin the same sense as ``publisher_id`` or ``evidence_type``. That is a\nknown, documented Gate A limitation: the only check on an authored enum\nis the free-text ``change_class_rationale`` field (surfaced in the\nmagnitude dimension's ``inputs`` -- see ``ranking.py``), which a human\nreviewer can audit but the system does not itself verify.\n\n``contains_benefit_or_performance_claim`` (Founder decision D4) is a\nsimilarly AUTHORED-but-checkable observable fact, not an inference: a\ndeterministic pipeline cannot itself classify prose as a benefit/\nperformance claim, so a human fills this in the same way they fill\n``change_class`` -- but unlike ``change_class`` it is a narrow yes/no\nquestion anyone reading the artifact can verify (\"does this text claim a\nbenefit or a performance characteristic?\"), not a judgment call about\nsignificance. It feeds ``marketing_risk`` for ``first_party_commentary``\nevidence (see ``cluster._evidence_level_and_marketing_risk``) and is\notherwise inert.",
   "properties": {
     "item_id": {
       "title": "Item Id",
@@ -71,6 +71,7 @@
         "spec_change",
         "deprecation_notice",
         "security_advisory",
+        "official_api_behavior_change",
         "independent_analysis",
         "benchmark_with_methodology",
         "independent_implementation",
@@ -121,6 +122,11 @@
       },
       "title": "Topic Tags",
       "type": "array"
+    },
+    "contains_benefit_or_performance_claim": {
+      "default": false,
+      "title": "Contains Benefit Or Performance Claim",
+      "type": "boolean"
     }
   },
   "required": [

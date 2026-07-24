@@ -360,15 +360,19 @@ def test_syndication_first_member_can_never_be_syndicated() -> None:
 
 def test_evidence_rubric_totality_matrix() -> None:
     """The evidence rubric must be a TOTAL function over evidence_type x
-    publisher-polarity: every one of the 13 evidence types, in EITHER
-    polarity (publisher is/isn't the cluster's own subject), must produce
-    evidence_level > 0 for a single-member cluster with an anchor id that is
-    NOT ``evid_0_*``, EXCEPT roundup/relay (never evidentiary in any
-    polarity). Before this fix, 10 of these 26 cells silently fell to level 0
-    (and the magnitude cap then crushed them to 1); this is the structural
-    guarantee that the hole cannot reopen."""
+    publisher-polarity: every one of the 14 evidence types (13 plus
+    ``official_api_behavior_change``, added for Founder decision D1), in
+    EITHER polarity (publisher is/isn't the cluster's own subject), must
+    produce evidence_level > 0 for a single-member cluster with an anchor id
+    that is NOT ``evid_0_*``, EXCEPT roundup/relay (never evidentiary in any
+    polarity). Before the original fix, 10 of these cells silently fell to
+    level 0 (and the magnitude cap then crushed them to 1); this is the
+    structural guarantee that the hole cannot reopen. Levels themselves
+    shifted under D2/D4 (self-authored independent_analysis and isolated
+    non-subject announcement/release_note now land at 2 and 1 respectively,
+    not 3) but every non-roundup/relay cell must still clear level 0."""
     all_types = get_args(EvidenceType)
-    assert len(all_types) == 13  # guards against the taxonomy silently growing unnoticed
+    assert len(all_types) == 14  # guards against the taxonomy silently growing unnoticed
 
     for evidence_type in all_types:
         for is_first_party, label in ((True, "first-party"), (False, "non-subject")):
@@ -563,3 +567,266 @@ def test_independent_analysis_alone_with_no_first_party_member_is_level_3(
     assert cluster.evidence_anchor_id == "evid_3_independent_only"
     assert cluster.has_independent_evidence is True
     assert cluster.independent_publisher_count == 1
+
+
+# --- Founder decision D2: isolated secondary news is level 1 -----------------
+
+
+def test_isolated_secondary_news_uncorroborated_is_level_1() -> None:
+    """D2: a single non-subject announcement/release_note about someone
+    else, with no primary artifact and no corroboration anywhere in the
+    cluster, must land at evidence_level 1 with its own anchor id --
+    distinct from rumor and no longer sharing evid_3_other_uncorroborated's
+    level 3. Before this fix this scored level 3, level with a third-party
+    security advisory; it is weaker than that and must not be conflated with
+    it."""
+    item = _make_item(
+        item_id="d2-secondary-news",
+        publisher_id="third-party-outlet",
+        subject_entity_ids=["d2-subject"],
+        title="D2 Secondary News Test Event",
+        summary_normalized="a third party outlet reported that d2 subject shipped something new",
+        stable_reference="https://example.com/third-party-outlet/d2-report",
+        evidence_type="announcement",
+    )
+    cluster = cluster_items([item])[0]
+    assert cluster.evidence_level == 1
+    assert cluster.evidence_anchor_id == "evid_1_secondary_news_uncorroborated"
+    assert cluster.marketing_risk is False
+    assert cluster.has_independent_evidence is False
+
+
+def test_isolated_secondary_news_release_note_is_also_level_1() -> None:
+    """D2 applies to release_note exactly as it does to announcement -- both
+    are in _SECONDARY_NEWS_TYPES."""
+    item = _make_item(
+        item_id="d2-secondary-release-note",
+        publisher_id="third-party-outlet-two",
+        subject_entity_ids=["d2-subject-two"],
+        title="D2 Secondary Release Note Test Event",
+        summary_normalized="a third party outlet republished release notes about d2 subject two",
+        stable_reference="https://example.com/third-party-outlet-two/d2-report",
+        evidence_type="release_note",
+    )
+    cluster = cluster_items([item])[0]
+    assert cluster.evidence_level == 1
+    assert cluster.evidence_anchor_id == "evid_1_secondary_news_uncorroborated"
+
+
+def test_secondary_news_corroborated_by_first_party_authoritative_reaches_level_3() -> None:
+    """D2's carve-out: when the SAME kind of isolated secondary-news item is
+    clustered WITH a first-party authoritative artifact, the existing higher
+    branch fires -- the secondary-news signal never suppresses genuine
+    evidence, it only decides the outcome when it is the cluster's best
+    signal."""
+    shared_title = "D2 Corroborated By Authoritative Test Event"
+    secondary_news = _make_item(
+        item_id="d2-corrob-news",
+        publisher_id="third-party-outlet-three",
+        subject_entity_ids=["d2-corrob-subject"],
+        title=shared_title,
+        summary_normalized="a third party outlet briefly covered the d2 corroborated test event",
+        stable_reference="https://example.com/third-party-outlet-three/d2-corrob-report",
+        evidence_type="announcement",
+    )
+    authoritative = _make_item(
+        item_id="d2-corrob-authoritative",
+        publisher_id="d2-corrob-subject",
+        subject_entity_ids=["d2-corrob-subject"],
+        title=shared_title,
+        summary_normalized=(
+            "d2 corrob subject published an official spec change document for this event"
+        ),
+        stable_reference="https://example.com/d2-corrob-subject/spec-change",
+        evidence_type="spec_change",
+    )
+    clusters = cluster_items([secondary_news, authoritative])
+    assert len(clusters) == 1
+    cluster = clusters[0]
+    assert cluster.evidence_level == 3
+    assert cluster.evidence_anchor_id == "evid_3_first_party_authoritative"
+
+
+def test_secondary_news_corroborated_by_independent_analysis_reaches_level_3() -> None:
+    """D2's carve-out, independent-evidence variant: an isolated secondary
+    news item clustered with genuine (non-subject) independent analysis of
+    the same subject reaches level 3 via the independent-only branch, not
+    level 1 -- corroboration, not the secondary-news item itself, decides
+    the outcome."""
+    shared_title = "D2 Corroborated By Independent Analysis Test Event"
+    secondary_news = _make_item(
+        item_id="d2-corrob-news-2",
+        publisher_id="third-party-outlet-four",
+        subject_entity_ids=["d2-corrob-subject-2"],
+        title=shared_title,
+        summary_normalized=(
+            "a third party outlet briefly covered the second d2 corroborated test event"
+        ),
+        stable_reference="https://example.com/third-party-outlet-four/d2-corrob-report",
+        evidence_type="announcement",
+    )
+    independent_analysis = _make_item(
+        item_id="d2-corrob-analysis",
+        publisher_id="independent-analyst-d2",
+        subject_entity_ids=["d2-corrob-subject-2"],
+        title=shared_title,
+        summary_normalized=(
+            "an independent analyst reviewed the second d2 corroborated test event in detail"
+        ),
+        stable_reference="https://example.org/independent-analyst-d2/review",
+        evidence_type="independent_analysis",
+    )
+    clusters = cluster_items([secondary_news, independent_analysis])
+    assert len(clusters) == 1
+    cluster = clusters[0]
+    assert cluster.evidence_level == 3
+    assert cluster.evidence_anchor_id == "evid_3_independent_only"
+    assert cluster.has_independent_evidence is True
+
+
+# --- repetition is not evidence (D6 clause 3) ---------------------------------
+
+
+def test_repetition_of_relay_copies_is_not_evidence() -> None:
+    """D6: repetition is not evidence. Five distinct relay pickups of the
+    exact same non-evidentiary wire story must produce the SAME
+    evidence_level (0) as a single relay item -- repeating a relay pickup
+    can never manufacture evidentiary weight, no matter how many times it is
+    repeated."""
+    single = _make_item(
+        item_id="repeat-relay-1",
+        publisher_id="relay-outlet-1",
+        subject_entity_ids=["repeat-subject"],
+        title="Repetition Test Event Wire Pickup One",
+        summary_normalized="a wire pickup of the repetition test event with generic framing one",
+        stable_reference="https://example.net/relay-outlet-1/repetition-test-event",
+        evidence_type="relay",
+    )
+    many = [single] + [
+        _make_item(
+            item_id=f"repeat-relay-{i}",
+            publisher_id=f"relay-outlet-{i}",
+            subject_entity_ids=["repeat-subject"],
+            title=f"Repetition Test Event Wire Pickup {i}",
+            summary_normalized=(
+                f"a wire pickup of the repetition test event with generic framing {i}"
+            ),
+            stable_reference=f"https://example.net/relay-outlet-{i}/repetition-test-event",
+            evidence_type="relay",
+        )
+        for i in range(2, 6)
+    ]
+    single_cluster = cluster_items([single])[0]
+    many_cluster = cluster_items(many)[0]
+    assert len(many_cluster.member_ids) == 5
+    assert single_cluster.evidence_level == many_cluster.evidence_level == 0
+    assert (
+        single_cluster.evidence_anchor_id
+        == many_cluster.evidence_anchor_id
+        == "evid_0_no_qualifying_evidence"
+    )
+
+
+# --- Founder decision D4: self-authored analysis is first_party_commentary ---
+
+
+def test_self_authored_independent_analysis_is_first_party_commentary_capped_at_2() -> None:
+    """D4: an independent_analysis published BY the cluster's own subject is
+    not independent -- it must be classified as first_party_commentary,
+    capped at evidence_level 2 (never 3+, replacing the old
+    evid_3_other_uncorroborated branch's self-analysis half), and must NOT
+    set marketing_risk when contains_benefit_or_performance_claim is False
+    (the default)."""
+    item = _make_item(
+        item_id="d4-self-analysis",
+        publisher_id="d4-subject",
+        subject_entity_ids=["d4-subject"],
+        title="D4 Self Authored Analysis Test Event",
+        summary_normalized="d4 subject published its own analysis of its recent announcement",
+        stable_reference="https://example.com/d4-subject/self-analysis",
+        evidence_type="independent_analysis",
+    )
+    cluster = cluster_items([item])[0]
+    assert cluster.evidence_level == 2
+    assert cluster.evidence_anchor_id == "evid_2_first_party_commentary"
+    assert cluster.marketing_risk is False
+    assert cluster.has_independent_evidence is False
+    assert cluster.independent_publisher_count == 0
+
+
+def test_self_authored_independent_analysis_with_claim_sets_marketing_risk_true() -> None:
+    """D4(c): the SAME self-authored-analysis case, but with
+    contains_benefit_or_performance_claim=True on the authoring item, must
+    set marketing_risk=True -- the flag is the only thing that decides this,
+    since a deterministic pipeline cannot infer claim type from prose."""
+    item = _make_item(
+        item_id="d4-self-analysis-claim",
+        publisher_id="d4-subject-claim",
+        subject_entity_ids=["d4-subject-claim"],
+        title="D4 Self Authored Analysis With Claim Test Event",
+        summary_normalized=(
+            "d4 subject claim published its own analysis claiming faster performance"
+        ),
+        stable_reference="https://example.com/d4-subject-claim/self-analysis",
+        evidence_type="independent_analysis",
+        contains_benefit_or_performance_claim=True,
+    )
+    cluster = cluster_items([item])[0]
+    assert cluster.evidence_level == 2
+    assert cluster.evidence_anchor_id == "evid_2_first_party_commentary"
+    assert cluster.marketing_risk is True
+
+
+def test_self_authored_analysis_never_contributes_to_independence_or_level_4() -> None:
+    """D4(a) regression: a self-authored independent_analysis alongside a
+    genuine first-party-authoritative member must NOT elevate the cluster to
+    level 4 (which requires independent_analysis/independent_rigorous from a
+    NON-subject) and must NOT contribute to has_independent_evidence or
+    independent_publisher_count -- confirming _is_independent's existing
+    publisher-based exclusion holds for this specific case."""
+    shared_title = "D4 Regression Authoritative Plus Self Analysis Test Event"
+    authoritative = _make_item(
+        item_id="d4-regression-authoritative",
+        publisher_id="d4-regression-subject",
+        subject_entity_ids=["d4-regression-subject"],
+        title=shared_title,
+        summary_normalized="d4 regression subject published an official spec change document",
+        stable_reference="https://example.com/d4-regression-subject/spec-change",
+        evidence_type="spec_change",
+    )
+    self_analysis = _make_item(
+        item_id="d4-regression-self-analysis",
+        publisher_id="d4-regression-subject",
+        subject_entity_ids=["d4-regression-subject"],
+        title=shared_title,
+        summary_normalized="d4 regression subject published its own analysis of the spec change",
+        stable_reference="https://example.com/d4-regression-subject/self-analysis",
+        evidence_type="independent_analysis",
+    )
+    clusters = cluster_items([authoritative, self_analysis])
+    assert len(clusters) == 1
+    cluster = clusters[0]
+    assert cluster.evidence_level == 3
+    assert cluster.evidence_anchor_id == "evid_3_first_party_authoritative"
+    assert cluster.has_independent_evidence is False
+    assert cluster.independent_publisher_count == 0
+
+
+# --- Founder decision D1: official_api_behavior_change is authoritative -----
+
+
+def test_official_api_behavior_change_is_authoritative_like_spec_change() -> None:
+    """D1 (schema-only prep for M4): official_api_behavior_change was added
+    to the authoritative evidence types alongside official_doc/spec_change/
+    deprecation_notice/security_advisory so M4 can implement the Tier-1
+    waiver contract without a schema break. Exercised here via the real
+    fixture item041 (see examples/intelligence-signals-synthetic.json),
+    published first-party by its own subject."""
+    items = _load_fixture_items()
+    item041 = next(i for i in items if i.item_id == "item041")
+    assert item041.evidence_type == "official_api_behavior_change"
+    clusters = cluster_items(items)
+    cluster = next(c for c in clusters if "item041" in c.member_ids)
+    assert cluster.evidence_level == 3
+    assert cluster.evidence_anchor_id == "evid_3_first_party_authoritative"
+    assert cluster.has_first_party_authoritative is True

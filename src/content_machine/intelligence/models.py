@@ -61,6 +61,7 @@ EvidenceType = Literal[
     "spec_change",
     "deprecation_notice",
     "security_advisory",
+    "official_api_behavior_change",
     "independent_analysis",
     "benchmark_with_methodology",
     "independent_implementation",
@@ -101,6 +102,17 @@ class SourceItem(BaseModel):
     is the free-text ``change_class_rationale`` field (surfaced in the
     magnitude dimension's ``inputs`` -- see ``ranking.py``), which a human
     reviewer can audit but the system does not itself verify.
+
+    ``contains_benefit_or_performance_claim`` (Founder decision D4) is a
+    similarly AUTHORED-but-checkable observable fact, not an inference: a
+    deterministic pipeline cannot itself classify prose as a benefit/
+    performance claim, so a human fills this in the same way they fill
+    ``change_class`` -- but unlike ``change_class`` it is a narrow yes/no
+    question anyone reading the artifact can verify ("does this text claim a
+    benefit or a performance characteristic?"), not a judgment call about
+    significance. It feeds ``marketing_risk`` for ``first_party_commentary``
+    evidence (see ``cluster._evidence_level_and_marketing_risk``) and is
+    otherwise inert.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -123,6 +135,11 @@ class SourceItem(BaseModel):
     action_required: ActionRequired
     experiment_affordance: ExperimentAffordance
     topic_tags: list[str] = Field(default_factory=list)
+    # D4: whether this artifact itself contains a benefit-or-performance
+    # claim -- an authored-but-observable fact (see class docstring). Only
+    # consulted when this item is the cluster's first_party_commentary
+    # (self-authored independent_analysis) member; inert otherwise.
+    contains_benefit_or_performance_claim: bool = False
 
 
 class TerritoryPriority(BaseModel):
@@ -185,6 +202,12 @@ class TopicCluster(BaseModel):
     independent_publisher_count: int = 0
     has_independent_evidence: bool = False
     has_first_party_authoritative: bool = False
+    # D3: a derived corpus FACT (never a count) -- True when the cluster has
+    # a first-party authoritative/artifact member OR genuine independent
+    # evidence. This is the only thing that may gate the breaking-change
+    # consequence floor in ranking.py; see
+    # cluster._evidence_level_and_marketing_risk for how it is computed.
+    has_direct_artifact_or_independent_source: bool = False
     evidence_level: int = Field(default=0, ge=0, le=5)
     # Which branch of the evidence rubric produced evidence_level (e.g.
     # "evid_3_independent_only"); lets a reader re-derive the level without
@@ -218,6 +241,10 @@ class RankingInputs(BaseModel):
     evidence_anchor_id: str = ""
     has_independent_evidence: bool
     has_first_party_authoritative: bool = False
+    # D3: see TopicCluster.has_direct_artifact_or_independent_source -- the
+    # ONLY input allowed to gate the breaking-change consequence floor in
+    # ranking.py. A derived fact, never a count.
+    has_direct_artifact_or_independent_source: bool = False
     marketing_risk: bool
     experiment_affordance: str
     evidence_types: list[str] = Field(default_factory=list)
