@@ -1,0 +1,47 @@
+{
+  "additionalProperties": false,
+  "description": "One row of the flat, append-only ``audit.jsonl`` file.",
+  "properties": {
+    "topic_id": {
+      "title": "Topic Id",
+      "type": "string"
+    },
+    "week_label": {
+      "title": "Week Label",
+      "type": "string"
+    },
+    "event_type": {
+      "title": "Event Type",
+      "type": "string"
+    },
+    "from_status": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "From Status"
+    },
+    "to_status": {
+      "title": "To Status",
+      "type": "string"
+    },
+    "reason": {
+      "title": "Reason",
+      "type": "string"
+    }
+  },
+  "required": [
+    "topic_id",
+    "week_label",
+    "event_type",
+    "from_status",
+    "to_status",
+    "reason"
+  ],
+  "title": "AuditRow",
+  "type": "object"
+}

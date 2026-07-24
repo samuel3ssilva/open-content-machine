@@ -1,0 +1,25 @@
+{
+  "additionalProperties": false,
+  "description": "One row of the flat, append-only ``score-history.jsonl`` file.",
+  "properties": {
+    "topic_id": {
+      "title": "Topic Id",
+      "type": "string"
+    },
+    "week_label": {
+      "title": "Week Label",
+      "type": "string"
+    },
+    "score": {
+      "title": "Score",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "topic_id",
+    "week_label",
+    "score"
+  ],
+  "title": "ScoreHistoryRow",
+  "type": "object"
+}
