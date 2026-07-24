@@ -23,6 +23,7 @@ invalid JSON, wrong top-level shape) raises :class:`SignalLoadError`.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Literal
 
@@ -46,14 +47,27 @@ IssueKind = Literal[
     "invalid_value",
 ]
 
+# A tag outside the closed TOPIC_TAXONOMY is only echoed verbatim into a
+# LoadIssue when it is itself taxonomy-SHAPED (lowercase ascii letters,
+# digits, hyphens, <=32 chars) -- i.e. plausibly just a new/misspelled tag,
+# not arbitrary attacker- or user-supplied text. Anything else (e.g. an
+# email-shaped string, mixed case, unicode, or an over-long value) is
+# reported only as the literal "<non-conforming>" placeholder, once per
+# offending tag, so the count is still visible without leaking the value.
+_TAG_SHAPE_RE = re.compile(r"^[a-z0-9-]{1,32}$")
+_NON_CONFORMING_TAG_PLACEHOLDER = "<non-conforming>"
+
 
 class LoadIssue(BaseModel):
     """A single non-fatal problem found while loading a signal item.
 
-    ``fields`` names the offending field(s) (or, for ``unknown_topic_tag``,
-    the offending tag string(s) -- these are closed-vocabulary content labels,
-    not personal data). ``message`` never contains free-text field values
-    (titles, summaries, publisher ids, etc.).
+    ``fields`` names the offending field(s), or, for ``unknown_topic_tag``,
+    the offending tag string(s) -- but ONLY when a tag is itself
+    taxonomy-shaped (see ``_TAG_SHAPE_RE``); a tag that is not taxonomy-shaped
+    could be arbitrary text (an email address, an injection attempt, etc.),
+    so it is replaced by the literal ``"<non-conforming>"`` placeholder
+    instead of being echoed verbatim. ``message`` never contains free-text
+    field values (titles, summaries, publisher ids, etc.).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -165,14 +179,19 @@ def load_signals(path: str | Path) -> LoadResult:
 
         unknown_tags = sorted(set(raw_tags) - TOPIC_TAXONOMY)
         if unknown_tags:
+            reported_tags = [
+                tag if _TAG_SHAPE_RE.match(tag) else _NON_CONFORMING_TAG_PLACEHOLDER
+                for tag in unknown_tags
+            ]
+            non_conforming_count = sum(1 for tag in unknown_tags if not _TAG_SHAPE_RE.match(tag))
             issues.append(
                 LoadIssue(
                     item_index=index,
                     kind="unknown_topic_tag",
-                    fields=unknown_tags,
+                    fields=reported_tags,
                     message=(
                         f"Item references {len(unknown_tags)} topic tag(s) outside the "
-                        "closed taxonomy; skipped."
+                        f"closed taxonomy ({non_conforming_count} non-conforming); skipped."
                     ),
                 )
             )

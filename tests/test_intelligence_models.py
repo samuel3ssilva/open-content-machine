@@ -28,7 +28,7 @@ PROFILE_FIXTURE = REPO_ROOT / "examples" / "intelligence-profile-synthetic.json"
 def test_valid_fixture_loads_whole_with_no_issues() -> None:
     result = load_signals(VALID_FIXTURE)
     assert result.issues == []
-    assert len(result.items) == 36
+    assert len(result.items) == 40
     assert all(isinstance(item, SourceItem) for item in result.items)
 
 
@@ -87,6 +87,89 @@ def test_unknown_topic_tag_is_rejected() -> None:
     issue = next(i for i in result.issues if i.kind == "unknown_topic_tag")
     assert issue.fields == ["quantum-computing"]
     assert not any(item.item_id == "bad005" for item in result.items)
+
+
+def test_invalid_enum_literal_is_invalid_value_with_field_name_only() -> None:
+    """F3: a well-shaped item with an invalid enum literal (e.g.
+    evidence_type='bogus') must hit the generic ValidationError catch and be
+    reported as kind='invalid_value' naming the field only, never the bad
+    value."""
+    result = load_signals(INVALID_FIXTURE)
+    issue = next(i for i in result.issues if i.kind == "invalid_value")
+    assert issue.fields == ["evidence_type"]
+    assert "bogus" not in issue.message
+    assert not any(item.item_id == "bad006" for item in result.items)
+
+
+def test_unknown_topic_tag_taxonomy_shaped_tag_is_echoed_verbatim(tmp_path: Path) -> None:
+    """S8/F1: a taxonomy-SHAPED unknown tag (lowercase, hyphens, digits only)
+    is safe to echo verbatim -- it's plausibly just a new/misspelled tag."""
+    path = tmp_path / "signals.json"
+    path.write_text(
+        json.dumps(
+            [
+                {
+                    "item_id": "shape-ok",
+                    "source_type": "feed",
+                    "source_category": "vendor_blog",
+                    "publisher_id": "vendor-shape",
+                    "subject_entity_ids": ["vendor-shape"],
+                    "title": "t",
+                    "summary_normalized": "s",
+                    "publication_date": "2026-06-01",
+                    "detection_date": "2026-06-01",
+                    "stable_reference": "https://example.com/shape",
+                    "evidence_type": "announcement",
+                    "change_class": "material_change",
+                    "change_class_rationale": "n/a",
+                    "action_required": "none",
+                    "experiment_affordance": "not_testable",
+                    "topic_tags": ["quantum-computing"],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    result = load_signals(path)
+    issue = next(i for i in result.issues if i.kind == "unknown_topic_tag")
+    assert issue.fields == ["quantum-computing"]
+
+
+def test_unknown_topic_tag_non_conforming_tag_is_never_leaked(tmp_path: Path) -> None:
+    """S8/F1: a tag that is NOT taxonomy-shaped (here, email-shaped) must
+    never appear verbatim in a LoadIssue -- only the literal placeholder,
+    with the non-conforming count visible in the message."""
+    path = tmp_path / "signals.json"
+    path.write_text(
+        json.dumps(
+            [
+                {
+                    "item_id": "shape-bad",
+                    "source_type": "feed",
+                    "source_category": "vendor_blog",
+                    "publisher_id": "vendor-shape",
+                    "subject_entity_ids": ["vendor-shape"],
+                    "title": "t",
+                    "summary_normalized": "s",
+                    "publication_date": "2026-06-01",
+                    "detection_date": "2026-06-01",
+                    "stable_reference": "https://example.com/shape-bad",
+                    "evidence_type": "announcement",
+                    "change_class": "material_change",
+                    "change_class_rationale": "n/a",
+                    "action_required": "none",
+                    "experiment_affordance": "not_testable",
+                    "topic_tags": ["not.a-real-tag@example.com"],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    result = load_signals(path)
+    issue = next(i for i in result.issues if i.kind == "unknown_topic_tag")
+    assert issue.fields == ["<non-conforming>"]
+    assert "@example.com" not in issue.message
+    assert "1 non-conforming" in issue.message
 
 
 def test_issues_never_contain_free_text_field_values() -> None:

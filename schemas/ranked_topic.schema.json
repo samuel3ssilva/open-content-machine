@@ -227,6 +227,11 @@
           "title": "Evidence Level",
           "type": "integer"
         },
+        "evidence_anchor_id": {
+          "default": "",
+          "title": "Evidence Anchor Id",
+          "type": "string"
+        },
         "marketing_risk": {
           "default": false,
           "title": "Marketing Risk",

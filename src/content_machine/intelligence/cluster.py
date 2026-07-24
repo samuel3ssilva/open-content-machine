@@ -23,11 +23,20 @@ makes the partition itself independent of processing order: it depends only
 on the *set* of edges, not on the order operations are applied. Within each
 cluster, a member whose summary token signature has Jaccard >= 0.85 against
 an *earlier* member (members ordered deterministically by ``item_id``) is a
-syndication collapse: it gets ``member_role="syndicated"`` and contributes
-ZERO to ``independent_publisher_count``, ``has_independent_evidence``, and
-``has_first_party_authoritative``. Evidence types ``roundup``/``relay`` never
-count toward independence at any similarity (they are excluded from the
-independent evidence-type set entirely, not just deduplicated).
+syndication collapse: it gets ``member_role="syndicated"``. Members whose
+canonical reference is identical to another member's (and who are not the
+anchor) get ``member_role="duplicate"``. Both ``syndicated`` and
+``duplicate`` members contribute ZERO to ``independent_publisher_count``,
+``has_independent_evidence``, ``has_first_party_authoritative``, and the
+evidence rubric generally -- appending a syndicated copy or a duplicate-URL
+mirror must never change what a cluster's evidence supports. Evidence types
+``roundup``/``relay`` never count toward independence at any similarity
+(they are excluded from the independent evidence-type set entirely, not
+just deduplicated); they also never become the cluster ANCHOR when any
+other (non-``roundup``/``relay``) member is present in the cluster -- see
+``_build_cluster`` -- so ``change_class``, ``action_required``, and
+``experiment_affordance`` (which are read off the anchor) cannot be
+authored by a relay/roundup copy unless every member in the cluster is one.
 
 Independence is per (item, cluster-subject) pair::
 
@@ -41,8 +50,10 @@ Independence is per (item, cluster-subject) pair::
 
 IDENTITY (documented per the frozen design): ``topic_id`` is
 ``"t_" + sha256(anchor_canonical_reference + "|" + sorted_subject_ids)[:12]``,
-where the anchor is the earliest member by
-``(publication_date or detection_date, stable_reference)``.
+where the anchor is the earliest-by-``(publication_date or detection_date,
+stable_reference)`` member among the non-``roundup``/``relay`` members, or
+the earliest member overall when every member is roundup/relay (see
+``_select_anchor``).
 ``cluster_fingerprint`` is a full sha256 over the sorted canonical member
 references; it changes as members accrete and is used ONLY for change
 detection, NEVER as identity. Persistent cross-run identity (stable ``topic_id``
@@ -188,25 +199,57 @@ def _assign_roles(
     return roles
 
 
+# Roles excluded from every evidentiary signal: a syndicated copy (near-
+# identical restatement) or a duplicate-URL mirror must never change what a
+# cluster's evidence supports -- only "primary"/"independent"/"relay" members
+# (real, distinct sources) count.
+_EVIDENCE_EXCLUDED_ROLES = frozenset({"syndicated", "duplicate"})
+
+
 def _evidence_level_and_marketing_risk(
     members_sorted: list[SourceItem],
     member_roles: dict[str, str],
     subject_entity_ids: frozenset[str],
-) -> tuple[int, bool, bool, int]:
-    """Compute the evidence rubric (0-5), ``marketing_risk``, whether a
-    first-party-authoritative source is present, and the distinct independent
-    publisher count -- all excluding syndicated members, which contribute
-    zero to every evidentiary signal."""
+) -> tuple[int, bool, bool, int, str]:
+    """Compute the evidence rubric (0-5) plus its anchor id, ``marketing_risk``,
+    whether a first-party-authoritative source is present, and the distinct
+    independent publisher count -- all excluding syndicated and duplicate
+    members, which contribute zero to every evidentiary signal.
+
+    Rubric (first hit wins, most-evidenced first -- mirrors the
+    ``categorize()`` pattern in ``sources.inventory``: an explainable,
+    ordered rule chain):
+
+    5. first-party authoritative present AND independent evidence present
+       AND a ``benchmark_with_methodology`` or ``independent_implementation``
+       is present (by anyone).
+    4. (first-party present AND independent evidence present) OR a
+       non-subject ``benchmark_with_methodology``, ``research_paper``, or
+       ``independent_implementation`` is present on its own -- these three
+       evidence types are rigorous/reproducible enough to earn level 4 by
+       themselves, without needing first-party corroboration.
+    3. an uncorroborated first-party-authoritative source (``official_doc``/
+       ``spec_change``/``deprecation_notice``/``security_advisory``) OR
+       independent evidence with no first-party member present at all (e.g.
+       a standalone ``independent_analysis``) -- weaker, non-rigorous
+       independent corroboration than level 4's evidence types.
+    2. first-party promotional (``announcement``/``release_note``) only,
+       uncorroborated -- ``marketing_risk = True`` (here and ONLY here).
+    1. rumor only.
+    0. roundup/relay only (or nothing at all).
+    """
     independent_publishers: set[str] = set()
     has_first_party_authoritative = False
     has_first_party_promotional = False
     has_benchmark_present = False
     has_benchmark_non_subject = False
     has_independent_implementation_present = False
+    has_independent_implementation_non_subject = False
+    has_research_paper_non_subject = False
     has_rumor = False
 
     for member in members_sorted:
-        if member_roles[member.item_id] == "syndicated":
+        if member_roles[member.item_id] in _EVIDENCE_EXCLUDED_ROLES:
             continue
         if _is_independent(member, subject_entity_ids):
             independent_publishers.add(member.publisher_id)
@@ -221,6 +264,10 @@ def _evidence_level_and_marketing_risk(
                 has_benchmark_non_subject = True
         if member.evidence_type == "independent_implementation":
             has_independent_implementation_present = True
+            if not by_subject:
+                has_independent_implementation_non_subject = True
+        if member.evidence_type == "research_paper" and not by_subject:
+            has_research_paper_non_subject = True
         if member.evidence_type == "rumor":
             has_rumor = True
 
@@ -235,9 +282,12 @@ def _evidence_level_and_marketing_risk(
     # marketing_risk bucket, which a strictly-authoritative-only reading of
     # anchor 4 would not allow.
     has_first_party_present = has_first_party_authoritative or has_first_party_promotional
+    has_non_subject_rigorous_evidence = (
+        has_benchmark_non_subject
+        or has_research_paper_non_subject
+        or has_independent_implementation_non_subject
+    )
 
-    # First hit wins, most-evidenced first (mirrors the categorize() pattern
-    # in sources.inventory: an explainable, ordered rule chain).
     marketing_risk = False
     if (
         has_first_party_authoritative
@@ -245,24 +295,57 @@ def _evidence_level_and_marketing_risk(
         and (has_benchmark_present or has_independent_implementation_present)
     ):
         evidence_level = 5
-    elif (has_first_party_present and has_independent_evidence) or has_benchmark_non_subject:
+        anchor_id = "evid_5_first_party_plus_independent_methodology"
+    elif (
+        has_first_party_present and has_independent_evidence
+    ) or has_non_subject_rigorous_evidence:
         evidence_level = 4
-    elif has_first_party_authoritative:
+        if has_first_party_present and has_independent_evidence:
+            anchor_id = "evid_4_first_party_plus_independent"
+        else:
+            anchor_id = "evid_4_non_subject_rigorous_evidence"
+    elif has_first_party_authoritative or has_independent_evidence:
         evidence_level = 3
+        anchor_id = (
+            "evid_3_first_party_authoritative"
+            if has_first_party_authoritative
+            else "evid_3_independent_only"
+        )
     elif has_first_party_promotional:
         evidence_level = 2
         marketing_risk = True
+        anchor_id = "evid_2_first_party_promotional"
     elif has_rumor:
         evidence_level = 1
+        anchor_id = "evid_1_rumor"
     else:
         evidence_level = 0
+        anchor_id = "evid_0_no_qualifying_evidence"
 
     return (
         evidence_level,
         marketing_risk,
         has_first_party_authoritative,
         len(independent_publishers),
+        anchor_id,
     )
+
+
+_RELAY_EVIDENCE_TYPES = frozenset({"roundup", "relay"})
+
+
+def _select_anchor(members_sorted: list[SourceItem]) -> SourceItem:
+    """Pick the cluster anchor: the earliest (by ``_anchor_sort_key``) member
+    that is NOT a roundup/relay copy, so that ``change_class``,
+    ``action_required``, and ``experiment_affordance`` -- read off the anchor
+    by :func:`to_ranking_inputs` -- are never authored by a relay/roundup
+    copy. Falls back to the earliest member overall only when every member in
+    the cluster is roundup/relay (there is no better candidate)."""
+    non_relay_candidates = [
+        m for m in members_sorted if m.evidence_type not in _RELAY_EVIDENCE_TYPES
+    ]
+    candidates = non_relay_candidates if non_relay_candidates else members_sorted
+    return min(candidates, key=_anchor_sort_key)
 
 
 def _build_cluster(members: list[SourceItem], duplication_reasons: set[str]) -> TopicCluster:
@@ -270,7 +353,7 @@ def _build_cluster(members: list[SourceItem], duplication_reasons: set[str]) -> 
     subject_entity_ids = sorted({sid for m in members_sorted for sid in m.subject_entity_ids})
     subject_set = frozenset(subject_entity_ids)
 
-    anchor = min(members_sorted, key=_anchor_sort_key)
+    anchor = _select_anchor(members_sorted)
 
     syndicated_ids = _syndicated_ids(members_sorted)
     duplicate_ids = _duplicate_ids(members_sorted, anchor.item_id)
@@ -281,17 +364,28 @@ def _build_cluster(members: list[SourceItem], duplication_reasons: set[str]) -> 
         marketing_risk,
         has_first_party_authoritative,
         independent_publisher_count,
+        evidence_anchor_id,
     ) = _evidence_level_and_marketing_risk(members_sorted, member_roles, subject_set)
 
-    topic_tags = sorted(
-        {
-            tag
-            for m in members_sorted
-            if member_roles[m.item_id] != "syndicated"
-            for tag in m.topic_tags
+    # topic_tags and evidence_types are built from "real" sources only:
+    # members whose role is primary or independent. If a cluster has no such
+    # member (an all-roundup/relay cluster with no independent pickup), fall
+    # back to all non-syndicated members so the cluster's tags and evidence
+    # types are not silently zeroed.
+    tag_source_ids = {
+        m.item_id for m in members_sorted if member_roles[m.item_id] in {"primary", "independent"}
+    }
+    if not tag_source_ids:
+        tag_source_ids = {
+            m.item_id for m in members_sorted if member_roles[m.item_id] != "syndicated"
         }
+
+    topic_tags = sorted(
+        {tag for m in members_sorted if m.item_id in tag_source_ids for tag in m.topic_tags}
     )
-    evidence_types: list[str] = sorted({str(m.evidence_type) for m in members_sorted})
+    evidence_types: list[str] = sorted(
+        {str(m.evidence_type) for m in members_sorted if m.item_id in tag_source_ids}
+    )
 
     dates = [_effective_date(m) for m in members_sorted]
 
@@ -308,6 +402,7 @@ def _build_cluster(members: list[SourceItem], duplication_reasons: set[str]) -> 
         has_independent_evidence=independent_publisher_count > 0,
         has_first_party_authoritative=has_first_party_authoritative,
         evidence_level=evidence_level,
+        evidence_anchor_id=evidence_anchor_id,
         marketing_risk=marketing_risk,
         first_seen=min(dates),
         last_seen=max(dates),
@@ -372,9 +467,11 @@ def to_ranking_inputs(cluster: TopicCluster, items_by_id: dict[str, SourceItem])
 
     This is the ONLY bridge between clustering and ranking: ``ranking.py``
     never imports or receives a ``TopicCluster``. ``change_class``,
-    ``action_required``, and ``experiment_affordance`` -- item-level facts not
-    carried on ``TopicCluster`` -- are taken from the cluster's anchor item
-    (the earliest, primary source), since that is the item whose classification
+    ``action_required``, ``change_class_rationale``, and
+    ``experiment_affordance`` -- item-level facts not carried on
+    ``TopicCluster`` -- are taken from the cluster's anchor item (the
+    non-roundup/relay primary source whenever one exists; see
+    ``cluster._select_anchor``), since that is the item whose classification
     the topic is understood to represent.
     """
     anchor = items_by_id[cluster.anchor_item_id]
@@ -382,9 +479,12 @@ def to_ranking_inputs(cluster: TopicCluster, items_by_id: dict[str, SourceItem])
         topic_id=cluster.topic_id,
         topic_tags=cluster.topic_tags,
         change_class=anchor.change_class,
+        change_class_rationale=anchor.change_class_rationale,
         action_required=anchor.action_required,
         evidence_level=cluster.evidence_level,
+        evidence_anchor_id=cluster.evidence_anchor_id,
         has_independent_evidence=cluster.has_independent_evidence,
+        has_first_party_authoritative=cluster.has_first_party_authoritative,
         marketing_risk=cluster.marketing_risk,
         experiment_affordance=anchor.experiment_affordance,
         evidence_types=cluster.evidence_types,

@@ -223,6 +223,114 @@ def test_no_hash_builtin_used_anywhere_in_the_package() -> None:
         assert "hash(" not in text, f"builtin hash() found in {path}"
 
 
+def test_anchor_prefers_non_relay_member_over_earlier_roundup() -> None:
+    """B3: an earlier-dated roundup/relay copy must not become the anchor
+    when a non-relay member exists in the same cluster -- change_class,
+    action_required, and experiment_affordance (read off the anchor by
+    to_ranking_inputs) must come from the real primary source, not from
+    whichever copy happened to surface first."""
+    roundup_copy = _make_item(
+        item_id="roundup-early",
+        subject_entity_ids=["shared-anchor-subject"],
+        title="Shared Anchor Test Event Roundup",
+        summary_normalized=(
+            "a brief roundup mention of the shared anchor test event with no independent detail"
+        ),
+        publication_date=date(2026, 1, 1),
+        detection_date=date(2026, 1, 1),
+        stable_reference="https://example.com/roundup/shared-anchor-test-event",
+        evidence_type="roundup",
+        change_class="incremental_update",
+        action_required="none",
+        experiment_affordance="not_testable",
+    )
+    primary_source = _make_item(
+        item_id="primary-later",
+        subject_entity_ids=["shared-anchor-subject"],
+        title="Shared Anchor Test Event Primary",
+        summary_normalized=(
+            "the primary source publishes full detail on the shared anchor test event "
+            "with a required migration step"
+        ),
+        publication_date=date(2026, 1, 3),
+        detection_date=date(2026, 1, 3),
+        stable_reference="https://example.com/primary/shared-anchor-test-event",
+        evidence_type="official_doc",
+        change_class="breaking_change",
+        action_required="migration_required",
+        experiment_affordance="local_reproducible",
+    )
+    clusters = cluster_items([roundup_copy, primary_source])
+    assert len(clusters) == 1
+    cluster = clusters[0]
+    assert cluster.anchor_item_id == "primary-later"
+    assert cluster.member_roles["roundup-early"] == "relay"
+
+
+def test_anchor_falls_back_to_earliest_when_all_members_are_relay() -> None:
+    """B3 fallback: when EVERY member in a cluster is roundup/relay, the
+    anchor is still the earliest by date (there is no better candidate)."""
+    earlier_relay = _make_item(
+        item_id="relay-early",
+        subject_entity_ids=["all-relay-subject"],
+        title="All Relay Test Event Wire",
+        summary_normalized="a wire pickup of the all relay test event with generic framing",
+        publication_date=date(2026, 1, 1),
+        detection_date=date(2026, 1, 1),
+        stable_reference="https://example.net/relay-early/all-relay-test-event",
+        evidence_type="relay",
+    )
+    later_roundup = _make_item(
+        item_id="roundup-later",
+        subject_entity_ids=["all-relay-subject"],
+        title="All Relay Test Event Roundup",
+        summary_normalized=(
+            "a weekly roundup mention of the all relay test event with generic framing"
+        ),
+        publication_date=date(2026, 1, 2),
+        detection_date=date(2026, 1, 2),
+        stable_reference="https://example.net/roundup-later/all-relay-test-event",
+        evidence_type="roundup",
+    )
+    clusters = cluster_items([later_roundup, earlier_relay])
+    assert len(clusters) == 1
+    assert clusters[0].anchor_item_id == "relay-early"
+
+
+def test_topic_tags_and_evidence_types_exclude_roundup_and_relay_members() -> None:
+    """B2/S1: a roundup/relay member's topic_tags and evidence_type must not
+    leak into the cluster's topic_tags/evidence_types union when a real
+    (primary/independent) member is present -- only coverage, no signal."""
+    primary_source = _make_item(
+        item_id="tags-primary",
+        subject_entity_ids=["tags-subject"],
+        title="Tags Test Event Announcement",
+        summary_normalized="the primary source publishes detail on the tags test event",
+        publication_date=date(2026, 1, 1),
+        detection_date=date(2026, 1, 1),
+        stable_reference="https://example.com/tags-primary/tags-test-event",
+        evidence_type="announcement",
+        topic_tags=["agents"],
+    )
+    roundup_copy = _make_item(
+        item_id="tags-roundup",
+        subject_entity_ids=["tags-subject"],
+        title="Tags Test Event Roundup",
+        summary_normalized="a distinct roundup mention of the tags test event with its own framing",
+        publication_date=date(2026, 1, 2),
+        detection_date=date(2026, 1, 2),
+        stable_reference="https://example.com/tags-roundup/tags-test-event",
+        evidence_type="roundup",
+        topic_tags=["agents", "evals"],
+    )
+    clusters = cluster_items([primary_source, roundup_copy])
+    assert len(clusters) == 1
+    cluster = clusters[0]
+    assert cluster.member_roles["tags-roundup"] == "relay"
+    assert cluster.topic_tags == ["agents"]
+    assert cluster.evidence_types == ["announcement"]
+
+
 def test_syndication_first_member_can_never_be_syndicated() -> None:
     """A cluster whose earliest-sorted-by-item_id member has a summary later
     repeated verbatim must not mark that first member itself as syndicated."""

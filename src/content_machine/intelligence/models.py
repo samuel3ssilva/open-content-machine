@@ -90,9 +90,17 @@ ExperimentAffordance = Literal["local_reproducible", "requires_paid_service", "n
 class SourceItem(BaseModel):
     """One observable fact-sheet about a single artifact (email/feed/doc item).
 
-    Fillable by someone who has never met the Founder: every field describes
-    the artifact itself, never how relevant or important it is. There is
-    deliberately no ``relevance``, ``marketing_risk``, or ``body`` field here.
+    Fillable by someone who has never met the Founder and cannot see the
+    RELEVANCE or EVIDENCE rubric: every field describes the artifact itself,
+    never how relevant or important it is, and there is deliberately no
+    ``relevance``, ``marketing_risk``, or ``body`` field here. ``change_class``,
+    ``action_required``, and ``experiment_affordance`` are, however, AUTHORED
+    enums -- a human judgment call about the artifact, not an observable fact
+    in the same sense as ``publisher_id`` or ``evidence_type``. That is a
+    known, documented Gate A limitation: the only check on an authored enum
+    is the free-text ``change_class_rationale`` field (surfaced in the
+    magnitude dimension's ``inputs`` -- see ``ranking.py``), which a human
+    reviewer can audit but the system does not itself verify.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -149,6 +157,8 @@ class RelevanceProfile(BaseModel):
     territories: list[TerritoryPriority] = Field(default_factory=list)
     live_questions: list[LiveQuestion] = Field(default_factory=list)
     current_tooling: list[str] = Field(default_factory=list)
+    # Loaded and validated, but intentionally not consulted by ranking.py in
+    # Gate A -- no dimension reads experiment_budget yet.
     experiment_budget: Literal["low", "medium", "high"]
 
 
@@ -176,6 +186,10 @@ class TopicCluster(BaseModel):
     has_independent_evidence: bool = False
     has_first_party_authoritative: bool = False
     evidence_level: int = Field(default=0, ge=0, le=5)
+    # Which branch of the evidence rubric produced evidence_level (e.g.
+    # "evid_3_independent_only"); lets a reader re-derive the level without
+    # re-running the rubric. See cluster._evidence_level_and_marketing_risk.
+    evidence_anchor_id: str = ""
     marketing_risk: bool = False
     first_seen: date
     last_seen: date
@@ -198,9 +212,12 @@ class RankingInputs(BaseModel):
     topic_id: str
     topic_tags: list[str] = Field(default_factory=list)
     change_class: str
+    change_class_rationale: str = ""
     action_required: str
     evidence_level: int = Field(ge=0, le=5)
+    evidence_anchor_id: str = ""
     has_independent_evidence: bool
+    has_first_party_authoritative: bool = False
     marketing_risk: bool
     experiment_affordance: str
     evidence_types: list[str] = Field(default_factory=list)

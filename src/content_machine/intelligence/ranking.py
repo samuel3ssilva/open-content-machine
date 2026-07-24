@@ -35,6 +35,17 @@ from content_machine.intelligence.models import (
     RelevanceProfile,
 )
 
+
+class DimensionOrderError(RuntimeError):
+    """Raised if the fixed dimension order invariant is ever violated.
+
+    A plain ``assert`` is stripped under ``python -O``, which would silently
+    let a reordered/incomplete dimension list slip through the fixed-order
+    guarantee this module promises callers -- so this is an explicit,
+    always-enforced exception instead.
+    """
+
+
 RUBRIC_VERSION = "gate-a-1"
 WEIGHTS_VERSION = "gate-a-1"
 TAXONOMY_VERSION = "gate-a-1"
@@ -73,8 +84,53 @@ _EXPERIMENT_EVIDENCE_TRIGGER = frozenset(
     {"benchmark_with_methodology", "independent_implementation", "spec_change"}
 )
 
+# Human-readable text for each evidence_anchor_id produced by
+# cluster._evidence_level_and_marketing_risk -- so a reader can re-derive why
+# a topic landed at its evidence_level without re-running the rubric.
+_EVIDENCE_ANCHOR_TEXT: dict[str, str] = {
+    "evid_5_first_party_plus_independent_methodology": (
+        "first-party authoritative source AND independent evidence AND a "
+        "benchmark_with_methodology or independent_implementation is present"
+    ),
+    "evid_4_first_party_plus_independent": (
+        "first-party source present AND independent evidence present"
+    ),
+    "evid_4_non_subject_rigorous_evidence": (
+        "a non-subject benchmark_with_methodology, research_paper, or "
+        "independent_implementation is present on its own"
+    ),
+    "evid_3_first_party_authoritative": (
+        "an uncorroborated first-party-authoritative source "
+        "(official_doc/spec_change/deprecation_notice/security_advisory)"
+    ),
+    "evid_3_independent_only": (
+        "independent evidence present with no first-party member in the cluster"
+    ),
+    "evid_2_first_party_promotional": (
+        "first-party promotional source only (announcement/release_note), uncorroborated"
+    ),
+    "evid_1_rumor": "rumor only",
+    "evid_0_no_qualifying_evidence": (
+        "no first-party, independent, or rumor evidence counted (e.g. roundup/relay only, "
+        "or a self-published source whose evidence_type does not qualify)"
+    ),
+}
+
 
 def _score_relevance(inputs: RankingInputs, profile: RelevanceProfile) -> DimensionScore:
+    """Score relevance as a JOIN between ``topic_tags`` and the profile.
+
+    Intentional edge case (documented, not a bug): a tag EXPLICITLY listed in
+    ``profile.territories`` at priority 0 sets ``any_territory_match = True``,
+    so it falls through to the ``raw = 0`` "no match" branch even when it
+    also appears in ``current_tooling`` -- an explicit zero-priority
+    territory call is treated as "seen and deliberately deprioritized". A tag
+    that is ABSENT from ``territories`` altogether but present in
+    ``current_tooling`` instead reaches the ``raw = 1`` branch (no territory
+    match, but tooling overlap). So an explicit priority-0 territory scores
+    *lower* than a tag the Founder never mentioned at all -- the profile
+    author's silence is treated more generously than an explicit "not now".
+    """
     tags = set(inputs.topic_tags)
     matched_priorities = [t.priority for t in profile.territories if t.tag in tags]
     any_territory_match = bool(matched_priorities)
@@ -144,7 +200,11 @@ def _score_magnitude(inputs: RankingInputs) -> DimensionScore:
         anchor_text=(
             f"change_class={inputs.change_class} -> raw {raw}, capped at evidence_level + 1"
         ),
-        inputs={"change_class": inputs.change_class, "evidence_level": str(inputs.evidence_level)},
+        inputs={
+            "change_class": inputs.change_class,
+            "evidence_level": str(inputs.evidence_level),
+            "change_class_rationale": inputs.change_class_rationale,
+        },
         rationale=(
             f"change_class '{inputs.change_class}' has raw magnitude {raw}; capped to "
             f"evidence_level ({inputs.evidence_level}) + 1 = {cap}."
@@ -195,23 +255,31 @@ def _score_consequence(inputs: RankingInputs) -> DimensionScore:
 def _score_evidence(inputs: RankingInputs) -> DimensionScore:
     # evidence_level is a fact already derived by cluster.py from the evidence
     # rubric (evidence_type + independence, never publisher class); this
-    # dimension simply weights that pre-computed fact.
+    # dimension simply weights that pre-computed fact. evidence_anchor_id
+    # names exactly which rubric branch produced it (see cluster.py), so a
+    # reader can re-derive the level without re-running the rubric.
     value = inputs.evidence_level
+    anchor_id = inputs.evidence_anchor_id
+    anchor_text = _EVIDENCE_ANCHOR_TEXT.get(
+        anchor_id, "evidence_level (0-5) derived from evidence_type + independence by cluster.py"
+    )
     return DimensionScore(
         dimension="evidence",
         raw_value=value,
         effective_value=value,
         cap_applied=None,
         floor_applied=None,
-        anchor_id=f"evid_{value}",
-        anchor_text="evidence_level (0-5) derived from evidence_type + independence by cluster.py",
+        anchor_id=anchor_id or f"evid_{value}",
+        anchor_text=anchor_text,
         inputs={
             "evidence_level": str(value),
             "has_independent_evidence": str(inputs.has_independent_evidence),
             "marketing_risk": str(inputs.marketing_risk),
+            "evidence_anchor_id": anchor_id,
         },
         rationale=(
-            f"evidence_level={value}, has_independent_evidence={inputs.has_independent_evidence}, "
+            f"evidence_level={value} ({anchor_text}); "
+            f"has_independent_evidence={inputs.has_independent_evidence}, "
             f"marketing_risk={inputs.marketing_risk}."
         ),
         weight=WEIGHTS["evidence"],
@@ -296,21 +364,21 @@ def _tier1_eligibility(
     Every condition (pass or fail) is recorded in the returned reasons list.
 
     ``first_party_authoritative_candidate`` is a DIAGNOSTIC ONLY -- it never
-    changes ``tier1_eligible``. It is True exactly when the only failing
-    condition is ``has_independent_evidence`` and the topic's evidence came
-    from a first-party-authoritative source (cluster.py's evidence anchor 3:
-    official_doc/spec_change/deprecation_notice/security_advisory published by
-    the subject, no independent corroboration).
-
-    That case cannot be observed directly here (RankingInputs deliberately has
-    no ``has_first_party_authoritative`` field), but it can be proven from the
-    fields available: cluster.py only ever produces ``evidence_level == 3``
-    with ``has_independent_evidence == False`` via its anchor-3 branch (every
-    path to ``evidence_level`` 4 or 5 requires independent evidence, directly
-    or via a non-subject benchmark, which is itself independent evidence).
-    So ``evidence_level == 3 and not has_independent_evidence`` is equivalent
-    to "the cluster's only evidence is first-party-authoritative, uncorroborated"
-    -- exactly the diagnostic condition -- without needing a new field.
+    changes ``tier1_eligible``. It is True exactly when: independence is the
+    ONLY failing Tier-1 condition (relevance, evidence, and marketing all
+    pass); the topic's evidence is first-party-authoritative
+    (``inputs.has_first_party_authoritative``, an explicit field computed by
+    cluster.py -- NOT re-derived here algebraically, since after the evidence
+    rubric fix (Gate A correction round 1) ``evidence_level == 3`` can also be
+    reached via independent-only evidence with no first-party member, so a
+    purely algebraic derivation from ``evidence_level`` alone would be far
+    more fragile to reason about); AND there is no independent corroboration
+    at all (``not inputs.has_independent_evidence``); AND the change itself
+    is the kind that actually forces the Founder's hand -- a breaking change
+    or a required migration. This narrows the diagnostic to the single case
+    it was meant for (an uncorroborated vendor breaking-change/deprecation
+    notice), rather than firing for any uncorroborated first-party-
+    authoritative source regardless of how consequential the change is.
     """
     relevance_pass = relevance_effective >= 4
     evidence_pass = evidence_effective >= 3
@@ -330,12 +398,16 @@ def _tier1_eligibility(
         f"not marketing_risk: {mktg_status}",
     ]
 
+    breaking_or_migration = (
+        inputs.change_class == "breaking_change" or inputs.action_required == "migration_required"
+    )
     first_party_authoritative_candidate = (
         relevance_pass
         and evidence_pass
         and marketing_pass
         and not independent_pass
-        and evidence_effective == 3
+        and inputs.has_first_party_authoritative
+        and breaking_or_migration
     )
     if first_party_authoritative_candidate:
         reasons.append(
@@ -348,6 +420,25 @@ def _tier1_eligibility(
     return tier1_eligible, reasons, first_party_authoritative_candidate
 
 
+def _build_ranking_explanation(dimensions: list[DimensionScore]) -> str:
+    """One short prose sentence naming the top two contributing dimensions
+    and any cap/floor applied. The full machine-readable detail (raw/
+    effective values, inputs, rationale) lives on each dimension itself --
+    this string is a human-readable summary, not a re-derivation."""
+    by_points = sorted(dimensions, key=lambda d: -d.points)
+    top_two = by_points[:2]
+    leaders = " and ".join(f"{d.dimension} ({d.points} pts)" for d in top_two)
+    capped = [d.dimension for d in dimensions if d.cap_applied]
+    floored = [d.dimension for d in dimensions if d.floor_applied]
+    notes = []
+    if capped:
+        notes.append(f"{', '.join(capped)} capped")
+    if floored:
+        notes.append(f"{', '.join(floored)} floored")
+    suffix = f"; {', '.join(notes)}." if notes else "."
+    return f"Top contributors: {leaders}{suffix}"
+
+
 def score_topic(inputs: RankingInputs, profile: RelevanceProfile) -> RankingBreakdown:
     """Score one topic. Pure and deterministic: same inputs, same output."""
     dimensions = [
@@ -358,7 +449,11 @@ def score_topic(inputs: RankingInputs, profile: RelevanceProfile) -> RankingBrea
         _score_experiment(inputs),
         _score_curiosity(inputs, profile),
     ]
-    assert tuple(d.dimension for d in dimensions) == _DIMENSION_ORDER
+    actual_order = tuple(d.dimension for d in dimensions)
+    if actual_order != _DIMENSION_ORDER:
+        raise DimensionOrderError(
+            f"dimension order invariant violated: expected {_DIMENSION_ORDER}, got {actual_order}"
+        )
 
     points_total = sum(d.points for d in dimensions)
     score = points_total // 5
@@ -373,9 +468,7 @@ def score_topic(inputs: RankingInputs, profile: RelevanceProfile) -> RankingBrea
         f"points={points_total} rel={relevance_effective} evid={evidence_effective} "
         f"first_seen={inputs.first_seen.isoformat()} topic_id={inputs.topic_id}"
     )
-    ranking_explanation = "; ".join(
-        f"{d.dimension}={d.effective_value}({d.points}pts)" for d in dimensions
-    )
+    ranking_explanation = _build_ranking_explanation(dimensions)
 
     return RankingBreakdown(
         dimensions=dimensions,

@@ -86,5 +86,23 @@
     "action_required": "none",
     "experiment_affordance": "not_testable",
     "topic_tags": ["quantum-computing"]
+  },
+  {
+    "item_id": "bad006",
+    "source_type": "feed",
+    "source_category": "vendor_blog",
+    "publisher_id": "vendor-u",
+    "subject_entity_ids": ["vendor-u"],
+    "title": "Item With An Invalid Enum Literal",
+    "summary_normalized": "this item is otherwise well shaped but evidence_type is not one of the recognized enum literals",
+    "publication_date": "2026-06-06",
+    "detection_date": "2026-06-06",
+    "stable_reference": "https://example.com/vendor-u/blog/invalid-enum",
+    "evidence_type": "bogus",
+    "change_class": "material_change",
+    "change_class_rationale": "n/a",
+    "action_required": "none",
+    "experiment_affordance": "not_testable",
+    "topic_tags": ["agents"]
   }
 ]

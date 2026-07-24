@@ -1,6 +1,6 @@
 {
   "additionalProperties": false,
-  "description": "One observable fact-sheet about a single artifact (email/feed/doc item).\n\nFillable by someone who has never met the Founder: every field describes\nthe artifact itself, never how relevant or important it is. There is\ndeliberately no ``relevance``, ``marketing_risk``, or ``body`` field here.",
+  "description": "One observable fact-sheet about a single artifact (email/feed/doc item).\n\nFillable by someone who has never met the Founder and cannot see the\nRELEVANCE or EVIDENCE rubric: every field describes the artifact itself,\nnever how relevant or important it is, and there is deliberately no\n``relevance``, ``marketing_risk``, or ``body`` field here. ``change_class``,\n``action_required``, and ``experiment_affordance`` are, however, AUTHORED\nenums -- a human judgment call about the artifact, not an observable fact\nin the same sense as ``publisher_id`` or ``evidence_type``. That is a\nknown, documented Gate A limitation: the only check on an authored enum\nis the free-text ``change_class_rationale`` field (surfaced in the\nmagnitude dimension's ``inputs`` -- see ``ranking.py``), which a human\nreviewer can audit but the system does not itself verify.",
   "properties": {
     "item_id": {
       "title": "Item Id",

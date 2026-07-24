@@ -99,10 +99,16 @@ def test_profile_swap_flips_relative_order() -> None:
 
 def test_duplicate_append_invariance() -> None:
     """Appending a member whose canonical reference already exists in the
-    cluster must not change the resulting RankingBreakdown at all."""
+    cluster must not change the resulting RankingBreakdown at all -- even
+    when the duplicate carries a DIFFERENT publisher_id and an INDEPENDENT
+    evidence_type (F2: a same-URL "duplicate" must be excluded from
+    independence/evidence accounting exactly like a "syndicated" copy is;
+    a duplicate sharing both publisher_id and evidence_type with the
+    original would pass this test even without that fix)."""
     profile = _profile_with_territories(("agents", 5))
     original = _make_item(
         item_id="dup-original",
+        publisher_id="vendor-dup",
         subject_entity_ids=["vendor-dup"],
         topic_tags=["agents"],
         stable_reference="https://example.com/vendor-dup/launch",
@@ -110,11 +116,14 @@ def test_duplicate_append_invariance() -> None:
     )
     duplicate = _make_item(
         item_id="dup-mirror",
+        publisher_id="indy-analyst-dup",
         subject_entity_ids=["vendor-dup"],
         topic_tags=["agents"],
         # Same canonical reference after normalization (query stripped).
         stable_reference="https://example.com/vendor-dup/launch?utm_source=x",
-        evidence_type="announcement",
+        # Independent, non-subject evidence_type: must NOT flip
+        # has_independent_evidence just by being appended as a duplicate.
+        evidence_type="independent_analysis",
     )
 
     items_by_id = {original.item_id: original, duplicate.item_id: duplicate}
@@ -305,12 +314,5 @@ def test_prompt_injection_string_survives_the_real_fixture_end_to_end() -> None:
     rank_index = next(i for i, (inp, _bd) in enumerate(ranked) if inp.topic_id == injected_topic_id)
     assert rank_index > 0, "injection string must not artificially win the ranking"
 
-
-# --- no hash() builtin (defense in depth; also asserted in test_intelligence_cluster.py) --
-
-
-def test_no_hash_builtin_used_anywhere_in_the_package() -> None:
-    package_dir = REPO_ROOT / "src" / "content_machine" / "intelligence"
-    for path in sorted(package_dir.glob("*.py")):
-        text = path.read_text(encoding="utf-8")
-        assert "hash(" not in text, f"builtin hash() found in {path}"
+# N4: "no hash() builtin" is asserted once, in test_intelligence_cluster.py --
+# not duplicated here.
