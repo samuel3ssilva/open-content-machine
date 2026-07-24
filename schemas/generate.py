@@ -30,6 +30,7 @@ from content_machine.audience.run_comparison import (  # noqa: E402
     RunComparison,
 )
 from content_machine.ingestion.csv_loader import RawConnection  # noqa: E402
+from content_machine.intelligence.brief import WeeklyBrief  # noqa: E402
 from content_machine.intelligence.models import (  # noqa: E402
     ClaimAssessment,
     RankedTopic,
@@ -71,6 +72,7 @@ _MODELS = {
     "claim_assessment.schema.json": ClaimAssessment,
     "tier_assignment.schema.json": TierAssignment,
     "tiered_topic.schema.json": TieredTopic,
+    "weekly_brief.schema.json": WeeklyBrief,
 }
 
 

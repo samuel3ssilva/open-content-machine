@@ -1,0 +1,636 @@
+{
+  "$defs": {
+    "ContentOpportunity": {
+      "additionalProperties": false,
+      "description": "One topic that passed the content-opportunity editorial-gate proxy.",
+      "properties": {
+        "topic_id": {
+          "title": "Topic Id",
+          "type": "string"
+        },
+        "canonical_title": {
+          "title": "Canonical Title",
+          "type": "string"
+        },
+        "rank": {
+          "title": "Rank",
+          "type": "integer"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "topic_id",
+        "canonical_title",
+        "rank",
+        "reason"
+      ],
+      "title": "ContentOpportunity",
+      "type": "object"
+    },
+    "ContentOpportunitySelection": {
+      "additionalProperties": false,
+      "description": "Up to three content opportunities. Zero is a valid, stated outcome --\nnever backfilled to hit a quota.",
+      "properties": {
+        "selection_rule": {
+          "title": "Selection Rule",
+          "type": "string"
+        },
+        "opportunities": {
+          "items": {
+            "$ref": "#/$defs/ContentOpportunity"
+          },
+          "title": "Opportunities",
+          "type": "array"
+        },
+        "none_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "None Reason"
+        }
+      },
+      "required": [
+        "selection_rule",
+        "opportunities",
+        "none_reason"
+      ],
+      "title": "ContentOpportunitySelection",
+      "type": "object"
+    },
+    "DiscardedTopic": {
+      "additionalProperties": false,
+      "description": "One topic ranked below the Top N, with a one-line reason.",
+      "properties": {
+        "topic_id": {
+          "title": "Topic Id",
+          "type": "string"
+        },
+        "canonical_title": {
+          "title": "Canonical Title",
+          "type": "string"
+        },
+        "score": {
+          "title": "Score",
+          "type": "integer"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "topic_id",
+        "canonical_title",
+        "score",
+        "reason"
+      ],
+      "title": "DiscardedTopic",
+      "type": "object"
+    },
+    "ExperimentSelection": {
+      "additionalProperties": false,
+      "description": "The (at most one) practical-experiment suggestion, or a stated 'none'.",
+      "properties": {
+        "selection_rule": {
+          "title": "Selection Rule",
+          "type": "string"
+        },
+        "experiment": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExperimentSuggestion"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "none_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "None Reason"
+        }
+      },
+      "required": [
+        "selection_rule",
+        "experiment",
+        "none_reason"
+      ],
+      "title": "ExperimentSelection",
+      "type": "object"
+    },
+    "ExperimentSuggestion": {
+      "additionalProperties": false,
+      "description": "One locally-reproducible practical experiment derived from a topic.",
+      "properties": {
+        "topic_id": {
+          "title": "Topic Id",
+          "type": "string"
+        },
+        "canonical_title": {
+          "title": "Canonical Title",
+          "type": "string"
+        },
+        "rank": {
+          "title": "Rank",
+          "type": "integer"
+        },
+        "what_it_would_test": {
+          "title": "What It Would Test",
+          "type": "string"
+        }
+      },
+      "required": [
+        "topic_id",
+        "canonical_title",
+        "rank",
+        "what_it_would_test"
+      ],
+      "title": "ExperimentSuggestion",
+      "type": "object"
+    },
+    "RadarItem": {
+      "additionalProperties": false,
+      "description": "One-paragraph \"Radar\" presentation of one Tier 3 topic.",
+      "properties": {
+        "rank": {
+          "title": "Rank",
+          "type": "integer"
+        },
+        "topic_id": {
+          "title": "Topic Id",
+          "type": "string"
+        },
+        "canonical_title": {
+          "title": "Canonical Title",
+          "type": "string"
+        },
+        "signal_paragraph": {
+          "title": "Signal Paragraph",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rank",
+        "topic_id",
+        "canonical_title",
+        "signal_paragraph"
+      ],
+      "title": "RadarItem",
+      "type": "object"
+    },
+    "StudyQueue": {
+      "additionalProperties": false,
+      "description": "One deep-study topic (optional) plus up to two light-study topics.",
+      "properties": {
+        "selection_rule": {
+          "title": "Selection Rule",
+          "type": "string"
+        },
+        "deep": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StudyTopicRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "deep_none_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Deep None Reason"
+        },
+        "light": {
+          "items": {
+            "$ref": "#/$defs/StudyTopicRef"
+          },
+          "title": "Light",
+          "type": "array"
+        },
+        "light_none_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Light None Reason"
+        }
+      },
+      "required": [
+        "selection_rule",
+        "deep",
+        "deep_none_reason",
+        "light",
+        "light_none_reason"
+      ],
+      "title": "StudyQueue",
+      "type": "object"
+    },
+    "StudyTopicRef": {
+      "additionalProperties": false,
+      "description": "A pointer to one topic selected into the study queue.",
+      "properties": {
+        "topic_id": {
+          "title": "Topic Id",
+          "type": "string"
+        },
+        "canonical_title": {
+          "title": "Canonical Title",
+          "type": "string"
+        },
+        "rank": {
+          "title": "Rank",
+          "type": "integer"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "topic_id",
+        "canonical_title",
+        "rank",
+        "reason"
+      ],
+      "title": "StudyTopicRef",
+      "type": "object"
+    },
+    "Tier1AppendixRecord": {
+      "additionalProperties": false,
+      "description": "The full twelve-field record for one Tier 1 topic -- every fact the\nlean Tier 1 presentation omits. Exactly twelve named fields (see\n``tests/test_intelligence_brief.py`` for the field-count assertion):\n``topic_id``, ``rank``, ``canonical_title``, ``score``, ``claim_class``,\n``claim_class_reason``, ``confidence``, ``confidence_reason``,\n``admission_reasons``, ``exclusion_reasons``, ``warnings``, and\n``dimension_breakdown`` (one summary line per ``RankingBreakdown``\ndimension, so the full per-dimension detail is reachable without\nre-running the rubric). ``tier1_admitted`` is deliberately not a\nthirteenth field: every appendix record is for an admitted Tier 1 topic\nby construction.",
+      "properties": {
+        "topic_id": {
+          "title": "Topic Id",
+          "type": "string"
+        },
+        "rank": {
+          "title": "Rank",
+          "type": "integer"
+        },
+        "canonical_title": {
+          "title": "Canonical Title",
+          "type": "string"
+        },
+        "score": {
+          "title": "Score",
+          "type": "integer"
+        },
+        "claim_class": {
+          "enum": [
+            "fact",
+            "hypothesis",
+            "marketing"
+          ],
+          "title": "Claim Class",
+          "type": "string"
+        },
+        "claim_class_reason": {
+          "title": "Claim Class Reason",
+          "type": "string"
+        },
+        "confidence": {
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ],
+          "title": "Confidence",
+          "type": "string"
+        },
+        "confidence_reason": {
+          "title": "Confidence Reason",
+          "type": "string"
+        },
+        "admission_reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Admission Reasons",
+          "type": "array"
+        },
+        "exclusion_reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Exclusion Reasons",
+          "type": "array"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        },
+        "dimension_breakdown": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Dimension Breakdown",
+          "type": "array"
+        }
+      },
+      "required": [
+        "topic_id",
+        "rank",
+        "canonical_title",
+        "score",
+        "claim_class",
+        "claim_class_reason",
+        "confidence",
+        "confidence_reason",
+        "admission_reasons",
+        "exclusion_reasons",
+        "warnings",
+        "dimension_breakdown"
+      ],
+      "title": "Tier1AppendixRecord",
+      "type": "object"
+    },
+    "Tier1LeanItem": {
+      "additionalProperties": false,
+      "description": "Lean, ~5-line Tier 1 (\"Must Understand\") presentation of one topic.",
+      "properties": {
+        "rank": {
+          "title": "Rank",
+          "type": "integer"
+        },
+        "topic_id": {
+          "title": "Topic Id",
+          "type": "string"
+        },
+        "canonical_title": {
+          "title": "Canonical Title",
+          "type": "string"
+        },
+        "what_changed": {
+          "title": "What Changed",
+          "type": "string"
+        },
+        "why_it_matters": {
+          "title": "Why It Matters",
+          "type": "string"
+        },
+        "evidence_and_confidence": {
+          "title": "Evidence And Confidence",
+          "type": "string"
+        },
+        "recommended_action": {
+          "enum": [
+            "study",
+            "read",
+            "save",
+            "monitor",
+            "ignore"
+          ],
+          "title": "Recommended Action",
+          "type": "string"
+        },
+        "recommended_action_reason": {
+          "title": "Recommended Action Reason",
+          "type": "string"
+        },
+        "score": {
+          "title": "Score",
+          "type": "integer"
+        },
+        "ranking_explanation": {
+          "title": "Ranking Explanation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rank",
+        "topic_id",
+        "canonical_title",
+        "what_changed",
+        "why_it_matters",
+        "evidence_and_confidence",
+        "recommended_action",
+        "recommended_action_reason",
+        "score",
+        "ranking_explanation"
+      ],
+      "title": "Tier1LeanItem",
+      "type": "object"
+    },
+    "Tier2Item": {
+      "additionalProperties": false,
+      "description": "Concise \"Should Know\" presentation of one Tier 2 topic.",
+      "properties": {
+        "rank": {
+          "title": "Rank",
+          "type": "integer"
+        },
+        "topic_id": {
+          "title": "Topic Id",
+          "type": "string"
+        },
+        "canonical_title": {
+          "title": "Canonical Title",
+          "type": "string"
+        },
+        "explanation": {
+          "title": "Explanation",
+          "type": "string"
+        },
+        "practical_consequence": {
+          "title": "Practical Consequence",
+          "type": "string"
+        },
+        "principal_evidence": {
+          "title": "Principal Evidence",
+          "type": "string"
+        },
+        "confidence": {
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ],
+          "title": "Confidence",
+          "type": "string"
+        },
+        "recommended_action": {
+          "enum": [
+            "study",
+            "read",
+            "save",
+            "monitor",
+            "ignore"
+          ],
+          "title": "Recommended Action",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rank",
+        "topic_id",
+        "canonical_title",
+        "explanation",
+        "practical_consequence",
+        "principal_evidence",
+        "confidence",
+        "recommended_action"
+      ],
+      "title": "Tier2Item",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The full structured Intelligence Brief -- the single source of truth\nboth the Markdown and the JSON outputs are derived from.\n\nAlways ends in ``review_status = \"awaiting_founder_review\"``: nothing in\nthis module or its caller may set this to anything else, and no code path\nhere publishes, sends, or schedules anything.",
+  "properties": {
+    "week_label": {
+      "title": "Week Label",
+      "type": "string"
+    },
+    "brief_version": {
+      "title": "Brief Version",
+      "type": "string"
+    },
+    "rubric_version": {
+      "title": "Rubric Version",
+      "type": "string"
+    },
+    "weights_version": {
+      "title": "Weights Version",
+      "type": "string"
+    },
+    "taxonomy_version": {
+      "title": "Taxonomy Version",
+      "type": "string"
+    },
+    "profile_version": {
+      "title": "Profile Version",
+      "type": "string"
+    },
+    "executive_summary": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Executive Summary",
+      "type": "array"
+    },
+    "estimated_reading_minutes": {
+      "title": "Estimated Reading Minutes",
+      "type": "integer"
+    },
+    "estimated_reading_time_method": {
+      "title": "Estimated Reading Time Method",
+      "type": "string"
+    },
+    "tier1": {
+      "items": {
+        "$ref": "#/$defs/Tier1LeanItem"
+      },
+      "title": "Tier1",
+      "type": "array"
+    },
+    "tier1_short_reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Tier1 Short Reason"
+    },
+    "tier2": {
+      "items": {
+        "$ref": "#/$defs/Tier2Item"
+      },
+      "title": "Tier2",
+      "type": "array"
+    },
+    "tier3": {
+      "items": {
+        "$ref": "#/$defs/RadarItem"
+      },
+      "title": "Tier3",
+      "type": "array"
+    },
+    "study_queue": {
+      "$ref": "#/$defs/StudyQueue"
+    },
+    "experiment": {
+      "$ref": "#/$defs/ExperimentSelection"
+    },
+    "content_opportunities": {
+      "$ref": "#/$defs/ContentOpportunitySelection"
+    },
+    "discarded": {
+      "items": {
+        "$ref": "#/$defs/DiscardedTopic"
+      },
+      "title": "Discarded",
+      "type": "array"
+    },
+    "ranking_explanation_pointer": {
+      "title": "Ranking Explanation Pointer",
+      "type": "string"
+    },
+    "appendix": {
+      "items": {
+        "$ref": "#/$defs/Tier1AppendixRecord"
+      },
+      "title": "Appendix",
+      "type": "array"
+    },
+    "review_status": {
+      "default": "awaiting_founder_review",
+      "title": "Review Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "week_label",
+    "brief_version",
+    "rubric_version",
+    "weights_version",
+    "taxonomy_version",
+    "profile_version",
+    "executive_summary",
+    "estimated_reading_minutes",
+    "estimated_reading_time_method",
+    "tier1",
+    "tier1_short_reason",
+    "tier2",
+    "tier3",
+    "study_queue",
+    "experiment",
+    "content_opportunities",
+    "discarded",
+    "ranking_explanation_pointer",
+    "appendix"
+  ],
+  "title": "WeeklyBrief",
+  "type": "object"
+}
