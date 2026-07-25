@@ -33,8 +33,10 @@ from content_machine.ingestion.csv_loader import RawConnection  # noqa: E402
 from content_machine.intelligence.brief import WeeklyBrief  # noqa: E402
 from content_machine.intelligence.library import (  # noqa: E402
     AuditRow,
+    MovementsDocument,
     ScoreHistoryRow,
     TopicLibraryEntry,
+    WeeklyDelta,
 )
 from content_machine.intelligence.models import (  # noqa: E402
     ClaimAssessment,
@@ -46,6 +48,7 @@ from content_machine.intelligence.models import (  # noqa: E402
     TieredTopic,
     TopicCluster,
 )
+from content_machine.intelligence.weekly import RunManifest  # noqa: E402
 from content_machine.privacy.anonymizer import AnonymizedConnection  # noqa: E402
 from content_machine.sources.contracts import SourceReference  # noqa: E402
 from content_machine.sources.inventory import (  # noqa: E402
@@ -81,6 +84,9 @@ _MODELS = {
     "topic_library_entry.schema.json": TopicLibraryEntry,
     "score_history_row.schema.json": ScoreHistoryRow,
     "audit_row.schema.json": AuditRow,
+    "run_manifest.schema.json": RunManifest,
+    "weekly_delta.schema.json": WeeklyDelta,
+    "movements_document.schema.json": MovementsDocument,
 }
 
 

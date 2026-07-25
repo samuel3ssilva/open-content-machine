@@ -1,0 +1,100 @@
+{
+  "additionalProperties": false,
+  "description": "Auditable record of one weekly run (see the module docstring's #2).\nEvery field is deterministic given the same inputs EXCEPT\n``execution_timestamp``, which records when the run was actually\nexecuted -- separate from ``reference_date``/the analysis window, and\nthe one field this module lets a caller pass a real timestamp into.",
+  "properties": {
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "input_fingerprint": {
+      "title": "Input Fingerprint",
+      "type": "string"
+    },
+    "code_version": {
+      "title": "Code Version",
+      "type": "string"
+    },
+    "profile_version": {
+      "title": "Profile Version",
+      "type": "string"
+    },
+    "week_label": {
+      "title": "Week Label",
+      "type": "string"
+    },
+    "reference_date": {
+      "title": "Reference Date",
+      "type": "string"
+    },
+    "timezone": {
+      "title": "Timezone",
+      "type": "string"
+    },
+    "window_start": {
+      "title": "Window Start",
+      "type": "string"
+    },
+    "window_end": {
+      "title": "Window End",
+      "type": "string"
+    },
+    "execution_timestamp": {
+      "title": "Execution Timestamp",
+      "type": "string"
+    },
+    "signal_count": {
+      "title": "Signal Count",
+      "type": "integer"
+    },
+    "topic_count": {
+      "title": "Topic Count",
+      "type": "integer"
+    },
+    "tier1_count": {
+      "title": "Tier1 Count",
+      "type": "integer"
+    },
+    "library_created_count": {
+      "title": "Library Created Count",
+      "type": "integer"
+    },
+    "library_lifecycle_transition_count": {
+      "title": "Library Lifecycle Transition Count",
+      "type": "integer"
+    },
+    "library_score_change_count": {
+      "title": "Library Score Change Count",
+      "type": "integer"
+    },
+    "library_rejected_reappearance_count": {
+      "title": "Library Rejected Reappearance Count",
+      "type": "integer"
+    },
+    "review_status": {
+      "default": "awaiting_founder_review",
+      "title": "Review Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "input_fingerprint",
+    "code_version",
+    "profile_version",
+    "week_label",
+    "reference_date",
+    "timezone",
+    "window_start",
+    "window_end",
+    "execution_timestamp",
+    "signal_count",
+    "topic_count",
+    "tier1_count",
+    "library_created_count",
+    "library_lifecycle_transition_count",
+    "library_score_change_count",
+    "library_rejected_reappearance_count"
+  ],
+  "title": "RunManifest",
+  "type": "object"
+}

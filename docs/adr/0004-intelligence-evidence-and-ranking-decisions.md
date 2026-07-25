@@ -1,8 +1,12 @@
-# ADR 0004 — Intelligence Brief evidence and ranking decisions (D1–D6)
+# ADR 0004 — Intelligence Brief evidence and ranking decisions (D1–D8)
 
-- Status: Accepted (D1 IMPLEMENTED — Founder final decision, Gate C: threshold evidence >= 3)
+- Status: Accepted (D1 IMPLEMENTED — Founder final decision, Gate C: threshold
+  evidence >= 3; D8 IMPLEMENTED — Opus orchestrator, Gate C: library v0.2
+  merge/decay/relevance/normalized-summary/deltas, including the previously
+  deferred `merged` lifecycle status)
 - Date: 2026-07-24
-- Decider: Founder, recorded by opus-tech-lead / sonnet-implementation-engineer
+- Decider: Founder (D1–D7); Opus orchestrator (D8), recorded by
+  opus-tech-lead / sonnet-implementation-engineer
 - Model responsible: Sonnet
 
 ## Context
@@ -202,6 +206,158 @@ body/title, and still subject to the same no-raw-bodies test), so it does
 not require Fable sign-off. `test_no_raw_bodies_or_prose_beyond_canonical_title_is_persisted`
 pins today's (smaller) v0.1 field set; its docstring states that choice
 explicitly rather than declaring a normalized summary forbidden forever.
+
+### D8 — Library v0.2 rules (merge, decay, relevance, normalized summary, deltas)
+
+Attribution: this design (the merge rule, decay algorithm, structured
+relevance field set, and the `merged` lifecycle status) was specified,
+concretely and with the exact constants below, by the Opus orchestrator
+during Intelligence Brief v0.1 Gate C. It is implemented here verbatim by
+Sonnet; no architectural judgment call was made by the implementer beyond
+the narrow, documented ambiguities called out under each rule.
+
+**Topic merge (§12.1).** Two `TopicLibraryEntry` records are recognized as
+the same subject, and merged, when they share `>= 1 subject_entity_ids` AND
+the Jaccard similarity of their normalized-title token sets is
+`>= 0.7` (`library.TOPIC_MERGE_JACCARD_THRESHOLD`) — deliberately higher
+than `cluster.py`'s same-run `_JACCARD_TITLE_THRESHOLD` of 0.6, since
+cross-week merging is a harder-to-undo decision than same-run clustering
+and needs stronger textual evidence on top of the shared-subject signal.
+Tie-break for which entry survives: the earlier `first_seen`; ties broken
+by the lexicographically smaller `topic_id`. On merge: the absorbed entry
+becomes `lifecycle_status = "merged"` with `merged_into` set to the
+survivor's `topic_id` (the eleventh, previously-deferred lifecycle status —
+see D7 and Gate B's `library.py` docstring, which explicitly deferred it);
+the survivor gains the absorbed entry's `topic_id`/`canonical_title` into a
+new `aliases` field; the survivor's `score_history`/`audit_events` become
+the deduplicated, deterministically-sorted union of both sides; a `merged`
+audit event is emitted on the survivor naming the absorbed topic. A
+`rejected` entry never participates in a merge, on either side. `merged` is
+now added to `library.py`'s `_FROZEN_STATUSES`: like `published`, it is
+never revisited even if the absorbed `topic_id` resurfaces in a later
+week's signals.
+
+**Decay and stale (§12.2).** `effective_rank_score = max(0, current_score -
+rate(freshness) * weeks_since_last_evidence)` — a DERIVED value for
+ordering/display only; it never mutates the persisted `current_score`.
+Decay rates, points per week of absence: `urgent` = 20, `time_sensitive` =
+10, `evergreen` = 2 (`library.DECAY_RATE_PER_WEEK`). The stale rule itself
+is unchanged from Gate B: `weeks_since_last_evidence >= STALE_WEEKS` (8)
+marks an entry `stale`, excluded from any "current" presentation, retained
+in history.
+
+**Structured relevance (§12.3).** `TopicLibraryEntry` gains
+`relevance_reasons`, `professional_connection`, and
+`live_question_connections`, plus `profile_version` (the `RelevanceProfile`
+version that produced the current score) and `subject_entity_ids` (needed
+by the merge rule above). `editorial_territory` (already present since
+Gate B) continues to serve as the territory-tag field — not duplicated.
+
+*Resolved ambiguity:* the ticket specified these fields but not their
+derivation. `relevance_reasons`/`professional_connection` are derived
+purely from the already-computed `RankingBreakdown` (the relevance/
+curiosity dimensions' `anchor_text`/`inputs`) — never re-deriving a score,
+consistent with `library.py`'s standing contract. `live_question_connections`
+needs concrete `question_id`s, which `RankingBreakdown` does not expose (only
+a match COUNT); rather than re-deriving ranking logic inside `library.py`,
+`update_library` gained an OPTIONAL, keyword-only `profile: RelevanceProfile
+| None` parameter. Every pre-v0.2 caller omits it (`[]` results, a
+documented limitation); `weekly.run_weekly` — which already holds the run's
+profile — passes it through, so the production path always populates real
+ids.
+
+**Normalized summary (§12.4).** `TopicLibraryEntry` gains
+`normalized_summary: str`, authorized by D7 above: length-bounded to
+`<= 280` characters (`library.NORMALIZED_SUMMARY_MAX_CHARS`), derived from
+the topic's own `canonical_title`/`ranking_explanation` (never a raw
+article body), with all `<...>` markup — well-formed or not — stripped so
+no active HTML can survive. The existing no-raw-bodies test
+(`test_no_raw_bodies_or_prose_beyond_canonical_title_is_persisted`) is
+updated to permit `normalized_summary` (and the other v0.2 structural
+fields) in its allow-list, per its own docstring's stated expectation that
+this field would arrive in v0.2 — while continuing to forbid raw item
+titles/summaries/rationale text, and new tests assert markup neutralization
+and the length bound directly.
+
+**Weekly deltas (§12.5).** A new `WeeklyDelta` model (`extra="forbid"`) is
+computed per Top-N topic against its previous library appearance:
+`previous_score`, `current_score`, `score_delta`, `previous_rank`,
+`current_rank`, `rank_delta`, `tier_change`, `new_evidence`, `is_new`, and
+`movement_reason`. CRITICAL, Founder-specified: a topic absent from the
+prior library state is `is_new = True` with `score_delta = None` — it is
+NEW, never a negative drop from an implicit zero. A topic present before
+and now lower reports a genuine negative `score_delta`/`rank_delta`. Rank
+history needed a small, additive persistence change: `TopicLibraryEntry`
+gains `last_rank`/`last_tier`, carried over (not nulled) when a topic falls
+out of the Top-N, so a later reappearance still has a `previous_rank` to
+compare against.
+
+**Weekly outputs (§13).** `weekly.py`'s atomic write set grows from six
+files to eight: `movements.md` (sections new / promoted / demoted /
+returning-from-deferred / stale / merged, each item with its reason, via
+`library.build_movements_document`/`render_movements_markdown`) and
+`discarded.jsonl` (one line per topic ranked below the Top 10 — exactly
+`brief.discarded`, already computed by `brief.build_weekly_brief`, never
+re-derived). Both are part of the SAME all-or-nothing `_atomic_write_all`
+batch as the original six; `OUTPUT_FILENAMES` now lists all eight.
+`brief.LibraryMovementsSection` gains the same six buckets (as
+`list[LibraryMovement]`), populated by `library.library_movements_for_brief`
+using the identical classification `build_movements_document` uses, so the
+brief and the file never diverge; the fields are additive (empty by
+default), so no pre-v0.2 brief's rendered output changes.
+
+**Gate C correction round (Opus product review PRODUCT-ACCEPTABLE / Sonnet
+QA QA-CLEAN, findings closed post-merge).** Two presentation-only fixes to
+the above, no lifecycle/RULES change:
+
+- *Decluttered brief movements (Opus Finding 2).* A topic's routine
+  second-week transition out of `new` — recomputed status, but no genuine
+  score/rank/tier change — used to render as a generic "recomputed from
+  this week's data" line in the brief's flat movements list, once per
+  continuing topic, every steady-state week. These rows are no longer
+  brief-facing (`library.library_movements_for_brief` drops them by exact
+  reason-text match on `library.ROUTINE_RETRACKING_REASON`); the full audit
+  trail (`audit.jsonl` / `TopicLibraryEntry.audit_events`) is unaffected and
+  keeps every one of them.
+- *Rank-shuffle mislabel (Opus Finding 1).* `library._movement_bucket`
+  previously classified ANY rank improvement as `promoted` (and any rank
+  fall as `demoted`), even when the topic's own score and tier were
+  unchanged and the rank moved only because another topic entered or left
+  the Top-N. That overstated a mechanical composition change as a genuine
+  ranking judgment about the topic. Such a delta (`score_delta == 0` and no
+  `tier_change`) is now omitted from every movements bucket — not backfilled
+  into a new "neutral" bucket, and not paired with the fuller "topic left
+  the Top-N" fall-out reporting named below, which stays deferred.
+
+### Deferred to v0.3
+
+The following are intentionally NOT implemented in Gate C, so reviewers/
+Founder are not misled by their presence in the code:
+
+- **Decay is computed but not consumed.** `library.effective_rank_score`
+  (20/10/2 points per week of absence, by `freshness`) is a pure, tested
+  function with no caller outside its own tests; no brief or library output
+  orders or displays a decayed score yet. It is v0.3 scaffolding — wiring it
+  into a library-ordering/browse view is deferred.
+- **Fall-out reporting.** Topics that drop OUT of the Top-N are not
+  surfaced as a movement — only new/promoted/demoted/returning/stale/merged
+  among topics still tracked in the library. Full "left the brief this
+  week" reporting is v0.3.
+- **Structured deltas.** `library.WeeklyDelta`'s numeric score/rank deltas
+  are rendered as prose in `movement_reason`, not persisted as a
+  machine-readable `deltas.jsonl`. Deferred to v0.3 if downstream tooling
+  needs them structured.
+- **`normalized_summary` is persisted but not surfaced.** Per D7, it is
+  written to `topics.jsonl` for future editorial reconsideration, but the
+  brief never renders it; its derived text is title-plus-rubric-math, not a
+  substance summary. v0.3.
+- **Title sanitization at the model boundary.** `canonical_title` flows
+  verbatim into the brief, `movements.md`, and `topics.jsonl` — harmless
+  today because this path is offline, model-free, and human-reviewed, and
+  ranking is provably title-content-indifferent. When a future editorial or
+  LLM layer consumes these artifacts, title fields must pass through
+  `privacy.strip_for_model()`/normalization at that trust boundary — noted
+  here for the threat model, out of scope for Gate C.
 
 ## Consequences
 

@@ -195,7 +195,7 @@
     },
     "LibraryMovementsSection": {
       "additionalProperties": false,
-      "description": "Library movements for this week. ``deferred_note`` is populated (and\n``movements`` empty) when no library-update result is wired into this\nbrief -- e.g. a standalone M5 brief with no M6 library yet -- rather than\nsilently omitting the section.",
+      "description": "Library movements for this week. ``deferred_note`` is populated (and\n``movements`` empty) when no library-update result is wired into this\nbrief -- e.g. a standalone M5 brief with no M6 library yet -- rather than\nsilently omitting the section.\n\nv0.2 additions (Opus orchestrator, Gate C, \u00a713; ADR 0004 D8): the\n``new``/``promoted``/``demoted``/``returning_from_deferred``/``stale``/\n``merged`` buckets mirror ``library.MovementsDocument``'s categories,\npopulated by ``library.library_movements_for_brief`` -- empty (never\n``None``) when no library-update result is wired in, same as\n``movements``/``deferred_note`` above.",
       "properties": {
         "movements": {
           "items": {
@@ -215,6 +215,48 @@
           ],
           "default": null,
           "title": "Deferred Note"
+        },
+        "new": {
+          "items": {
+            "$ref": "#/$defs/LibraryMovement"
+          },
+          "title": "New",
+          "type": "array"
+        },
+        "promoted": {
+          "items": {
+            "$ref": "#/$defs/LibraryMovement"
+          },
+          "title": "Promoted",
+          "type": "array"
+        },
+        "demoted": {
+          "items": {
+            "$ref": "#/$defs/LibraryMovement"
+          },
+          "title": "Demoted",
+          "type": "array"
+        },
+        "returning_from_deferred": {
+          "items": {
+            "$ref": "#/$defs/LibraryMovement"
+          },
+          "title": "Returning From Deferred",
+          "type": "array"
+        },
+        "stale": {
+          "items": {
+            "$ref": "#/$defs/LibraryMovement"
+          },
+          "title": "Stale",
+          "type": "array"
+        },
+        "merged": {
+          "items": {
+            "$ref": "#/$defs/LibraryMovement"
+          },
+          "title": "Merged",
+          "type": "array"
         }
       },
       "title": "LibraryMovementsSection",

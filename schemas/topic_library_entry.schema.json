@@ -210,7 +210,8 @@
         "deferred",
         "published",
         "rejected",
-        "stale"
+        "stale",
+        "merged"
       ],
       "title": "Lifecycle Status",
       "type": "string"
@@ -221,6 +222,90 @@
       },
       "title": "Audit Events",
       "type": "array"
+    },
+    "subject_entity_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Subject Entity Ids",
+      "type": "array"
+    },
+    "aliases": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Aliases",
+      "type": "array"
+    },
+    "merged_into": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Merged Into"
+    },
+    "relevance_reasons": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Relevance Reasons",
+      "type": "array"
+    },
+    "professional_connection": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Professional Connection"
+    },
+    "live_question_connections": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Live Question Connections",
+      "type": "array"
+    },
+    "profile_version": {
+      "title": "Profile Version",
+      "type": "string"
+    },
+    "normalized_summary": {
+      "title": "Normalized Summary",
+      "type": "string"
+    },
+    "last_rank": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Rank"
+    },
+    "last_tier": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Tier"
     }
   },
   "required": [
@@ -238,7 +323,9 @@
     "reason_not_selected",
     "reconsideration_condition",
     "freshness",
-    "lifecycle_status"
+    "lifecycle_status",
+    "profile_version",
+    "normalized_summary"
   ],
   "title": "TopicLibraryEntry",
   "type": "object"
