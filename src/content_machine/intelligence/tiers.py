@@ -11,20 +11,20 @@ never re-sorts: :func:`assign_tiers` takes the list already produced by
 slices and annotates it.
 
 See ``docs/adr/0004-intelligence-evidence-and-ranking-decisions.md`` (D1) for
-the Founder decision this module implements, including the MEASURED
-CONSTRAINT that the D1 exception is unreachable as issued: reaching
-``evidence_level >= 4`` already implies ``has_independent_evidence`` in every
-current rubric branch (``cluster._evidence_level_and_marketing_risk``), so a
-waiver meant to admit an UNCORROBORATED first-party-authoritative source can
-never actually need to fire -- whenever its six conjuncts hold, the topic
-already has independent evidence anyway. This module implements the predicate
-VERBATIM regardless: it is not this module's place to "fix" the threshold,
-reinterpret it, or add a new rubric branch to make it reachable (that is a
-Founder/architecture decision, not implementation work). A separate
-diagnostic, ``d1_would_admit_at_evidence_3``, reports (for Founder
-decision-support only) which topics would satisfy the same predicate if the
-threshold were lowered to ``evidence_level >= 3`` -- it never affects
-admission.
+the Founder decision this module implements. D1 was issued at
+``evidence_level >= 4``, which measurement showed was unreachable: reaching
+evidence >= 4 already implies ``has_independent_evidence`` in every current
+rubric branch (``cluster._evidence_level_and_marketing_risk``), so a waiver
+meant to admit an UNCORROBORATED first-party-authoritative source could never
+actually fire at that floor. The Founder's final ruling (Gate C) resolves
+this by restating the threshold as ``evidence_level >= 3`` -- this is now the
+REAL, live admission rule: :func:`d1_exception_fires` uses
+``evidence_floor=3`` and, when it fires without the base rule also passing,
+admits the topic to Tier 1 as an uncorroborated first-party-authoritative
+source with no independent analysis. That absence of independent
+corroboration is recorded explicitly in the admission reason and surfaced in
+the brief (``brief.py``'s Tier-1 rendering) -- it must never be silently
+implied.
 
 Claim classification (fact / hypothesis / marketing) and confidence
 (high / medium / low) are deterministic functions of existing structured
@@ -212,10 +212,9 @@ def _consequence_effective(breakdown: RankingBreakdown) -> int:
 def _d1_predicate(
     anchor: SourceItem, inputs: RankingInputs, breakdown: RankingBreakdown, evidence_floor: int
 ) -> bool:
-    """The six conjuncts of Founder decision D1 (ADR 0004), verbatim, with
-    ``evidence_level >= evidence_floor`` as the only parameter -- used both
-    for the real waiver (``evidence_floor=4``) and the
-    ``d1_would_admit_at_evidence_3`` diagnostic (``evidence_floor=3``). The
+    """The six conjuncts of Founder decision D1 (ADR 0004). ``evidence_floor``
+    is the only parameter; the real waiver (:func:`d1_exception_fires`) calls
+    this with ``evidence_floor=3``, the Founder's final Gate C ruling. The
     "claim is directly verifiable in the artifact" conjunct reads the
     anchor's ``claim_directly_verifiable_in_artifact`` field (added to
     ``SourceItem`` for this decision); ``evidence_type`` and
@@ -237,21 +236,13 @@ def _d1_predicate(
 def d1_exception_fires(
     anchor: SourceItem, inputs: RankingInputs, breakdown: RankingBreakdown
 ) -> bool:
-    """The real D1 waiver predicate (``evidence_level >= 4``). Per the ADR's
-    measured constraint, this is expected to NEVER return True on real data:
-    reaching evidence_level >= 4 already implies
-    ``inputs.has_independent_evidence`` in every current rubric branch, so a
-    waiver for an UNCORROBORATED first-party-authoritative source can never
-    actually need to fire."""
-    return _d1_predicate(anchor, inputs, breakdown, evidence_floor=4)
-
-
-def d1_would_admit_at_evidence_3(
-    anchor: SourceItem, inputs: RankingInputs, breakdown: RankingBreakdown
-) -> bool:
-    """DIAGNOSTIC ONLY (ADR 0004, decision-support for the Founder): the same
-    six conjuncts with the evidence floor lowered to 3. NEVER consulted by
-    :func:`_tier1_admission` -- must never affect ``tier1_admitted``."""
+    """The real D1 waiver predicate, at ``evidence_level >= 3`` -- the
+    Founder's final ruling (Gate C) on the threshold ADR 0004 left open. This
+    is now the live admission rule: when it fires and the base Tier-1 rule
+    does not, the topic is admitted to Tier 1 as an uncorroborated
+    first-party-authoritative source with no independent analysis (see
+    :func:`_build_tier_assignment`, which records that fact explicitly in
+    ``admission_reasons``)."""
     return _d1_predicate(anchor, inputs, breakdown, evidence_floor=3)
 
 
@@ -261,17 +252,14 @@ def _d1_reason_text(
     consequence_effective = _consequence_effective(breakdown)
     evidence_type_ok = anchor.evidence_type in _D1_EVIDENCE_TYPES
     return (
-        "D1 (ADR 0004) exception predicate: evidence_type "
+        "D1 (ADR 0004, Founder final decision, Gate C) exception predicate: evidence_type "
         f"'{anchor.evidence_type}' in {sorted(_D1_EVIDENCE_TYPES)}: {evidence_type_ok}; "
-        f"evidence_level {inputs.evidence_level} >= 4: {inputs.evidence_level >= 4}; "
+        f"evidence_level {inputs.evidence_level} >= 3: {inputs.evidence_level >= 3}; "
         f"consequence effective_value {consequence_effective} >= 4: "
         f"{consequence_effective >= 4}; not marketing_risk: {not inputs.marketing_risk}; "
         f"claim_directly_verifiable_in_artifact: {anchor.claim_directly_verifiable_in_artifact}; "
         f"has_first_party_authoritative: {inputs.has_first_party_authoritative} -- "
-        f"{'FIRES' if fired else 'does not fire'} (measured, per the ADR, to be unreachable: "
-        "evidence_level >= 4 already implies independent evidence in every current rubric "
-        "branch, so this waiver for an uncorroborated source can never actually need to "
-        "trigger)."
+        f"{'FIRES' if fired else 'does not fire'}."
     )
 
 
@@ -365,7 +353,6 @@ def _build_tier_assignment(
 
     base_admitted = breakdown.tier1_eligible
     d1_fires = d1_exception_fires(anchor, inputs, breakdown)
-    d1_would_at_3 = d1_would_admit_at_evidence_3(anchor, inputs, breakdown)
     tier1_admitted = base_admitted or d1_fires
 
     # Every one of ranking.py's four base conditions (pass or fail) lands in
@@ -377,19 +364,14 @@ def _build_tier_assignment(
     d1_reason = _d1_reason_text(anchor, inputs, breakdown, d1_fires)
     (admission_reasons if d1_fires else exclusion_reasons).append(d1_reason)
 
+    d1_only_admission = d1_fires and not base_admitted
+    if d1_only_admission:
+        admission_reasons.append(
+            "admitted via D1 first-party-authoritative exception (evidence>=3, uncorroborated "
+            "first-party source -- no independent analysis)."
+        )
+
     warnings: list[str] = []
-    if d1_fires and not base_admitted:
-        warnings.append(
-            "Tier 1 admission relies solely on the D1 exception (ADR 0004): this path is "
-            "measured, per the ADR, to be unreachable on real data -- this occurrence is "
-            "unexpected and should be reviewed."
-        )
-    if d1_would_at_3 and not d1_fires:
-        warnings.append(
-            "d1_would_admit_at_evidence_3 diagnostic is True for this topic: it would "
-            "satisfy the D1 exception if its threshold were evidence_level >= 3 instead of "
-            ">= 4. Decision-support only (ADR 0004) -- does not affect admission."
-        )
 
     tier, tier_reason = _tier_bucket_for_rank(rank, tier1_admitted)
     if rank <= 3 and not tier1_admitted:
@@ -406,7 +388,6 @@ def _build_tier_assignment(
         exclusion_reasons=exclusion_reasons,
         warnings=warnings,
         d1_exception_fired=d1_fires,
-        d1_would_admit_at_evidence_3=d1_would_at_3,
         recommended_action=action,
         recommended_action_reason=action_reason,
     )

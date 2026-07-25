@@ -1,6 +1,6 @@
 # ADR 0004 — Intelligence Brief evidence and ranking decisions (D1–D6)
 
-- Status: Accepted (D1 not yet implemented)
+- Status: Accepted (D1 IMPLEMENTED — Founder final decision, Gate C: threshold evidence >= 3)
 - Date: 2026-07-24
 - Decider: Founder, recorded by opus-tech-lead / sonnet-implementation-engineer
 - Model responsible: Sonnet
@@ -29,14 +29,14 @@ constraint.
 
 ## Decision
 
-### D1 — Tier-1 waiver for an uncorroborated first-party-authoritative source (NOT YET IMPLEMENTED)
+### D1 — Tier-1 waiver for an uncorroborated first-party-authoritative source (IMPLEMENTED, Gate C: threshold evidence >= 3)
 
-Recorded in `ranking.py` (`_tier1_eligibility` docstring) for M4, not
-implemented in Gate A:
+Recorded in `ranking.py` (`_tier1_eligibility` docstring) for M4, and
+implemented in `tiers.py` for Gate C:
 
 > Tier 1 may waive the independent-source requirement only when
 > `evidence_type` in `{deprecation_notice, security_advisory,
-> official_spec_change, official_api_behavior_change}` AND `evidence >= 4`
+> official_spec_change, official_api_behavior_change}` AND `evidence >= 3`
 > AND `practical_consequence >= 4` AND `marketing_risk` is `False` AND the
 > claim is directly verifiable in the artifact AND
 > `first_party_authoritative` is `True`. Benefit, performance, vendor
@@ -48,45 +48,59 @@ implemented in Gate A:
 `spec_change` evidence-type literal (see `EvidenceType` in `models.py`) —
 no separate literal by that name exists or is needed.
 
-**MEASURED CONSTRAINT: as issued, D1 is unreachable.** Reaching evidence
->= 4 already requires an independent source in every rubric branch
-(verified across 561 combinations), so the waiver (evidence >= 4 AND
-first_party_authoritative AND NOT independent) can never fire.
-Implementing D1 verbatim yields an exception path that never triggers —
-conservative and faithful, but inert. Resolution requires a Founder
-ruling: (a) restate the threshold as evidence >= 3, which is exactly what
-`evid_3_first_party_authoritative` provides and what the existing
-`first_party_authoritative_candidate` diagnostic already tracks, or (b)
-authorize a new rubric branch letting a directly-verifiable first-party
-authoritative artifact reach 4 without independence.
+**History — measured unreachable as originally issued (evidence >= 4).**
+Reaching evidence >= 4 already requires an independent source in every
+rubric branch (verified across 561 combinations), so the waiver as issued
+(evidence >= 4 AND first_party_authoritative AND NOT independent) could
+never fire. Implementing it verbatim yielded an exception path that never
+triggered — conservative and faithful, but inert. Resolution required a
+Founder ruling between two options: (a) restate the threshold as
+evidence >= 3, exactly what `evid_3_first_party_authoritative` provides and
+what the `first_party_authoritative_candidate` diagnostic (`ranking.py`)
+already tracked, or (b) authorize a new rubric branch letting a
+directly-verifiable first-party authoritative artifact reach 4 without
+independence.
 
-Until that ruling, `ranking.py`'s `_tier1_eligibility` continues to require
-`has_independent_evidence` unconditionally, and
-`first_party_authoritative_candidate` remains a diagnostic-only field that
-never admits a topic to Tier 1 on its own.
+**Final ruling (Founder, Gate C): option (a).** The threshold is
+`evidence_level >= 3`. This is now the REAL, live admission rule in
+`tiers.d1_exception_fires` (`evidence_floor=3`) — not a diagnostic. When it
+fires and the base Tier-1 rule (`ranking._tier1_eligibility`, which still
+requires `has_independent_evidence` unconditionally and is unchanged by
+this decision) does not independently admit the topic, the topic is
+admitted to Tier 1 as an uncorroborated first-party-authoritative source
+with no independent analysis. That absence of independent corroboration is
+recorded in `TierAssignment.admission_reasons` and surfaced as an explicit
+marker on the topic in the brief's Tier-1 rendering
+(`brief.Tier1LeanItem.first_party_authoritative_note`) — never silently
+implied. `ranking.py`'s `first_party_authoritative_candidate` diagnostic is
+untouched by this decision (it is a distinct, narrower ranking.py-owned
+fact — see its docstring — and ranking.py itself is out of scope for this
+gate); it continues to never admit a topic to Tier 1 on its own.
 
-**M4 entry blockers**, beyond the D1 threshold ruling above:
+**M4 entry blockers, as resolved this gate:**
 
-1. **`marketing_risk` semantics** (see D-fix in this round, "Gate B
-   hardening"): the flag is now a presence fact — set whenever a
-   first-party-promotional or claim-carrying first-party-commentary member
-   is present, cleared only by genuine independent evidence — computed
-   once in `cluster._evidence_level_and_marketing_risk`, independent of
-   which rubric branch fires. M4 must read this fact, not re-derive it
-   from `evidence_anchor_id`.
-2. **`claim_directly_verifiable_in_artifact`** — D1's text requires "the
-   claim is directly verifiable in the artifact" as a separate condition
-   from `first_party_authoritative`. No such field exists on `SourceItem`
-   today; M4 cannot implement D1's waiver without adding it (a schema
-   change, itself Opus/Fable-reviewable work).
-3. **Institutional opinion has no representation in the taxonomy.** D1
+1. **`marketing_risk` semantics** (Gate B hardening, prior round): the flag
+   is a presence fact — set whenever a first-party-promotional or
+   claim-carrying first-party-commentary member is present, cleared only
+   by genuine independent evidence — computed once in
+   `cluster._evidence_level_and_marketing_risk`, independent of which
+   rubric branch fires. `tiers.py` reads this fact, never re-derives it.
+2. **`claim_directly_verifiable_in_artifact`** — added to `SourceItem`
+   (prior round) precisely so D1's "claim is directly verifiable in the
+   artifact" conjunct, separate from `first_party_authoritative`, could be
+   read directly off the anchor item.
+3. **Institutional opinion needs no new taxonomy this gate.** D1
    explicitly excludes "institutional opinion" from ever qualifying for
-   the waiver, but a think-tank or similar institutional opinion piece is
-   currently authored as a non-subject `independent_analysis` — which
-   counts as full independent corroboration under
-   `_INDEPENDENT_EVIDENCE_TYPES`. D1's exclusion list has no way to
-   distinguish "genuine independent analysis" from "institutional opinion
-   dressed as independent analysis" with the current `EvidenceType` enum.
+   the waiver. This is handled by content, not by adding a taxonomy type:
+   the D1 predicate's existing conjuncts already structurally exclude it —
+   a promotional/benefit claim sets `marketing_risk` or fails
+   `claim_directly_verifiable_in_artifact`, and a genuine opinion piece
+   authored as a non-subject `independent_analysis` is, by definition, not
+   `first_party_authoritative`. No topic can reach D1 admission by being
+   dressed up as "independent analysis" while actually being institutional
+   opinion, because `first_party_authoritative` (an explicit, separately
+   computed fact) is one of the six required conjuncts. A dedicated
+   "institutional opinion" evidence type remains unneeded for this gate.
 
 ### D2 — Isolated, uncorroborated secondary news is evidence level 1
 
@@ -191,8 +205,11 @@ explicitly rather than declaring a normalized summary forbidden forever.
 
 ## Consequences
 
-- D1 remains formally recorded but inert until the Founder rules on (a) or
-  (b) above; M4 must not silently pick one.
+- D1 is now a live admission path (evidence >= 3): it narrows how many
+  topics rely on the base Tier-1 rule alone, and every topic it admits
+  carries an explicit "no independent corroboration" marker through
+  `admission_reasons` and the brief's Tier-1 rendering — this must never
+  regress to an implicit/silent admission.
 - D3's fix (adding `has_non_subject_authoritative`) is strictly more
   permissive for the breaking-change floor — it never *removes* the floor
   from a case that previously had it, only adds the one case that was

@@ -171,7 +171,6 @@ def _make_tiered(
         exclusion_reasons=[],
         warnings=[],
         d1_exception_fired=False,
-        d1_would_admit_at_evidence_3=False,
         recommended_action=recommended_action,
         recommended_action_reason="test recommended action reason",
     )

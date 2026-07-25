@@ -146,13 +146,6 @@ _EVIDENCE_LEVEL_HUMAN_PHRASE: dict[int, str] = {
     0: "no meaningful evidence",
 }
 
-# --- D1 threshold-watch diagnostic (decision-support only, ADR 0004/D1) -----
-D1_THRESHOLD_WATCH_NOTE = (
-    "Would become Tier-1 eligible if D1's threshold were evidence_level >= 3 instead of >= 4 "
-    "(ADR 0004). Currently inert: decision-support only -- does NOT admit this topic to Tier "
-    "1 and never will unless the Founder rules to change the threshold."
-)
-
 # --- library movements (M6 deferral note for a standalone M5 brief) --------
 LIBRARY_MOVEMENTS_DEFERRED_NOTE = (
     "Library movements (new / promoted-from-deferred / deferred / rejected / stale, with "
@@ -199,7 +192,14 @@ class DiscardedTopic(BaseModel):
 
 
 class Tier1LeanItem(BaseModel):
-    """Lean, ~5-line Tier 1 ("Must Understand") presentation of one topic."""
+    """Lean, ~5-line Tier 1 ("Must Understand") presentation of one topic.
+
+    ``first_party_authoritative_note`` is populated (non-``None``) only when
+    this topic was admitted solely via the D1 exception (ADR 0004, Founder
+    final decision Gate C): it states plainly that this is an uncorroborated
+    first-party-authoritative source with no independent analysis. ``None``
+    for every topic admitted by the base Tier-1 rule.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -209,6 +209,7 @@ class Tier1LeanItem(BaseModel):
     what_changed: str
     why_it_matters: str
     evidence_and_confidence: str
+    first_party_authoritative_note: str | None
     recommended_action: RecommendedAction
     recommended_action_reason: str
     score: int
@@ -337,22 +338,6 @@ class Tier1AppendixRecord(BaseModel):
     dimension_breakdown: list[str]
 
 
-class D1ThresholdWatchItem(BaseModel):
-    """One Top-10 topic flagged by ``tiers.d1_would_admit_at_evidence_3`` --
-    decision-support only for the Founder's D1 threshold ruling (ADR 0004).
-    Never affects ``tier1_admitted``; see
-    ``test_d1_threshold_watch_never_changes_tier_assignment``."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    topic_id: str
-    rank: int
-    canonical_title: str
-    evidence_type: str
-    evidence_level: int
-    note: str
-
-
 class LibraryMovement(BaseModel):
     """One topic's lifecycle movement in the persistent topic library (M6),
     e.g. newly seen, promoted from deferred, deferred, rejected, or gone
@@ -409,7 +394,6 @@ class WeeklyBrief(BaseModel):
     experiment: ExperimentSelection
     content_opportunities: ContentOpportunitySelection
     discarded: list[DiscardedTopic]
-    d1_threshold_watch: list[D1ThresholdWatchItem]
     library_movements: LibraryMovementsSection
     ranking_explanation_pointer: str
     appendix: list[Tier1AppendixRecord]
@@ -532,6 +516,14 @@ def _human_principal_evidence(inputs: RankingInputs, claim: ClaimAssessment) -> 
 def _build_tier1_lean(
     topic: TieredTopic, breakdown: RankingBreakdown, inputs: RankingInputs, anchor: SourceItem
 ) -> Tier1LeanItem:
+    d1_only_admission = topic.tier_assignment.d1_exception_fired and not breakdown.tier1_eligible
+    first_party_authoritative_note = (
+        "First-party authoritative; no independent corroboration (admitted via the D1 "
+        "exception, ADR 0004, Founder final decision Gate C: evidence>=3, uncorroborated "
+        "first-party source -- no independent analysis)."
+        if d1_only_admission
+        else None
+    )
     return Tier1LeanItem(
         rank=topic.rank,
         topic_id=topic.topic_id,
@@ -542,6 +534,7 @@ def _build_tier1_lean(
             f"{topic.claim.claim_class} claim, {topic.claim.confidence} confidence -- "
             f"{topic.claim.confidence_reason}"
         ),
+        first_party_authoritative_note=first_party_authoritative_note,
         recommended_action=topic.tier_assignment.recommended_action,
         recommended_action_reason=topic.tier_assignment.recommended_action_reason,
         score=topic.score,
@@ -925,38 +918,6 @@ def _build_tldr(tier1_topics: list[TieredTopic]) -> list[str]:
     ]
 
 
-def _build_d1_threshold_watch(
-    tiered: list[TieredTopic],
-    inputs_by_topic_id: dict[str, RankingInputs],
-    clusters_by_topic_id: dict[str, TopicCluster],
-    items_by_id: dict[str, SourceItem],
-) -> list[D1ThresholdWatchItem]:
-    """Every Top-10 topic flagged by the ``d1_would_admit_at_evidence_3``
-    diagnostic that is NOT already Tier-1 admitted -- decision-support only
-    for the Founder's D1 threshold ruling (ADR 0004). Reads
-    ``tier_assignment.d1_would_admit_at_evidence_3`` (computed in
-    ``tiers.py``) and never itself decides or changes admission."""
-    watch: list[D1ThresholdWatchItem] = []
-    for t in tiered:
-        if not t.tier_assignment.d1_would_admit_at_evidence_3:
-            continue
-        if t.tier_assignment.tier1_admitted:
-            continue
-        anchor = _anchor_for_topic(t.topic_id, clusters_by_topic_id, items_by_id)
-        inputs = inputs_by_topic_id[t.topic_id]
-        watch.append(
-            D1ThresholdWatchItem(
-                topic_id=t.topic_id,
-                rank=t.rank,
-                canonical_title=t.canonical_title,
-                evidence_type=anchor.evidence_type,
-                evidence_level=inputs.evidence_level,
-                note=D1_THRESHOLD_WATCH_NOTE,
-            )
-        )
-    return watch
-
-
 # ------------------------------ public API -----------------------------------
 
 
@@ -1027,9 +988,6 @@ def build_weekly_brief(
     experiment = _build_experiment(tiered, ranked, clusters_by_topic_id, items_by_id)
     content_opportunities = _build_content_opportunities(tier1_topics, breakdown_by_topic_id)
     tier1_short_reason = _tier1_short_reason(tiered, len(tier1_topics))
-    d1_threshold_watch = _build_d1_threshold_watch(
-        tiered, inputs_by_topic_id, clusters_by_topic_id, items_by_id
-    )
     if library_movements is None:
         library_movements = LibraryMovementsSection(
             movements=[], deferred_note=LIBRARY_MOVEMENTS_DEFERRED_NOTE
@@ -1096,7 +1054,6 @@ def build_weekly_brief(
         experiment=experiment,
         content_opportunities=content_opportunities,
         discarded=discarded,
-        d1_threshold_watch=d1_threshold_watch,
         library_movements=library_movements,
         ranking_explanation_pointer=ranking_explanation_pointer,
         appendix=appendix,
@@ -1115,6 +1072,8 @@ def _render_tier1_section(brief: WeeklyBrief) -> list[str]:
         lines.append(f"- **What changed:** {item.what_changed}")
         lines.append(f"- **Why it matters:** {item.why_it_matters}")
         lines.append(f"- **Evidence & confidence:** {item.evidence_and_confidence}")
+        if item.first_party_authoritative_note:
+            lines.append(f"- **Note:** {item.first_party_authoritative_note}")
         lines.append(
             f"- **Recommended action:** {item.recommended_action} -- "
             f"{item.recommended_action_reason}"
@@ -1201,21 +1160,6 @@ def _render_string_list(values: list[str]) -> str:
     return "; ".join(values) if values else "(none)"
 
 
-def _render_d1_threshold_watch_section(brief: WeeklyBrief) -> list[str]:
-    lines = ["## D1 Threshold Watch (Decision Support)"]
-    if not brief.d1_threshold_watch:
-        lines.append(
-            "No Top-10 topic is currently flagged by the d1_would_admit_at_evidence_3 "
-            "diagnostic."
-        )
-    for item in brief.d1_threshold_watch:
-        lines.append(
-            f"- **{item.canonical_title}** (rank {item.rank}, evidence_type="
-            f"{item.evidence_type}, evidence_level={item.evidence_level}): {item.note}"
-        )
-    return lines
-
-
 def _render_library_movements_section(brief: WeeklyBrief) -> list[str]:
     lines = ["## Library Movements"]
     movements = brief.library_movements
@@ -1297,8 +1241,6 @@ def render_markdown(brief: WeeklyBrief) -> str:
     lines.extend(_render_content_opportunities_section(brief))
     lines.append("")
     lines.extend(_render_discarded_section(brief))
-    lines.append("")
-    lines.extend(_render_d1_threshold_watch_section(brief))
     lines.append("")
     lines.extend(_render_library_movements_section(brief))
     lines.append("")

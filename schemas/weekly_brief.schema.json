@@ -65,46 +65,6 @@
       "title": "ContentOpportunitySelection",
       "type": "object"
     },
-    "D1ThresholdWatchItem": {
-      "additionalProperties": false,
-      "description": "One Top-10 topic flagged by ``tiers.d1_would_admit_at_evidence_3`` --\ndecision-support only for the Founder's D1 threshold ruling (ADR 0004).\nNever affects ``tier1_admitted``; see\n``test_d1_threshold_watch_never_changes_tier_assignment``.",
-      "properties": {
-        "topic_id": {
-          "title": "Topic Id",
-          "type": "string"
-        },
-        "rank": {
-          "title": "Rank",
-          "type": "integer"
-        },
-        "canonical_title": {
-          "title": "Canonical Title",
-          "type": "string"
-        },
-        "evidence_type": {
-          "title": "Evidence Type",
-          "type": "string"
-        },
-        "evidence_level": {
-          "title": "Evidence Level",
-          "type": "integer"
-        },
-        "note": {
-          "title": "Note",
-          "type": "string"
-        }
-      },
-      "required": [
-        "topic_id",
-        "rank",
-        "canonical_title",
-        "evidence_type",
-        "evidence_level",
-        "note"
-      ],
-      "title": "D1ThresholdWatchItem",
-      "type": "object"
-    },
     "DiscardedTopic": {
       "additionalProperties": false,
       "description": "One topic ranked below the Top N, with a one-line reason.",
@@ -472,7 +432,7 @@
     },
     "Tier1LeanItem": {
       "additionalProperties": false,
-      "description": "Lean, ~5-line Tier 1 (\"Must Understand\") presentation of one topic.",
+      "description": "Lean, ~5-line Tier 1 (\"Must Understand\") presentation of one topic.\n\n``first_party_authoritative_note`` is populated (non-``None``) only when\nthis topic was admitted solely via the D1 exception (ADR 0004, Founder\nfinal decision Gate C): it states plainly that this is an uncorroborated\nfirst-party-authoritative source with no independent analysis. ``None``\nfor every topic admitted by the base Tier-1 rule.",
       "properties": {
         "rank": {
           "title": "Rank",
@@ -497,6 +457,17 @@
         "evidence_and_confidence": {
           "title": "Evidence And Confidence",
           "type": "string"
+        },
+        "first_party_authoritative_note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "First Party Authoritative Note"
         },
         "recommended_action": {
           "enum": [
@@ -529,6 +500,7 @@
         "what_changed",
         "why_it_matters",
         "evidence_and_confidence",
+        "first_party_authoritative_note",
         "recommended_action",
         "recommended_action_reason",
         "score",
@@ -705,13 +677,6 @@
       "title": "Discarded",
       "type": "array"
     },
-    "d1_threshold_watch": {
-      "items": {
-        "$ref": "#/$defs/D1ThresholdWatchItem"
-      },
-      "title": "D1 Threshold Watch",
-      "type": "array"
-    },
     "library_movements": {
       "$ref": "#/$defs/LibraryMovementsSection"
     },
@@ -753,7 +718,6 @@
     "experiment",
     "content_opportunities",
     "discarded",
-    "d1_threshold_watch",
     "library_movements",
     "ranking_explanation_pointer",
     "appendix"

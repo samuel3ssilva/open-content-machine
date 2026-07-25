@@ -42,7 +42,7 @@
     },
     "TierAssignment": {
       "additionalProperties": false,
-      "description": "M4 (ADR 0004): one topic's tier admission, gate reasons, D1 exception\nand diagnostic outcome, and recommended action.\n\nDeliberately reuses ``RankingBreakdown.tier1_eligible`` and\n``eligibility_reasons`` rather than re-deriving the base Tier-1 rule --\nthis model only adds the Founder D1 exception (recorded, per the ADR, as\nmeasured-unreachable) on top. ``d1_would_admit_at_evidence_3`` is a\nDIAGNOSTIC ONLY, computed for Founder decision-support -- it never\naffects ``tier1_admitted``.",
+      "description": "M4 (ADR 0004): one topic's tier admission, gate reasons, D1 exception\noutcome, and recommended action.\n\nDeliberately reuses ``RankingBreakdown.tier1_eligible`` and\n``eligibility_reasons`` rather than re-deriving the base Tier-1 rule --\nthis model only adds the Founder D1 exception on top. Per the Founder's\nfinal ruling (ADR 0004, Gate C), D1 fires at ``evidence_level >= 3`` and\nis a REAL admission path: when ``d1_exception_fired`` is True and the base\nrule did not independently admit the topic, ``admission_reasons`` records\nthat the topic was admitted as an uncorroborated first-party-authoritative\nsource with no independent analysis -- that absence of independent\ncorroboration must remain visible, never silently implied.",
       "properties": {
         "tier": {
           "enum": [
@@ -90,10 +90,6 @@
           "title": "D1 Exception Fired",
           "type": "boolean"
         },
-        "d1_would_admit_at_evidence_3": {
-          "title": "D1 Would Admit At Evidence 3",
-          "type": "boolean"
-        },
         "recommended_action": {
           "enum": [
             "study",
@@ -116,7 +112,6 @@
         "rank",
         "tier1_admitted",
         "d1_exception_fired",
-        "d1_would_admit_at_evidence_3",
         "recommended_action",
         "recommended_action_reason"
       ],

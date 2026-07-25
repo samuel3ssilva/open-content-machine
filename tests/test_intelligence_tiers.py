@@ -28,7 +28,6 @@ from content_machine.intelligence.tiers import (
     build_claim_assessment,
     build_tiered_topic,
     d1_exception_fires,
-    d1_would_admit_at_evidence_3,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -179,8 +178,8 @@ def test_d1_predicate_fails_if_any_single_conjunct_fails() -> None:
 
     # wrong evidence_type
     assert _fires({"evidence_type": "official_doc"}, {}) is False
-    # evidence_level below 4
-    assert _fires({}, {"evidence_level": 3}) is False
+    # evidence_level below 3
+    assert _fires({}, {"evidence_level": 2}) is False
     # consequence below 4 (action_required with raw < 4, non-breaking so no floor)
     assert (
         _fires(
@@ -197,22 +196,24 @@ def test_d1_predicate_fails_if_any_single_conjunct_fails() -> None:
     assert _fires({}, {"has_first_party_authoritative": False}) is False
 
 
-def test_d1_exception_never_fires_on_the_real_fixture() -> None:
-    """ADR 0004 measured constraint: reaching evidence_level >= 4 already
-    implies has_independent_evidence in every current rubric branch, so this
-    waiver for an uncorroborated first-party-authoritative source can never
-    actually need to trigger. Confirmed here against every cluster in the
-    real synthetic fixture."""
+def test_d1_exception_fires_for_exactly_these_topics_on_the_real_fixture() -> None:
+    """Founder final decision (ADR 0004, Gate C): the D1 exception fires at
+    evidence_level >= 3, which is now the REAL admission rule (previously
+    unreachable at the originally issued evidence_level >= 4). Measured
+    against the real synthetic fixture: exactly the topics whose anchor is a
+    first-party-authoritative deprecation_notice/security_advisory/
+    spec_change/official_api_behavior_change at evidence_level >= 3 with
+    consequence >= 4 and a directly-verifiable claim."""
     clusters, items_by_id, ranked = _real_fixture_pipeline()
     clusters_by_topic_id = {c.topic_id: c for c in clusters}
     assert ranked, "fixture produced no clusters"
-    fired_count = 0
+    fired_anchor_ids = set()
     for inputs, breakdown in ranked:
         cluster = clusters_by_topic_id[inputs.topic_id]
         anchor = items_by_id[cluster.anchor_item_id]
         if d1_exception_fires(anchor, inputs, breakdown):
-            fired_count += 1
-    assert fired_count == 0
+            fired_anchor_ids.add(cluster.anchor_item_id)
+    assert fired_anchor_ids == {"item006", "item007", "item034", "item035", "item041"}
 
 
 def test_marketing_never_uses_the_d1_exception() -> None:
@@ -240,10 +241,11 @@ def test_marketing_never_uses_the_d1_exception() -> None:
     assert d1_exception_fires(anchor, inputs, breakdown) is False
 
 
-def test_d1_would_admit_at_evidence_3_diagnostic_is_decision_support_only() -> None:
-    """The diagnostic can be True even when the real exception is False (the
-    only difference being the evidence floor); it must never influence
-    d1_exception_fires."""
+def test_d1_exception_fires_at_evidence_level_exactly_3() -> None:
+    """The Founder's final Gate C ruling: evidence_level == 3 (not just >= 4)
+    is now sufficient for the D1 exception to fire for real, when every
+    other conjunct holds -- this is the whole point of the threshold change,
+    admitting an uncorroborated first-party-authoritative source."""
     anchor = _make_item(
         evidence_type="spec_change",
         claim_directly_verifiable_in_artifact=True,
@@ -262,25 +264,127 @@ def test_d1_would_admit_at_evidence_3_diagnostic_is_decision_support_only() -> N
     )
     breakdown = score_topic(inputs, _profile())
 
+    assert d1_exception_fires(anchor, inputs, breakdown) is True
+
+
+def test_d1_admitted_topic_carries_the_no_independent_corroboration_marker() -> None:
+    """Absence of independent analysis must remain visible (Founder
+    requirement, ADR 0004 D1): a topic admitted to Tier 1 solely via the D1
+    exception must carry an explicit marker in admission_reasons."""
+    anchor = _make_item(
+        evidence_type="spec_change",
+        claim_directly_verifiable_in_artifact=True,
+        change_class="breaking_change",
+        action_required="migration_required",
+    )
+    inputs = _make_inputs(
+        evidence_level=3,
+        has_independent_evidence=False,
+        has_first_party_authoritative=True,
+        has_direct_artifact_or_independent_source=True,
+        marketing_risk=False,
+        change_class="breaking_change",
+        action_required="migration_required",
+        evidence_anchor_id="evid_3_first_party_authoritative",
+    )
+    cluster = _make_cluster()
+    breakdown = score_topic(inputs, _profile())
+    assert d1_exception_fires(anchor, inputs, breakdown) is True
+    assert breakdown.tier1_eligible is False  # base admission fails: no independent evidence
+
+    topic = build_tiered_topic(1, cluster, inputs, breakdown, anchor)
+    assert topic.tier_assignment.tier1_admitted is True
+    assert topic.tier_assignment.tier == "tier_1"
+    assert any(
+        "no independent analysis" in r for r in topic.tier_assignment.admission_reasons
+    )
+
+
+def test_marketing_risk_blocks_d1_admission_even_with_every_other_conjunct_satisfied() -> None:
+    """Benefit/performance/self-benchmark and other promotional claims never
+    qualify for the D1 waiver (ADR 0004): marketing_risk=True blocks
+    admission even when every other D1 conjunct would otherwise hold."""
+    anchor = _make_item(
+        evidence_type="deprecation_notice",
+        claim_directly_verifiable_in_artifact=True,
+        change_class="breaking_change",
+        action_required="migration_required",
+    )
+    inputs = _make_inputs(
+        evidence_level=3,
+        has_independent_evidence=False,
+        has_first_party_authoritative=True,
+        has_direct_artifact_or_independent_source=True,
+        marketing_risk=True,
+        change_class="breaking_change",
+        action_required="migration_required",
+        evidence_anchor_id="evid_3_first_party_authoritative",
+    )
+    cluster = _make_cluster()
+    breakdown = score_topic(inputs, _profile())
     assert d1_exception_fires(anchor, inputs, breakdown) is False
-    assert d1_would_admit_at_evidence_3(anchor, inputs, breakdown) is True
+
+    topic = build_tiered_topic(1, cluster, inputs, breakdown, anchor)
+    assert topic.tier_assignment.tier1_admitted is False
+    assert topic.tier_assignment.tier != "tier_1"
 
 
-def test_d1_would_admit_at_evidence_3_flags_five_topics_on_the_real_fixture() -> None:
-    """Measured against the real synthetic fixture: exactly the topics whose
-    anchor is a first-party-authoritative deprecation_notice/security_advisory/
-    spec_change/official_api_behavior_change at evidence_level == 3 with
-    consequence >= 4 and a directly-verifiable claim. This is decision-support
-    data for the Founder (ADR 0004) and must never affect Tier admission."""
-    clusters, items_by_id, ranked = _real_fixture_pipeline()
-    clusters_by_topic_id = {c.topic_id: c for c in clusters}
-    flagged_anchor_ids = set()
-    for inputs, breakdown in ranked:
-        cluster = clusters_by_topic_id[inputs.topic_id]
-        anchor = items_by_id[cluster.anchor_item_id]
-        if d1_would_admit_at_evidence_3(anchor, inputs, breakdown):
-            flagged_anchor_ids.add(cluster.anchor_item_id)
-    assert flagged_anchor_ids == {"item006", "item007", "item034", "item035", "item041"}
+def test_non_d1_evidence_type_never_admitted_via_d1() -> None:
+    """An announcement/release_note (not in the D1 evidence_type set) never
+    qualifies for the D1 waiver, however strong its other facts are -- e.g. a
+    vendor's own promotional announcement is exactly the "benefit claim"
+    category D1 must never admit."""
+    anchor = _make_item(
+        evidence_type="announcement",
+        claim_directly_verifiable_in_artifact=True,
+        change_class="breaking_change",
+        action_required="migration_required",
+    )
+    inputs = _make_inputs(
+        evidence_level=3,
+        has_independent_evidence=False,
+        has_first_party_authoritative=True,
+        has_direct_artifact_or_independent_source=True,
+        marketing_risk=False,
+        change_class="breaking_change",
+        action_required="migration_required",
+        evidence_anchor_id="evid_3_first_party_authoritative",
+    )
+    cluster = _make_cluster()
+    breakdown = score_topic(inputs, _profile())
+    assert d1_exception_fires(anchor, inputs, breakdown) is False
+
+    topic = build_tiered_topic(1, cluster, inputs, breakdown, anchor)
+    assert topic.tier_assignment.tier1_admitted is False
+    assert topic.tier_assignment.tier != "tier_1"
+
+
+def test_claim_not_directly_verifiable_never_admitted_via_d1() -> None:
+    """claim_directly_verifiable_in_artifact=False blocks D1 admission even
+    when every other conjunct holds."""
+    anchor = _make_item(
+        evidence_type="deprecation_notice",
+        claim_directly_verifiable_in_artifact=False,
+        change_class="breaking_change",
+        action_required="migration_required",
+    )
+    inputs = _make_inputs(
+        evidence_level=3,
+        has_independent_evidence=False,
+        has_first_party_authoritative=True,
+        has_direct_artifact_or_independent_source=True,
+        marketing_risk=False,
+        change_class="breaking_change",
+        action_required="migration_required",
+        evidence_anchor_id="evid_3_first_party_authoritative",
+    )
+    cluster = _make_cluster()
+    breakdown = score_topic(inputs, _profile())
+    assert d1_exception_fires(anchor, inputs, breakdown) is False
+
+    topic = build_tiered_topic(1, cluster, inputs, breakdown, anchor)
+    assert topic.tier_assignment.tier1_admitted is False
+    assert topic.tier_assignment.tier != "tier_1"
 
 
 # --- Tier 1 admission: 0, 1, 2, 3 items (no backfill) -----------------------

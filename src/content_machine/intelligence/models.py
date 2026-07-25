@@ -361,14 +361,17 @@ class ClaimAssessment(BaseModel):
 
 class TierAssignment(BaseModel):
     """M4 (ADR 0004): one topic's tier admission, gate reasons, D1 exception
-    and diagnostic outcome, and recommended action.
+    outcome, and recommended action.
 
     Deliberately reuses ``RankingBreakdown.tier1_eligible`` and
     ``eligibility_reasons`` rather than re-deriving the base Tier-1 rule --
-    this model only adds the Founder D1 exception (recorded, per the ADR, as
-    measured-unreachable) on top. ``d1_would_admit_at_evidence_3`` is a
-    DIAGNOSTIC ONLY, computed for Founder decision-support -- it never
-    affects ``tier1_admitted``.
+    this model only adds the Founder D1 exception on top. Per the Founder's
+    final ruling (ADR 0004, Gate C), D1 fires at ``evidence_level >= 3`` and
+    is a REAL admission path: when ``d1_exception_fired`` is True and the base
+    rule did not independently admit the topic, ``admission_reasons`` records
+    that the topic was admitted as an uncorroborated first-party-authoritative
+    source with no independent analysis -- that absence of independent
+    corroboration must remain visible, never silently implied.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -381,7 +384,6 @@ class TierAssignment(BaseModel):
     exclusion_reasons: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     d1_exception_fired: bool
-    d1_would_admit_at_evidence_3: bool
     recommended_action: RecommendedAction
     recommended_action_reason: str
 

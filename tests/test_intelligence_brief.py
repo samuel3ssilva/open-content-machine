@@ -35,7 +35,6 @@ from content_machine.intelligence.tiers import (
     assign_tiers,
     build_tiered_topic,
     d1_exception_fires,
-    d1_would_admit_at_evidence_3,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -565,14 +564,18 @@ def test_tier1_short_reason_one_occurrence_of_no_backfill_rule_per_failing_rank(
     assert brief.tier1_short_reason.lower().count("no-backfill rule applied") == 2
 
 
-def test_tier1_short_reason_failing_condition_matches_real_fixture() -> None:
-    """Same check against the real fixture's actual fell-through rank (rank
-    2, 'Core Project Spec: Breaking Change To Tool Call Framing', which
-    fails on independence, not evidence level)."""
+def test_tier1_short_reason_is_none_on_real_fixture_since_d1_gate_c() -> None:
+    """Since the Founder's final D1 ruling (ADR 0004, Gate C: evidence >= 3),
+    rank 2 ('Core Project Spec: Breaking Change To Tool Call Framing') no
+    longer falls through to Tier 2 -- it fails the base rule (no independent
+    evidence) but is now admitted via the real D1 exception, so all three
+    rank-1-3 candidates are Tier-1 admitted on the real fixture and no
+    short-reason text is generated. Before this decision (D1 unreachable at
+    evidence >= 4), this rank fell through and this test asserted a
+    'lack of independent corroboration' short reason instead."""
     brief = _brief_from_real_fixture()
-    assert brief.tier1_short_reason is not None
-    assert brief.tier1_short_reason.lower().count("no-backfill rule") == 1
-    assert "lack of independent corroboration" in brief.tier1_short_reason
+    assert len(brief.tier1) == 3
+    assert brief.tier1_short_reason is None
 
 
 def test_tier1_short_reason_is_none_when_all_three_admitted() -> None:
@@ -659,13 +662,15 @@ def test_content_opportunities_exact_count_matches_documented_selection_rule_on_
     topics by construction (tiers._tier_bucket_for_rank only ever offers
     ranks 1-3 as Tier 1 candidates), so the `== 3: break` cap it claimed to
     exercise was structurally unreachable regardless of whether the
-    safeguard existed. This test instead measures the REAL fixture: exactly
-    2 Tier 1 topics there are high-confidence facts with on-territory
-    relevance (both admitted Tier 1 topics qualify), independently
-    verifiable against the fixture data, not backfilled to hit a quota."""
+    safeguard existed. This test instead measures the REAL fixture: since
+    the Founder's final D1 ruling (ADR 0004, Gate C: evidence >= 3), all 3
+    Tier 1 topics there are high-confidence facts with on-territory
+    relevance (all three admitted Tier 1 topics qualify -- rank 2 newly via
+    the D1 exception), independently verifiable against the fixture data,
+    not backfilled to hit a quota."""
     brief = _brief_from_real_fixture()
-    assert len(brief.content_opportunities.opportunities) == 2
-    assert len(brief.tier1) == 2
+    assert len(brief.content_opportunities.opportunities) == 3
+    assert len(brief.tier1) == 3
     for opp in brief.content_opportunities.opportunities:
         assert opp.reason
         assert "claim_class=fact" in opp.reason
@@ -693,69 +698,56 @@ def test_discarded_topics_empty_is_representable() -> None:
     assert brief.discarded == []
 
 
-# --- Product F2: D1 threshold-watch diagnostic (decision support only) -----
+# --- D1 first-party-authoritative exception (ADR 0004, Founder final -------
+# --- decision, Gate C: real admission at evidence_level >= 3) --------------
 
 
-def test_d1_threshold_watch_flags_exactly_the_expected_topics_on_real_fixture() -> None:
-    """Measured against the real fixture: exactly rank 2 ('Core Project
-    Spec: Breaking Change To Tool Call Framing', spec_change, evidence_level
-    3) and rank 5 ('VendorC Deprecates Legacy Harness Plugin API',
-    deprecation_notice, evidence_level 3) are flagged -- both are Top-10,
-    not Tier-1-admitted, and satisfy d1_would_admit_at_evidence_3."""
+def test_d1_admitted_topic_appears_in_tier1_with_marker_on_real_fixture() -> None:
+    """Founder final decision (Gate C): the D1 exception now fires for real
+    at evidence_level >= 3. On the real synthetic fixture, rank 2 ('Core
+    Project Spec: Breaking Change To Tool Call Framing', spec_change,
+    evidence_level 3) fails the base Tier-1 rule (no independent evidence)
+    but is admitted via the D1 exception and appears in Tier 1 carrying the
+    explicit 'no independent corroboration' marker -- absence of independent
+    analysis must remain visible, per the Founder's requirement."""
     brief = _brief_from_real_fixture()
-    by_title = {item.canonical_title: item for item in brief.d1_threshold_watch}
-    assert set(by_title) == {
-        "Core Project Spec: Breaking Change To Tool Call Framing",
-        "VendorC Deprecates Legacy Harness Plugin API",
-    }
-    spec_item = by_title["Core Project Spec: Breaking Change To Tool Call Framing"]
-    assert spec_item.evidence_type == "spec_change"
-    assert spec_item.evidence_level == 3
-    assert spec_item.rank == 2
-    deprecation_item = by_title["VendorC Deprecates Legacy Harness Plugin API"]
-    assert deprecation_item.evidence_type == "deprecation_notice"
-    assert deprecation_item.evidence_level == 3
-    assert deprecation_item.rank == 5
+    by_title = {item.canonical_title: item for item in brief.tier1}
+    assert "Core Project Spec: Breaking Change To Tool Call Framing" in by_title
+    item = by_title["Core Project Spec: Breaking Change To Tool Call Framing"]
+    assert item.rank == 2
+    assert item.first_party_authoritative_note is not None
+    assert "no independent corroboration" in item.first_party_authoritative_note.lower()
 
 
-def test_d1_threshold_watch_never_changes_tier_assignment() -> None:
-    """The diagnostic must remain decision-support only: no topic flagged by
-    d1_threshold_watch is ever Tier-1 admitted, and admission is unaffected
-    by whether the diagnostic is computed at all."""
+def test_d1_marker_is_rendered_in_the_tier1_markdown_section() -> None:
     brief = _brief_from_real_fixture()
-    tier1_topic_ids = {t.topic_id for t in brief.tier1}
-    watch_topic_ids = {item.topic_id for item in brief.d1_threshold_watch}
-    assert tier1_topic_ids.isdisjoint(watch_topic_ids)
-    # Re-building the brief from the same inputs yields the same tier1 set
-    # and the same watch set -- the diagnostic doesn't perturb anything.
-    clusters, items_by_id, ranked = _real_fixture_pipeline()
-    clusters_by_topic_id = {c.topic_id: c for c in clusters}
-    tiered = assign_tiers(ranked, clusters_by_topic_id, items_by_id)
-    brief_again = build_weekly_brief(tiered, ranked, clusters_by_topic_id, items_by_id, WEEK_LABEL)
-    assert {t.topic_id for t in brief_again.tier1} == tier1_topic_ids
-    assert {item.topic_id for item in brief_again.d1_threshold_watch} == watch_topic_ids
+    markdown = render_markdown(brief)
+    section = _extract_markdown_section(markdown, "## Tier 1")
+    assert "no independent corroboration" in section.lower()
 
-    # De-tautologized (QA #2): the disjointness asserted above is guaranteed
-    # BY CONSTRUCTION -- `_build_d1_threshold_watch` (brief.py) explicitly
-    # skips any topic that is already `tier1_admitted`, so watch_topic_ids
-    # can never overlap tier1_topic_ids regardless of what `tier1_admitted`
-    # itself is computed from; it would pass even if the diagnostic were
-    # wrongly folded into admission. This hand-built case proves the
-    # STRONGER, non-tautological invariant directly against
-    # `tiers.build_tiered_topic`: a topic that satisfies
-    # `d1_would_admit_at_evidence_3` (evidence_level == 3, otherwise a full
-    # D1 match) but fails the REAL D1 exception (needs evidence_level >= 4)
-    # and fails base admission (no independent evidence) must NOT be
-    # `tier1_admitted`. If `tiers.py`'s `tier1_admitted = base_admitted or
-    # d1_fires` were instead `... or d1_would_at_3`, the assertions below
-    # would flip and this test would fail.
+
+def test_topics_admitted_by_the_base_rule_carry_no_d1_marker() -> None:
+    """A topic admitted by the base Tier-1 rule (has independent evidence)
+    must never carry the D1 'no independent corroboration' marker -- it is
+    reserved for topics admitted solely via the D1 exception."""
+    brief = _brief_from_real_fixture()
+    for item in brief.tier1:
+        if item.canonical_title != "Core Project Spec: Breaking Change To Tool Call Framing":
+            assert item.first_party_authoritative_note is None
+
+
+def test_d1_admission_still_respects_the_rank_window_no_backfill() -> None:
+    """A topic satisfying the D1 exception outside the rank-1-3 Tier-1
+    candidate window is tier1_admitted=True but must still land in Tier 2,
+    never promoted -- rank position, not admission merit, gates Tier-1
+    candidacy. Unchanged by the Founder's D1 threshold decision."""
     anchor = _make_item(
         evidence_type="spec_change",
         claim_directly_verifiable_in_artifact=True,
         change_class="breaking_change",
         action_required="migration_required",
     )
-    d1_watch_inputs = _make_inputs(
+    d1_inputs = _make_inputs(
         evidence_level=3,
         has_independent_evidence=False,
         has_first_party_authoritative=True,
@@ -766,39 +758,13 @@ def test_d1_threshold_watch_never_changes_tier_assignment() -> None:
         evidence_anchor_id="evid_3_first_party_authoritative",
     )
     cluster = _make_cluster()
-    breakdown = score_topic(d1_watch_inputs, _profile())
-    assert d1_exception_fires(anchor, d1_watch_inputs, breakdown) is False
-    assert d1_would_admit_at_evidence_3(anchor, d1_watch_inputs, breakdown) is True
+    breakdown = score_topic(d1_inputs, _profile())
+    assert d1_exception_fires(anchor, d1_inputs, breakdown) is True
     assert breakdown.tier1_eligible is False  # base admission fails: no independent evidence
 
-    topic = build_tiered_topic(1, cluster, d1_watch_inputs, breakdown, anchor)
-    assert topic.tier_assignment.d1_would_admit_at_evidence_3 is True
-    assert topic.tier_assignment.tier1_admitted is False
-    assert topic.tier_assignment.tier != "tier_1"
-
-
-def test_d1_threshold_watch_empty_is_representable() -> None:
-    """When no Top-10 topic satisfies the diagnostic, the list is empty and
-    the Markdown states so explicitly rather than omitting the section."""
-    brief = _brief_for([True, False, False])
-    assert brief.d1_threshold_watch == []
-    markdown = render_markdown(brief)
-    section = _extract_markdown_section(markdown, "## D1 Threshold Watch")
-    assert "No Top-10 topic is currently flagged" in section
-
-
-def test_d1_threshold_watch_rendered_in_both_markdown_and_json() -> None:
-    brief = _brief_from_real_fixture()
-    markdown = render_markdown(brief)
-    json_str = render_json(brief)
-    payload = json.loads(json_str)
-
-    assert len(payload["d1_threshold_watch"]) == len(brief.d1_threshold_watch)
-    section = _extract_markdown_section(markdown, "## D1 Threshold Watch")
-    for item in brief.d1_threshold_watch:
-        assert item.canonical_title in section
-        assert item.evidence_type in section
-        assert str(item.evidence_level) in section
+    topic = build_tiered_topic(5, cluster, d1_inputs, breakdown, anchor)
+    assert topic.tier_assignment.tier1_admitted is True
+    assert topic.tier_assignment.tier == "tier_2"
 
 
 # --- Product F7: TL;DR block, study time, library-movements deferral -------
