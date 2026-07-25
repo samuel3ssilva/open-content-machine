@@ -441,25 +441,29 @@ def _score_curiosity(inputs: RankingInputs, profile: RelevanceProfile) -> Dimens
     )
 
 
-# FOUNDER DECISION D1 -- RECORDED FOR M4, NOT IMPLEMENTED HERE. Tier
+# FOUNDER DECISION D1 (ADR 0004) -- IMPLEMENTED, but not in this module. Tier
 # admission itself (which tier a topic is placed into) is out of scope for
-# this module; ranking.py computes ``tier1_eligible`` per the rule below and
-# stops there. When M4 implements tier admission, it must honor this
-# contract:
+# this module; ranking.py computes ``tier1_eligible`` per the base rule below
+# and stops there. The D1 waiver is implemented in
+# ``content_machine/intelligence/tiers.py`` (``_d1_predicate`` /
+# ``d1_exception_fires``), at the Founder's final Gate C ruling:
 #
 #   Tier 1 may waive the independent-source requirement only when
 #   evidence_type in {deprecation_notice, security_advisory,
-#   official_spec_change, official_api_behavior_change} AND evidence >= 4
+#   official_spec_change, official_api_behavior_change} AND evidence >= 3
 #   AND practical_consequence >= 4 AND marketing_risk is False AND the claim
 #   is directly verifiable in the artifact AND first_party_authoritative is
 #   True. Benefit, performance, vendor self-benchmark, institutional opinion,
 #   and promotional announcements never qualify. The absence of independent
 #   analysis must remain explicit in the output.
 #
-# Nothing in this module implements the waiver above -- ``tier1_eligible``
+# This module does not implement the waiver above -- ``tier1_eligible``
 # below still requires ``has_independent_evidence`` unconditionally; the
 # ``first_party_authoritative_candidate`` diagnostic flags the narrow case
-# the waiver is meant for without ever admitting it to Tier 1 itself.
+# the waiver targets, as an informational ranking-layer signal only (see its
+# docstring below). This location is the historical record and the
+# eligibility base rule, and must stay consistent with tiers.py, which is
+# where Tier-1 admission is actually decided.
 def _tier1_eligibility(
     relevance_effective: int, evidence_effective: int, inputs: RankingInputs
 ) -> tuple[bool, list[str], bool]:
@@ -518,10 +522,12 @@ def _tier1_eligibility(
     )
     if first_party_authoritative_candidate:
         reasons.append(
-            "first_party_authoritative_candidate: True -- barred from tier 1 solely for "
-            "lacking independent corroboration of an official first-party source (e.g. a "
-            "vendor deprecation notice); this is a PENDING FOUNDER DECISION, not an "
-            "automatic override -- tier1_eligible remains False."
+            "first_party_authoritative_candidate: True -- informational: first-party-"
+            "authoritative, uncorroborated, breaking/migration-relevant candidate "
+            "(ranking-layer signal); not an admission verdict -- Tier-1 admission is "
+            "determined by tiers.py per ADR 0004 D1 (implemented, evidence>=3). "
+            "tier1_eligible above reflects only the base Tier-1 rule computed in this "
+            "module."
         )
 
     return tier1_eligible, reasons, first_party_authoritative_candidate
