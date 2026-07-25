@@ -1,13 +1,16 @@
 # MVP Status — Painel Oficial
 
-Atualizado: 2026-07-23 · Release atual: **v0.0.1** · Branch: `main` · CI: verde
+Atualizado: 2026-07-25 · Release atual: **v0.0.1** · Branch: `main` · CI: verde
 
 ## Public summary (English)
 
 - `v0.0.1` is tagged and released; Sprint 1.x additions are merged on `main`
   but not yet in a tagged release.
-- Current quality gates: 329 automated tests passing, `ruff` clean, `mypy`
+- Current quality gates: 592 automated tests passing, `ruff` clean, `mypy`
   clean, CI green on GitHub Actions.
+- The weekly AI & Claude Intelligence Brief (v0.1) is merged on `main` and
+  runs **fully offline against synthetic fixtures only** — no connector, no
+  scheduler, no real source, and no ranking calibration against real signals.
 - One Founder-authorized real local run of a private connections export has
   been completed (metadata-only dry-run first, then one real run); outputs
   live outside this repository, nothing real was committed, and the shipped
@@ -50,6 +53,36 @@ marcada). Nenhum dado real foi processado.
 - ✅ Dry-run executado contra o export real (somente metadados; 8.204 linhas, zero warnings)
 - ✅ **REAL LOCAL RUN COMPLETED — AWAITING FOUNDER REVIEW** (outputs privados fora do repo; nada commitado)
 - 🔒 Publicação da **v0.1.0** → após revisão do Founder
+
+## AI & Claude Intelligence Brief (semanal, v0.1 sintético)
+
+> **Escopo:** tudo abaixo roda **offline, só com fixtures sintéticas**.
+> Nenhum conector real (Gmail, RSS, HTML), nenhum scheduler ativo, nenhuma
+> calibração contra sinal real. Todo brief termina em
+> `awaiting_founder_review`; nada publica automaticamente.
+
+- ✅ Schemas de inteligência + fixtures sintéticas (M1)
+- ✅ Clustering e deduplicação determinísticos (M2)
+- ✅ Ranking explicável (pesos 30/20/15/15/10/10, aritmética inteira,
+  breakdown inspecionável) (M3)
+- ✅ Níveis de evidência, tiers (Must-Understand / Should-Know / Radar) sobre
+  um Top 10 sem backfill (M4)
+- ✅ Intelligence Brief em Markdown + JSON (Tier 1 enxuto + apêndice completo) (M5)
+- ✅ Biblioteca de tópicos persistente: lifecycle, histórico de score
+  append-only, auditoria, regras de reconsideração (M6)
+- ✅ Motor semanal `content-machine intelligence weekly-run` (M7): janela de
+  7 dias com timezone, `run_id` determinístico, re-run idempotente,
+  `--regenerate` explícito, escritas atômicas com rollback, 8 artefatos por
+  semana
+- ✅ Biblioteca v0.2: merge de tópicos com aliases, decay e staleness,
+  relevância estruturada, resumo normalizado (≤280 chars, sem corpo bruto),
+  deltas semanais de score/rank/tier
+- ✅ ADR 0004 (D1–D8) + seção "Deferred to v0.3"
+- ✅ Demonstração sintética de 3 semanas (outputs privados fora do repo)
+- ⬜ Refinamentos v0.3 (decay consumido por output, fall-out reporting,
+  `deltas.jsonl`, exibição do resumo normalizado)
+- 🔒 Fundação de conectores reais → requer escopo do Founder + revisão de
+  segurança/privacidade Fable antes de qualquer implementação
 
 ## Segurança e privacidade
 
@@ -107,6 +140,12 @@ marcada). Nenhum dado real foi processado.
 > **➡️ ESTAMOS AQUI: pós-publicação do post 1 — métricas + preparação do post 2** →
 > inventário do archive LinkedIn → 2º run real (aprovado pelo Fable) →
 > **v0.1.0**
+>
+> Eixo Intelligence Brief: M1–M7 ✅ merged em `main` (Gates A, B e C) →
+> **➡️ próximo gate de engenharia AGUARDA AUTORIZAÇÃO DO FOUNDER**, entre
+> (a) refinamentos v0.3 dentro do escopo sintético e (b) a fundação do
+> contrato `SourceAdapter` para fonte real. Conectores reais não começam
+> antes de escopo/permissões definidos e revisão Fable.
 >
 > Nota: a revisão manual dos 100 títulos está pausada por decisão do Founder
 > (arquivo preservado em ambiente privado); será substituída por uma amostra

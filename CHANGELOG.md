@@ -7,6 +7,80 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (AI & Claude Intelligence Brief v0.1 — weekly, synthetic signals only)
+
+The Intelligence Brief turns many authorized signals into a small number of
+ranked, evidence-checked, actionable weekly topics. Everything below runs
+**fully offline against synthetic fixtures**: no connector, no scheduler, no
+network path, and no real source is implemented. Every brief terminates in
+`awaiting_founder_review` — nothing is ever published automatically.
+
+- Gate C (M7) — `content-machine intelligence weekly-run`: the end-to-end
+  weekly engine, composing load → cluster → rank → tier → brief → library in
+  one command (`--signals`, `--reference-date`, `--timezone`, `--profile`,
+  `--library`, `--output-dir`, `--dry-run`, `--regenerate`). Documented
+  default cadence is Saturday 18:00 `America/Sao_Paulo` with an example cron
+  line — **documentation only; nothing in the package schedules itself**.
+- Gate C — timezone-aware seven-day window: `[reference_date − 7d 00:00,
+  reference_date 00:00)` resolved at local midnight via `zoneinfo`, with the
+  inclusive/exclusive convention documented and tested.
+- Gate C — deterministic run identity: `run_id` is a SHA-256 over
+  (week label, input fingerprint, code version, profile version, window start,
+  window end), so two reference dates inside the same ISO week no longer
+  collide; the input fingerprint is order-independent, and the wall-clock
+  execution timestamp is recorded in the manifest but kept out of the run
+  identity.
+- Gate C — idempotent re-runs and explicit regeneration: repeating a completed
+  week is skipped without duplicating library, score-history, or audit rows;
+  `--regenerate` redoes the week without duplication.
+- Gate C — atomic outputs with rollback: the weekly output set is staged in
+  temporary files and swapped into place, and a failure at any point —
+  including mid-rename — restores the output directory byte-for-byte.
+- Gate C — topic library v0.2 (`intelligence/library.py`): topic merge
+  (shared subject entity plus normalized-title Jaccard ≥ 0.7, surviving entry
+  keeps the earliest `first_seen`, absorbed entry becomes `merged` with
+  `merged_into`, titles preserved as aliases, histories unioned, audit event
+  emitted, no double counting; `merged` is the eleventh lifecycle status),
+  deterministic decay of an effective rank score by weeks since last evidence
+  (20/10/2 per week for urgent/time-sensitive/evergreen, never mutating the
+  stored score), staleness after eight weeks (dropped from "current", kept in
+  history), structured relevance reasons carrying a profile version, and a
+  markup-neutralized `normalized_summary` capped at 280 characters that never
+  retains a raw body.
+- Gate C — weekly deltas: per-topic score, rank, and tier movement plus new
+  evidence and an `is_new` flag; a topic absent from the previous week is
+  reported as new with an undefined score delta, never as a drop.
+- Gate C — eight artifacts per weekly run: `brief.md`, `brief.json`,
+  `topics.jsonl`, `score-history.jsonl`, `audit.jsonl`, `run-manifest.json`,
+  `movements.md`, `discarded.jsonl`.
+- Gate C — validated by a synthetic three-week demonstration (seeding, Founder
+  decisions, deferred return on a score trigger, rejected topics never
+  returning automatically, staleness at eight weeks, evergreen versus
+  time-sensitive decay, byte-identical idempotent re-run, and duplication-free
+  regeneration). The demonstration outputs live in the private local
+  workspace, never in this repository.
+- Gates A/B (M1–M6, merged earlier in this cycle) — the pipeline the weekly
+  engine composes: intelligence schemas and synthetic fixtures; deterministic
+  clustering and deduplication; explainable ranking on fixed 30/20/15/15/10/10
+  weights with integer arithmetic and an inspectable breakdown; evidence
+  levels, tiering (Must-Understand / Should-Know / Radar) over a Top 10 with
+  no backfill; the Markdown + JSON brief (lean Tier 1 plus full appendix);
+  and the persistent topic library with lifecycle, append-only score history,
+  audit trail, and reconsideration rules.
+- ADR 0004 — records decisions D1–D8 for evidence, ranking, and library
+  behavior, including the first-party-authoritative Tier-1 exception (fires at
+  evidence ≥ 3 under a six-part predicate, never for benefit, performance,
+  self-benchmark, institutional opinion, or promotional claims, and always
+  rendering a visible "no independent corroboration" marker), plus an explicit
+  "Deferred to v0.3" section.
+- New JSON Schemas: `run_manifest`, `weekly_delta`, `movements_document`, and
+  updates to `topic_library_entry` and `weekly_brief`.
+- Suite grew to 592 tests, all offline; `ruff` and `mypy` clean.
+
+Not implemented and explicitly out of scope for v0.1: real connectors of any
+kind (Gmail, RSS, HTML), an active scheduler or daemon, ranking calibration
+against real signals, and the editorial/drafting layer.
+
 ### Documentation
 
 - Portfolio readiness pass: public status alignment across README,

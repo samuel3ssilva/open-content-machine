@@ -11,6 +11,24 @@ shipped software. **As software**, only Phase 1 is in progress; every later
 phase below — including Positioning & Creator Profile and Voice Vault — is
 planned and unstarted as code.
 
+## 0. AI & Claude Intelligence Brief (weekly) — synthetic v0.1 shipped
+
+A weekly run that turns many authorized signals into a small set of ranked,
+evidence-checked, actionable topics, ending in `awaiting_founder_review`.
+Shipped as `content-machine intelligence weekly-run`: a timezone-aware
+seven-day window, deterministic run identity, idempotent re-runs and explicit
+regeneration, atomic outputs with rollback, a persistent topic library
+(lifecycle, merges and aliases, decay and staleness, weekly score/rank/tier
+deltas), and eight artifacts per run.
+
+**Runs only against synthetic fixtures, fully offline.** No connector, no
+scheduler, and no real source is implemented; ranking is not yet calibrated
+against real signals. Real-source work stays gated on an explicit Founder
+scope decision plus a Fable security and privacy review.
+
+This work anticipates parts of Phase 5 (prioritization) and Phase 8 (evidence
+checking) below; the remaining phases and their order are unchanged.
+
 ## 1. Foundation & security — in progress
 
 Repository scaffolding, license, architecture and privacy governance,
