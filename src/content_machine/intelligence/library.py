@@ -598,6 +598,19 @@ def _reconsideration_condition(status: LifecycleStatus) -> str | None:
     return None
 
 
+#: Gate C correction round (Opus Finding 2): the exact reason text emitted
+#: below when a topic simply leaves its one-time ``new`` status on its
+#: second week with no other genuinely meaningful change -- routine
+#: re-tracking, not a real movement. ``library_movements_for_brief`` matches
+#: on this exact string to suppress these rows from the BRIEF-facing
+#: movements list; the full audit trail (``audit.jsonl`` / ``audit_events``)
+#: keeps every one of them regardless -- see the module docstring and
+#: ``test_steady_state_second_week_declutters_routine_retracking_boilerplate``.
+ROUTINE_RETRACKING_REASON = (
+    "topic has been tracked for more than one week; recomputed from this week's data"
+)
+
+
 def _transition_reason(from_status: str, to_status: str, tier: str, claim_class: str) -> str:
     if from_status == "stale":
         return (
@@ -605,7 +618,7 @@ def _transition_reason(from_status: str, to_status: str, tier: str, claim_class:
             "as new evidence"
         )
     if from_status == "new":
-        return "topic has been tracked for more than one week; recomputed from this week's data"
+        return ROUTINE_RETRACKING_REASON
     return (
         f"recomputed from this week's data: tier={tier}, claim_class={claim_class} -> "
         f"{to_status}"
@@ -1180,9 +1193,19 @@ def _movement_bucket(delta: WeeklyDelta) -> str | None:
     unchanged). Rank movement is the primary signal (matches "promoted"/
     "demoted" reading positions in the Top-N); score movement is the
     fallback when no previous rank is on record (the topic was tracked, but
-    not previously in the Top-N)."""
+    not previously in the Top-N).
+
+    Gate C correction round (Opus Finding 1): a PURE rank-shuffle -- the
+    score is unchanged AND no tier change occurred, and only the rank moved
+    because other topics entered/left the Top-N -- is NOT a promotion or
+    demotion; it overstates a mechanical composition change as a genuine
+    ranking judgment about this topic. Such a delta is omitted from every
+    bucket here (full "topic left the Top-N" fall-out reporting is
+    deferred to v0.3 -- see ADR 0004's "Deferred to v0.3" note)."""
     if delta.is_new:
         return "new"
+    if delta.score_delta == 0 and delta.tier_change is None:
+        return None
     if delta.rank_delta is not None:
         if delta.rank_delta > 0:
             return "promoted"
@@ -1310,6 +1333,16 @@ def library_movements_for_brief(result: LibraryUpdateResult) -> LibraryMovements
     ``result.deltas`` for the first three and ``result.new_audit_rows`` for
     the rest -- the SAME classification :func:`build_movements_document` uses
     for the ``movements.md`` output, so the brief and the file never diverge.
+
+    Gate C correction round (Opus Finding 2): rows whose reason is the plain
+    ``ROUTINE_RETRACKING_REASON`` boilerplate (a topic simply leaving its
+    one-time ``new`` status with no other meaningful change) are ALSO
+    suppressed here, on top of the plain ``score_change``/``created``
+    suppression above -- they are routine re-tracking, not a genuine
+    movement, and would otherwise clutter every steady-state week with one
+    near-identical line per continuing topic. The full audit trail
+    (``result.new_audit_rows`` / the persisted ``audit_events``) is
+    unaffected and keeps every one of them.
     """
     entries_by_id = {e.topic_id: e for e in result.entries}
     movements = [
@@ -1320,7 +1353,9 @@ def library_movements_for_brief(result: LibraryUpdateResult) -> LibraryMovements
             reason=row.reason,
         )
         for row in result.new_audit_rows
-        if row.event_type not in ("score_change", "created") and row.to_status != "new"
+        if row.event_type not in ("score_change", "created")
+        and row.to_status != "new"
+        and row.reason != ROUTINE_RETRACKING_REASON
     ]
     deferred_note = NO_LIBRARY_MOVEMENTS_NOTE if not movements else None
 

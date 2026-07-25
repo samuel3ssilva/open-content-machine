@@ -879,8 +879,8 @@ def test_two_week_simulation_promotion_deferral_rejection_and_stale() -> None:
     assert len(ordinary_transitions) == 1
     assert ordinary_transitions[0].from_status == "new"
 
-    # Every movement this week is represented with its own reason in the
-    # brief-facing adapter.
+    # Every GENUINE movement this week is represented with its own reason in
+    # the brief-facing adapter.
     movements = library_movements_for_brief(week2)
     movements_by_topic = {m.topic_id: m for m in movements.movements}
     assert movements_by_topic["t_promote"].movement == "study_queue"
@@ -889,8 +889,20 @@ def test_two_week_simulation_promotion_deferral_rejection_and_stale() -> None:
     assert movements_by_topic["t_reject"].reason
     assert movements_by_topic["t_stale"].movement == "stale"
     assert movements_by_topic["t_stale"].reason
-    assert movements_by_topic["t_ordinary"].movement == "study_queue"
-    assert movements_by_topic["t_ordinary"].reason
+    # t_ordinary's own score (58) and tier (tier_2) are UNCHANGED between
+    # weeks -- its only "change" is leaving the one-time 'new' status, and
+    # its rank moved only because t_stale vacated the Top-N (a mechanical
+    # composition shuffle, not a judgment about t_ordinary itself). Gate C
+    # correction round: this is deliberately NOT a brief-facing movement
+    # (FIX 1: routine re-tracking boilerplate is dropped) and NOT classified
+    # promoted/demoted (FIX 2: a pure rank-shuffle with score_delta == 0 and
+    # no tier change is not a promotion/demotion) -- see
+    # test_steady_state_second_week_declutters_routine_retracking_boilerplate
+    # and test_pure_rank_shuffle_with_unchanged_score_is_not_promoted_or_demoted
+    # for the fixes in isolation.
+    assert "t_ordinary" not in movements_by_topic
+    assert not any(m.topic_id == "t_ordinary" for m in movements.promoted)
+    assert not any(m.topic_id == "t_ordinary" for m in movements.demoted)
     assert isinstance(movements, LibraryMovementsSection)
 
 
@@ -1069,6 +1081,125 @@ def test_dissimilar_titles_with_shared_subject_do_not_merge() -> None:
     by_id = {e.topic_id: e for e in week2.entries}
     assert by_id["topic_b"].lifecycle_status != "merged"
     assert TOPIC_MERGE_JACCARD_THRESHOLD == 0.7  # documents the constant this test relies on
+
+
+# --- Gate C correction round: constants pinned against mutation (QA Finding 1) -
+
+
+def test_stale_weeks_and_score_change_trigger_threshold_are_pinned_to_spec() -> None:
+    """QA Finding 1 (MEDIUM + INFO), Gate C correction round: the stale
+    tests derive their week offsets from STALE_WEEKS itself, and two of the
+    three deferred-return tests derive their score bump from
+    SCORE_CHANGE_TRIGGER_THRESHOLD itself -- so a regression that changes
+    either constant's VALUE (e.g. STALE_WEEKS 8 -> 9) would not be caught by
+    any of them; every self-referential test would still pass. This mirrors
+    the TOPIC_MERGE_JACCARD_THRESHOLD == 0.7 literal-value pin above (which
+    DID catch its own mutation) to close the same blind spot for the other
+    two Founder-specified constants."""
+    assert STALE_WEEKS == 8
+    assert SCORE_CHANGE_TRIGGER_THRESHOLD == 15
+
+
+# --- Gate C correction round: declutter brief-facing movements (Opus F2) ----
+
+
+def test_steady_state_second_week_declutters_routine_retracking_boilerplate() -> None:
+    """FIX 1, Gate C correction round (Opus Finding 2): on a topic's SECOND
+    week, leaving the one-time 'new' status with no other genuine change
+    (same score, same rank, same tier -- purely routine re-tracking) used to
+    emit one "topic has been tracked for more than one week; recomputed
+    from this week's data" line per topic in the brief's flat movements
+    list -- ~9 near-identical boilerplate lines every steady-state week.
+    These rows must no longer be brief-facing. The full audit trail
+    (new_audit_rows / audit_events) is unaffected and keeps every one of
+    them, so nothing is silently lost -- only what's SHOWN in the brief
+    changes."""
+    specs = [
+        {"topic_id": f"t{i}", "title": f"Topic {i}", "rank": i, "tier": "tier_2", "score": 50}
+        for i in range(1, 4)
+    ]
+    tiered1, ranked1, clusters1, items1 = _build_week(specs)
+    week1 = update_library(tiered1, ranked1, clusters1, items1, "2026-W10", [])
+    assert all(e.lifecycle_status == "new" for e in week1.entries)
+
+    # Week 2: identical inputs -- no genuine change anywhere in score, rank,
+    # or tier, just routine re-tracking out of 'new'.
+    tiered2, ranked2, clusters2, items2 = _build_week(specs)
+    week2 = update_library(tiered2, ranked2, clusters2, items2, "2026-W11", week1.entries)
+
+    # The full audit trail still records all three transitions, in full.
+    assert len(week2.new_audit_rows) == 3
+    assert all(row.event_type == "lifecycle_transition" for row in week2.new_audit_rows)
+    assert all(row.from_status == "new" for row in week2.new_audit_rows)
+    assert all(
+        row.reason == library_module.ROUTINE_RETRACKING_REASON for row in week2.new_audit_rows
+    )
+
+    # But NONE of it is brief-facing: pure boilerplate, not a real movement.
+    movements = library_movements_for_brief(week2)
+    assert movements.movements == []
+    assert movements.deferred_note == "no library movements this week (first run / no transitions)"
+    assert movements.new == []
+    assert movements.promoted == []
+    assert movements.demoted == []
+
+
+def test_pure_rank_shuffle_with_unchanged_score_is_not_promoted_or_demoted() -> None:
+    """FIX 2, Gate C correction round (Opus Finding 1): a topic whose OWN
+    score and tier are unchanged, but whose rank moved only because another
+    topic left the Top-N (a mechanical composition shuffle, not a ranking
+    judgment about this topic), must NOT be reported as 'promoted' or
+    'demoted' -- that would overstate a shuffle as a genuine movement.
+    Full "topic left the Top-N" fall-out reporting stays deferred to v0.3
+    (see ADR 0004's 'Deferred to v0.3' note) -- this test does not invent
+    it."""
+    week1_specs = [
+        {
+            "topic_id": "t_shuffle",
+            "title": "Steady Topic",
+            "rank": 3,
+            "tier": "tier_2",
+            "score": 60,
+        },
+        {
+            "topic_id": "t_leaving",
+            "title": "Topic Leaving The Top N",
+            "rank": 1,
+            "tier": "tier_1",
+            "score": 90,
+        },
+    ]
+    tiered1, ranked1, clusters1, items1 = _build_week(week1_specs)
+    week1 = update_library(tiered1, ranked1, clusters1, items1, "2026-W10", [])
+
+    # Week 2: t_leaving is simply absent; t_shuffle's OWN score and tier are
+    # unchanged, but its rank improves purely because t_leaving vacated rank 1.
+    tiered2, ranked2, clusters2, items2 = _build_week(
+        [
+            {
+                "topic_id": "t_shuffle",
+                "title": "Steady Topic",
+                "rank": 1,
+                "tier": "tier_2",
+                "score": 60,
+            }
+        ]
+    )
+    week2 = update_library(tiered2, ranked2, clusters2, items2, "2026-W11", week1.entries)
+
+    delta = next(d for d in week2.deltas if d.topic_id == "t_shuffle")
+    assert delta.score_delta == 0
+    assert delta.tier_change is None
+    assert delta.rank_delta is not None
+    assert delta.rank_delta > 0  # rank genuinely moved (3 -> 1)
+
+    movements = library_movements_for_brief(week2)
+    assert not any(m.topic_id == "t_shuffle" for m in movements.promoted)
+    assert not any(m.topic_id == "t_shuffle" for m in movements.demoted)
+
+    document = build_movements_document(week2)
+    assert not any("t_shuffle" in line for line in document.promoted)
+    assert not any("t_shuffle" in line for line in document.demoted)
 
 
 # --- v0.2: decay and effective_rank_score (Opus orchestrator, Gate C) --------

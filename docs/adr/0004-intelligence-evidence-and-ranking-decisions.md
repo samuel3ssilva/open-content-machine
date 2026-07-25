@@ -306,6 +306,59 @@ using the identical classification `build_movements_document` uses, so the
 brief and the file never diverge; the fields are additive (empty by
 default), so no pre-v0.2 brief's rendered output changes.
 
+**Gate C correction round (Opus product review PRODUCT-ACCEPTABLE / Sonnet
+QA QA-CLEAN, findings closed post-merge).** Two presentation-only fixes to
+the above, no lifecycle/RULES change:
+
+- *Decluttered brief movements (Opus Finding 2).* A topic's routine
+  second-week transition out of `new` — recomputed status, but no genuine
+  score/rank/tier change — used to render as a generic "recomputed from
+  this week's data" line in the brief's flat movements list, once per
+  continuing topic, every steady-state week. These rows are no longer
+  brief-facing (`library.library_movements_for_brief` drops them by exact
+  reason-text match on `library.ROUTINE_RETRACKING_REASON`); the full audit
+  trail (`audit.jsonl` / `TopicLibraryEntry.audit_events`) is unaffected and
+  keeps every one of them.
+- *Rank-shuffle mislabel (Opus Finding 1).* `library._movement_bucket`
+  previously classified ANY rank improvement as `promoted` (and any rank
+  fall as `demoted`), even when the topic's own score and tier were
+  unchanged and the rank moved only because another topic entered or left
+  the Top-N. That overstated a mechanical composition change as a genuine
+  ranking judgment about the topic. Such a delta (`score_delta == 0` and no
+  `tier_change`) is now omitted from every movements bucket — not backfilled
+  into a new "neutral" bucket, and not paired with the fuller "topic left
+  the Top-N" fall-out reporting named below, which stays deferred.
+
+### Deferred to v0.3
+
+The following are intentionally NOT implemented in Gate C, so reviewers/
+Founder are not misled by their presence in the code:
+
+- **Decay is computed but not consumed.** `library.effective_rank_score`
+  (20/10/2 points per week of absence, by `freshness`) is a pure, tested
+  function with no caller outside its own tests; no brief or library output
+  orders or displays a decayed score yet. It is v0.3 scaffolding — wiring it
+  into a library-ordering/browse view is deferred.
+- **Fall-out reporting.** Topics that drop OUT of the Top-N are not
+  surfaced as a movement — only new/promoted/demoted/returning/stale/merged
+  among topics still tracked in the library. Full "left the brief this
+  week" reporting is v0.3.
+- **Structured deltas.** `library.WeeklyDelta`'s numeric score/rank deltas
+  are rendered as prose in `movement_reason`, not persisted as a
+  machine-readable `deltas.jsonl`. Deferred to v0.3 if downstream tooling
+  needs them structured.
+- **`normalized_summary` is persisted but not surfaced.** Per D7, it is
+  written to `topics.jsonl` for future editorial reconsideration, but the
+  brief never renders it; its derived text is title-plus-rubric-math, not a
+  substance summary. v0.3.
+- **Title sanitization at the model boundary.** `canonical_title` flows
+  verbatim into the brief, `movements.md`, and `topics.jsonl` — harmless
+  today because this path is offline, model-free, and human-reviewed, and
+  ranking is provably title-content-indifferent. When a future editorial or
+  LLM layer consumes these artifacts, title fields must pass through
+  `privacy.strip_for_model()`/normalization at that trust boundary — noted
+  here for the threat model, out of scope for Gate C.
+
 ## Consequences
 
 - D1 is now a live admission path (evidence >= 3): it narrows how many
