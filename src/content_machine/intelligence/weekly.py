@@ -35,8 +35,17 @@ themselves): **Saturday 18:00 America/Sao_Paulo** -- see
 === 2. Run manifest (auditable, §RunManifest) ==============================
 
 :data:`RunManifest.run_id` is a STABLE, deterministic sha256 of
-``(week_label, input_fingerprint, code_version, profile_version)`` -- same
-inputs, same ``run_id``, always; never random, never wall-clock-derived.
+``(week_label, input_fingerprint, code_version, profile_version,
+window_start, window_end)`` -- same inputs, same ``run_id``, always; never
+random, never wall-clock-derived. ``window_start``/``window_end`` (the
+resolved window bounds -- see :func:`resolve_window`) are included
+specifically because they already encode BOTH ``reference_date`` and
+``timezone``: two runs can share the same ISO ``week_label`` while
+resolving to two DIFFERENT 7-day windows (different ``reference_date`` or
+``timezone``), and those are different logical runs that must never
+collide on ``run_id`` -- a collision would make the idempotency "already
+completed" skip in :func:`write_weekly_run_outputs` wrongly skip the
+second, genuinely different run, leaving its output unwritten.
 ``input_fingerprint`` is a sha256 over the CANONICALIZED, SORTED signal set
 -- see :func:`compute_input_fingerprint` -- computed over every signal
 passed to :func:`run_weekly` (before window filtering), so the run's
@@ -253,14 +262,36 @@ def compute_input_fingerprint(signals: list[SourceItem]) -> str:
 
 
 def compute_run_id(
-    week_label: str, input_fingerprint: str, code_version: str, profile_version: str
+    week_label: str,
+    input_fingerprint: str,
+    code_version: str,
+    profile_version: str,
+    window_start: str,
+    window_end: str,
 ) -> str:
     """Deterministic ``run_id``: sha256 over ``(week_label,
-    input_fingerprint, code_version, profile_version)`` in that fixed order.
-    Never random, never derived from a timestamp -- the same four inputs
-    always produce the same ``run_id``, and changing any ONE of them changes
-    it."""
-    payload = "\x1f".join([week_label, input_fingerprint, code_version, profile_version])
+    input_fingerprint, code_version, profile_version, window_start,
+    window_end)`` in that fixed order. Never random, never derived from a
+    timestamp -- the same six inputs always produce the same ``run_id``,
+    and changing any ONE of them changes it.
+
+    ``window_start``/``window_end`` (ISO-8601, timezone-aware -- see
+    :func:`resolve_window`) MUST be included: they are what makes the
+    ``run_id`` unique to the LOGICAL run's actual output. Two runs with the
+    same ``week_label`` but a different ``reference_date`` or ``timezone``
+    resolve to different window bounds and analyze different signals --
+    they are different runs and must get different ids (see the module
+    docstring's #2)."""
+    payload = "\x1f".join(
+        [
+            week_label,
+            input_fingerprint,
+            code_version,
+            profile_version,
+            window_start,
+            window_end,
+        ]
+    )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -376,7 +407,12 @@ def run_weekly(
     resolved_code_version = _resolve_code_version(code_version)
     input_fingerprint = compute_input_fingerprint(signals)
     run_id = compute_run_id(
-        week_label, input_fingerprint, resolved_code_version, profile.profile_version
+        week_label,
+        input_fingerprint,
+        resolved_code_version,
+        profile.profile_version,
+        window.start.isoformat(),
+        window.end.isoformat(),
     )
 
     movement_counts: Counter[str] = Counter(
@@ -461,17 +497,55 @@ def _jsonl_lines_excluding_week(path: Path, week_label: str) -> list[str]:
 
 def _atomic_write_all(staged: dict[Path, str]) -> None:
     """Write every path in ``staged`` all-or-nothing (see the module
-    docstring's #3). Every file is first written to a temp file in the SAME
-    directory as its destination (so the final rename is atomic on any
-    single POSIX filesystem, never a cross-device copy) and fsync'd before
-    closing. Only once EVERY temp file has been staged successfully are any
-    of them renamed into place with ``os.replace``. On any failure -- while
-    staging OR while renaming -- every temp file created so far is removed
-    before the exception propagates, so a partial failure never leaves a
-    stray ``.tmp`` file or a half-written destination behind."""
-    staged_temp: list[tuple[Path, Path]] = []
+    docstring's #3): either EVERY destination file lands with its new
+    content, or ``output_dir`` is left byte-for-byte identical to how it
+    started -- no partial batch, even if the rename phase fails partway
+    through.
+
+    Per file, in order (``run-manifest.json``, if present, is always
+    processed LAST, regardless of ``staged``'s iteration order -- so a
+    directory is never mistaken for "run complete" while the manifest
+    still reflects a stale run):
+
+    1. stage the new content into a temp file in the same directory as the
+       destination (so the later rename is a same-filesystem, atomic
+       ``os.replace``, never a cross-device copy) and ``fsync`` it;
+    2. if a file already exists at the destination, move it aside into a
+       ``.bak.tmp`` temp file in the same directory (also an atomic
+       ``os.replace``) -- this is what makes rollback possible;
+    3. ``os.replace`` the new temp file into place.
+
+    If ANY step for ANY file raises -- staging, backing up, or the final
+    rename -- every file that had ALREADY completed all three steps is
+    rolled back immediately: its backup is restored over it (or, if it had
+    no backup because it did not exist before this call, the newly-created
+    file is removed). Every backup and temp file still on disk is then
+    cleaned up before the exception propagates. The directory is therefore
+    never left in a mixed state where some of ``staged``'s files reflect
+    this run and others don't -- the documented "either all land, or none
+    change" guarantee holds even for a failure inside the rename phase
+    itself, not only during staging.
+    """
+    # Non-manifest files first, run-manifest.json last, regardless of the
+    # order staged was built in -- a stable sort preserves relative order
+    # within each group.
+    ordered = sorted(staged, key=lambda path: path.name == "run-manifest.json")
+
+    # Each committed entry has ALREADY had both its backup (if any) taken
+    # and its new content renamed into place -- rolling it back restores
+    # the pre-run state for that one path.
+    committed: list[tuple[Path, Path | None]] = []
+
+    def _rollback() -> None:
+        for final_path, backup_path in reversed(committed):
+            if backup_path is not None:
+                os.replace(backup_path, final_path)
+            else:
+                final_path.unlink(missing_ok=True)
+
     try:
-        for final_path, content in staged.items():
+        for final_path in ordered:
+            content = staged[final_path]
             fd, tmp_name = tempfile.mkstemp(
                 dir=str(final_path.parent), prefix=f".{final_path.name}.", suffix=".tmp"
             )
@@ -484,14 +558,42 @@ def _atomic_write_all(staged: dict[Path, str]) -> None:
             except BaseException:
                 tmp_path.unlink(missing_ok=True)
                 raise
-            staged_temp.append((tmp_path, final_path))
 
-        for tmp_path, final_path in staged_temp:
-            os.replace(tmp_path, final_path)
+            backup_path: Path | None = None
+            if final_path.exists():
+                backup_fd, backup_name = tempfile.mkstemp(
+                    dir=str(final_path.parent),
+                    prefix=f".{final_path.name}.",
+                    suffix=".bak.tmp",
+                )
+                os.close(backup_fd)
+                backup_path = Path(backup_name)
+                try:
+                    os.replace(final_path, backup_path)
+                except BaseException:
+                    backup_path.unlink(missing_ok=True)
+                    tmp_path.unlink(missing_ok=True)
+                    raise
+
+            try:
+                os.replace(tmp_path, final_path)
+            except BaseException:
+                # Restore this file's own pre-run state before propagating,
+                # since it hasn't been added to `committed` yet.
+                if backup_path is not None:
+                    os.replace(backup_path, final_path)
+                tmp_path.unlink(missing_ok=True)
+                raise
+
+            committed.append((final_path, backup_path))
     except BaseException:
-        for tmp_path, _final_path in staged_temp:
-            tmp_path.unlink(missing_ok=True)
+        _rollback()
         raise
+
+    # Every file landed -- the backups are no longer needed.
+    for _final_path, backup_path in committed:
+        if backup_path is not None:
+            backup_path.unlink(missing_ok=True)
 
 
 def write_weekly_run_outputs(

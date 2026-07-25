@@ -215,8 +215,14 @@ def test_input_fingerprint_is_order_independent() -> None:
 
 def test_run_id_deterministic_same_inputs() -> None:
     fingerprint = compute_input_fingerprint(_signals())
-    first = compute_run_id("2026-W28", fingerprint, "0.1.0", "synthetic-1")
-    second = compute_run_id("2026-W28", fingerprint, "0.1.0", "synthetic-1")
+    first = compute_run_id(
+        "2026-W28", fingerprint, "0.1.0", "synthetic-1", "2026-07-05T00:00:00-03:00",
+        "2026-07-12T00:00:00-03:00",
+    )
+    second = compute_run_id(
+        "2026-W28", fingerprint, "0.1.0", "synthetic-1", "2026-07-05T00:00:00-03:00",
+        "2026-07-12T00:00:00-03:00",
+    )
     assert first == second
 
 
@@ -227,6 +233,8 @@ def test_run_id_deterministic_same_inputs() -> None:
         ("input_fingerprint", "different-fingerprint"),
         ("code_version", "9.9.9"),
         ("profile_version", "synthetic-2"),
+        ("window_start", "2026-07-06T00:00:00-03:00"),
+        ("window_end", "2026-07-13T00:00:00-03:00"),
     ],
 )
 def test_run_id_changes_when_any_component_changes(changed_field: str, other_value: str) -> None:
@@ -235,11 +243,102 @@ def test_run_id_changes_when_any_component_changes(changed_field: str, other_val
         "input_fingerprint": compute_input_fingerprint(_signals()),
         "code_version": "0.1.0",
         "profile_version": "synthetic-1",
+        "window_start": "2026-07-05T00:00:00-03:00",
+        "window_end": "2026-07-12T00:00:00-03:00",
     }
     baseline = compute_run_id(**base_kwargs)  # type: ignore[arg-type]
     changed_kwargs = {**base_kwargs, changed_field: other_value}
     changed = compute_run_id(**changed_kwargs)  # type: ignore[arg-type]
     assert baseline != changed
+
+
+def test_run_id_differs_for_same_week_label_but_different_reference_date() -> None:
+    """QA Finding 1 (HIGH): compute_run_id previously omitted the resolved
+    window bounds, so two runs whose week_label happened to collide (e.g.
+    a Sunday reference_date landing in the same ISO week as the following
+    Saturday's default cadence) but whose reference_date/window differed
+    produced the SAME run_id despite analyzing DIFFERENT signals and
+    producing a DIFFERENT brief -- the idempotency skip in
+    write_weekly_run_outputs would then wrongly treat the second, correct
+    run as already completed and skip writing it. window_start/window_end
+    already encode both reference_date and timezone, so folding them into
+    the run_id hash makes same-week/different-window runs get different
+    ids."""
+    signals = _signals()
+    profile = _profile()
+
+    result_sunday = run_weekly(
+        signals=signals,
+        profile=profile,
+        prior_library=[],
+        week_label="2026-W28",
+        reference_date="2026-07-05",  # a Sunday -- still ISO week 27, chosen
+        # deliberately distinct from the Saturday below to prove the two
+        # windows (and thus run_ids) differ even though we force the SAME
+        # week_label on both calls.
+        timezone=TIMEZONE,
+        execution_timestamp="2026-07-05T18:00:00-03:00",
+    )
+    result_saturday = run_weekly(
+        signals=signals,
+        profile=profile,
+        prior_library=[],
+        week_label="2026-W28",  # same week_label, forced, on purpose
+        reference_date="2026-07-12",
+        timezone=TIMEZONE,
+        execution_timestamp="2026-07-12T18:00:00-03:00",
+    )
+
+    assert result_sunday.manifest.week_label == result_saturday.manifest.week_label
+    assert result_sunday.manifest.window_start != result_saturday.manifest.window_start
+    assert result_sunday.manifest.run_id != result_saturday.manifest.run_id
+
+
+def test_idempotency_skip_does_not_mask_a_different_window_same_week_label_run(
+    tmp_path: Path,
+) -> None:
+    """Direct end-to-end regression for QA Finding 1: writing the Sunday run
+    first must NOT cause the Saturday run (same week_label, different
+    window, different run_id) to be silently skipped as "already
+    completed" -- each run_id gets its own write."""
+    output_dir = tmp_path / "out"
+    signals = _signals()
+    profile = _profile()
+
+    result_sunday = run_weekly(
+        signals=signals,
+        profile=profile,
+        prior_library=[],
+        week_label="2026-W28",
+        reference_date="2026-07-05",
+        timezone=TIMEZONE,
+        execution_timestamp="2026-07-05T18:00:00-03:00",
+    )
+    result_saturday = run_weekly(
+        signals=signals,
+        profile=profile,
+        prior_library=[],
+        week_label="2026-W28",
+        reference_date="2026-07-12",
+        timezone=TIMEZONE,
+        execution_timestamp="2026-07-12T18:00:00-03:00",
+    )
+    assert result_sunday.manifest.run_id != result_saturday.manifest.run_id
+
+    first_outcome = write_weekly_run_outputs(result_sunday, output_dir)
+    assert first_outcome.wrote is True
+
+    second_outcome = write_weekly_run_outputs(result_saturday, output_dir)
+    assert second_outcome.wrote is True  # NOT skipped -- a genuinely different run
+    assert second_outcome.run_id == result_saturday.manifest.run_id
+
+    manifest_on_disk = json.loads((output_dir / "run-manifest.json").read_text())
+    assert manifest_on_disk["run_id"] == result_saturday.manifest.run_id
+
+    # Re-writing the Saturday run again (the true "same run twice" case) IS
+    # correctly skipped.
+    third_outcome = write_weekly_run_outputs(result_saturday, output_dir)
+    assert third_outcome.wrote is False
 
 
 # ------------------------------ full run_weekly integration -----------------
@@ -451,6 +550,71 @@ def test_simulated_write_failure_leaves_output_dir_unchanged(
     assert remaining == {"pre-existing.txt"}
     # ...and the pre-existing file is untouched.
     assert sentinel.read_text(encoding="utf-8") == "do not touch\n"
+
+
+def test_rename_phase_failure_leaves_output_dir_unchanged_from_pre_run_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """QA Finding 2 (MEDIUM): the old ``_atomic_write_all`` was all-or-nothing
+    only during the STAGING phase -- if ``os.replace`` itself failed
+    partway through the RENAME phase (e.g. after the first couple of files
+    had already been renamed into place), the directory was left in a
+    genuinely mixed state: some destination files reflecting the new run,
+    others still the prior one. This simulates exactly that on a SECOND
+    run over an output_dir that already holds a completed FIRST run: the
+    rename phase is made to fail on its 2nd file (after the 1st file's
+    rename already succeeded), and the whole output_dir -- every one of
+    the six files -- must come back byte-for-byte identical to the state
+    left by the first run. Not a mix of old and new content, and no stray
+    temp/backup files."""
+    output_dir = tmp_path / "out"
+    first_result = _run()
+    first_outcome = write_weekly_run_outputs(first_result, output_dir)
+    assert first_outcome.wrote is True
+
+    before_by_name = {
+        name: (output_dir / name).read_text(encoding="utf-8")
+        for name in weekly_module.OUTPUT_FILENAMES
+    }
+
+    second_result = _run(
+        week_label="2026-W27",
+        reference_date=W27_REFERENCE_DATE,
+        execution_timestamp="2026-07-05T18:00:00-03:00",
+    )
+    assert second_result.manifest.run_id != first_result.manifest.run_id
+
+    real_replace = os.replace
+    call_count = {"n": 0}
+
+    def _flaky_replace(src: object, dst: object) -> None:
+        call_count["n"] += 1
+        # Every pre-existing file gets a backup-replace then a
+        # rename-replace (2 calls each) in OUTPUT_FILENAMES order,
+        # so call #4 is brief.json's RENAME (its backup, call #3,
+        # already succeeded) -- a failure squarely inside the rename
+        # phase, after brief.md (calls #1-#2) already fully landed.
+        if call_count["n"] == 4:
+            raise OSError("simulated rename-phase failure")
+        real_replace(src, dst)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(weekly_module.os, "replace", _flaky_replace)
+
+    with pytest.raises(OSError, match="simulated rename-phase failure"):
+        write_weekly_run_outputs(second_result, output_dir, regenerate=False)
+
+    after_by_name = {
+        name: (output_dir / name).read_text(encoding="utf-8")
+        for name in weekly_module.OUTPUT_FILENAMES
+    }
+    assert after_by_name == before_by_name, (
+        "output_dir must be restored to the pre-second-run state -- no partial batch"
+    )
+
+    remaining = {p.name for p in output_dir.iterdir()}
+    assert remaining == set(weekly_module.OUTPUT_FILENAMES), (
+        "no stray .tmp/.bak.tmp files may survive a rolled-back failure"
+    )
 
 
 def test_regenerate_flag_is_required_to_redo_a_completed_run(tmp_path: Path) -> None:
