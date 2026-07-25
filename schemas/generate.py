@@ -46,6 +46,7 @@ from content_machine.intelligence.models import (  # noqa: E402
     TieredTopic,
     TopicCluster,
 )
+from content_machine.intelligence.weekly import RunManifest  # noqa: E402
 from content_machine.privacy.anonymizer import AnonymizedConnection  # noqa: E402
 from content_machine.sources.contracts import SourceReference  # noqa: E402
 from content_machine.sources.inventory import (  # noqa: E402
@@ -81,6 +82,7 @@ _MODELS = {
     "topic_library_entry.schema.json": TopicLibraryEntry,
     "score_history_row.schema.json": ScoreHistoryRow,
     "audit_row.schema.json": AuditRow,
+    "run_manifest.schema.json": RunManifest,
 }
 
 

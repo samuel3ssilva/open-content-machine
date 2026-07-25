@@ -12,6 +12,7 @@ from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import typer
 
@@ -39,6 +40,22 @@ from content_machine.audience.public_report import to_markdown as public_to_mark
 from content_machine.audience.report import AudienceReport, analyze, to_json, to_markdown
 from content_machine.config.settings import get_settings
 from content_machine.ingestion.csv_loader import CsvLoadError, LoadResult, load_csv
+from content_machine.intelligence.library import load_topics
+from content_machine.intelligence.loader import (
+    DEFAULT_PROFILE_PATH,
+    ProfileLoadError,
+    SignalLoadError,
+    load_profile,
+    load_signals,
+)
+from content_machine.intelligence.weekly import (
+    DEFAULT_CADENCE_DESCRIPTION,
+    DEFAULT_TIMEZONE,
+    derive_week_label,
+    resolve_window,
+    run_weekly,
+    write_weekly_run_outputs,
+)
 from content_machine.privacy.anonymizer import anonymize
 from content_machine.sources.inventory import (
     FileStatus,
@@ -67,6 +84,12 @@ source_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(source_app, name="source")
+
+intelligence_app = typer.Typer(
+    help="Weekly Intelligence Brief engine commands (offline, synthetic-fixture friendly).",
+    no_args_is_help=True,
+)
+app.add_typer(intelligence_app, name="intelligence")
 
 # The repo root, used both to locate the shipped example and to warn when a
 # private review file is (mis)placed inside the version-controlled tree.
@@ -646,6 +669,180 @@ def source_inspect(
     )
 
     typer.echo("\n".join(lines))
+    raise typer.Exit(code=0)
+
+
+_WEEKLY_RUN_EPILOG = (
+    "Documented default cadence: Saturday 18:00 America/Sao_Paulo -- this is "
+    "DOCUMENTATION ONLY. Neither this command nor content_machine installs, waits "
+    "for, or activates any scheduler; you decide when to invoke it.\n\n"
+    "Example OS cron line to run it at that documented cadence (DOCUMENTATION "
+    "ONLY -- nothing here installs this):\n\n"
+    "  0 18 * * 6 cd /path/to/repo && content-machine intelligence weekly-run "
+    "--signals /path/to/signals.json --library /path/to/library.jsonl "
+    '--reference-date "$(date +\\%F)" --output-dir /path/to/output'
+)
+
+
+@intelligence_app.command("weekly-run", epilog=_WEEKLY_RUN_EPILOG)
+def intelligence_weekly_run(
+    signals: Annotated[
+        Path,
+        typer.Option(
+            "--signals", help="Path to a JSON array of signal items (SourceItem records)."
+        ),
+    ],
+    reference_date: Annotated[
+        str,
+        typer.Option(
+            "--reference-date",
+            help=(
+                "ISO date or datetime the 7-day analysis window is computed from. "
+                "Window = [reference_date-7d 00:00, reference_date 00:00), inclusive/"
+                "exclusive, at local midnight in --timezone."
+            ),
+        ),
+    ],
+    profile: Annotated[
+        Path,
+        typer.Option(
+            "--profile",
+            help=(
+                "Path to a RelevanceProfile JSON. Defaults to the shipped synthetic "
+                "example -- the real Founder profile is private and must never enter "
+                "this repo."
+            ),
+        ),
+    ] = DEFAULT_PROFILE_PATH,
+    library: Annotated[
+        Path | None,
+        typer.Option(
+            "--library",
+            help=(
+                "Path to an existing topic library JSONL. Optional: an empty prior "
+                "library is used if absent (e.g. the very first run)."
+            ),
+        ),
+    ] = None,
+    timezone: Annotated[
+        str,
+        typer.Option(
+            "--timezone",
+            help=(
+                "IANA timezone applied to the window boundaries (e.g. "
+                "America/Sao_Paulo). "
+                f"Documented default cadence: {DEFAULT_CADENCE_DESCRIPTION} -- this is "
+                "DOCUMENTATION ONLY; the command does not wait for Saturday."
+            ),
+        ),
+    ] = DEFAULT_TIMEZONE,
+    output_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--output-dir",
+            help="Directory to write brief/library/manifest outputs. Required unless --dry-run.",
+        ),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run", help="Compute and print a summary + run_id only; write nothing. Exits 0."
+        ),
+    ] = False,
+    regenerate: Annotated[
+        bool,
+        typer.Option(
+            "--regenerate",
+            help=(
+                "Redo an already-completed run (same run_id) safely -- never "
+                "duplicates append-only library/score-history/audit rows."
+            ),
+        ),
+    ] = False,
+) -> None:
+    """Run the weekly Intelligence Brief engine end-to-end, fully offline.
+
+    Composes load -> cluster -> rank -> tier -> brief -> library over a
+    deterministic 7-day window and writes brief.md, brief.json,
+    topics.jsonl, score-history.jsonl, audit.jsonl, and run-manifest.json to
+    --output-dir. Re-running the same week is idempotent by default (no
+    duplicated library/score/audit rows); pass --regenerate to force a
+    redo. See the epilog for the documented default cadence and an example
+    cron line (documentation only -- nothing here schedules itself).
+    """
+    if output_dir is None and not dry_run:
+        typer.secho(
+            "Error: --output-dir is required unless --dry-run is set.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    try:
+        load_result = load_signals(signals)
+    except SignalLoadError as exc:
+        typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from None
+
+    try:
+        relevance_profile = load_profile(profile)
+    except ProfileLoadError as exc:
+        typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from None
+
+    prior_entries = load_topics(library) if library is not None else []
+
+    try:
+        resolve_window(reference_date, timezone)  # validate before deriving week_label
+        week_label = derive_week_label(reference_date, timezone)
+    except (ValueError, ZoneInfoNotFoundError) as exc:
+        typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from None
+
+    execution_timestamp = datetime.now(ZoneInfo(timezone)).isoformat()
+
+    result = run_weekly(
+        signals=load_result.items,
+        profile=relevance_profile,
+        prior_library=prior_entries,
+        week_label=week_label,
+        reference_date=reference_date,
+        timezone=timezone,
+        execution_timestamp=execution_timestamp,
+    )
+
+    manifest = result.manifest
+    summary_lines = [
+        "Open Content Machine -- intelligence weekly-run",
+        "",
+        f"week_label: {manifest.week_label}",
+        f"reference_date: {manifest.reference_date}",
+        f"timezone: {manifest.timezone}",
+        f"window: [{manifest.window_start}, {manifest.window_end})",
+        f"run_id: {manifest.run_id}",
+        f"signal_count (in window): {manifest.signal_count}",
+        f"topic_count: {manifest.topic_count}",
+        f"tier1_count: {manifest.tier1_count}",
+        f"review_status: {manifest.review_status}",
+    ]
+
+    if dry_run:
+        typer.echo("\n".join(summary_lines))
+        typer.echo("")
+        typer.echo("(--dry-run: nothing written)")
+        raise typer.Exit(code=0)
+
+    assert output_dir is not None  # guarded above
+    outcome = write_weekly_run_outputs(result, output_dir, regenerate=regenerate)
+
+    typer.echo("\n".join(summary_lines))
+    typer.echo("")
+    if outcome.wrote:
+        typer.echo(f"Wrote {len(outcome.files_written)} output file(s) to {output_dir}:")
+        for name in outcome.files_written:
+            typer.echo(f"  - {name}")
+    else:
+        typer.echo(f"Skipped write: {outcome.skipped_reason}")
     raise typer.Exit(code=0)
 
 

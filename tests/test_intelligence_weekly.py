@@ -1,0 +1,464 @@
+"""Tests for content_machine.intelligence.weekly (M7: the weekly Intelligence
+Run engine + CLI foundation). Covers the 7-day window/timezone boundary
+convention, the deterministic RunManifest (run_id/input_fingerprint), the
+idempotency + atomicity contract of write_weekly_run_outputs, and the
+cross-cutting no-network/no-wall-clock/synthetic-only guarantees this
+task's ticket requires.
+"""
+
+from __future__ import annotations
+
+import ast
+import inspect
+import json
+import os
+import socket
+from datetime import date, timedelta
+from pathlib import Path
+
+import pytest
+
+from content_machine.intelligence import weekly as weekly_module
+from content_machine.intelligence.library import TopicLibraryEntry
+from content_machine.intelligence.loader import load_profile, load_signals
+from content_machine.intelligence.models import RelevanceProfile, SourceItem
+from content_machine.intelligence.weekly import (
+    compute_input_fingerprint,
+    compute_run_id,
+    derive_week_label,
+    filter_signals_to_window,
+    is_within_window,
+    resolve_window,
+    run_weekly,
+    write_weekly_run_outputs,
+)
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+VALID_FIXTURE = REPO_ROOT / "examples" / "intelligence-signals-synthetic.json"
+PROFILE_FIXTURE = REPO_ROOT / "examples" / "intelligence-profile-synthetic.json"
+
+# The shipped synthetic fixture's dates span 2026-06-01 .. 2026-07-11 -- see
+# examples/README.md. Reference dates chosen below deliberately land two
+# different, both non-empty, 7-day windows over it.
+W28_REFERENCE_DATE = "2026-07-12"  # window [2026-07-05, 2026-07-12) -> 7 signals
+W27_REFERENCE_DATE = "2026-07-05"  # window [2026-06-28, 2026-07-05) -> 6 signals
+TIMEZONE = "America/Sao_Paulo"
+
+
+def _make_item(**overrides: object) -> SourceItem:
+    base: dict[str, object] = {
+        "item_id": "base",
+        "source_type": "feed",
+        "source_category": "vendor_blog",
+        "publisher_id": "vendor-base",
+        "subject_entity_ids": ["vendor-base"],
+        "title": "Base Title",
+        "summary_normalized": "a base summary used only for test scaffolding",
+        "publication_date": date(2026, 1, 1),
+        "detection_date": date(2026, 1, 1),
+        "stable_reference": "https://example.com/base",
+        "evidence_type": "announcement",
+        "change_class": "material_change",
+        "change_class_rationale": "n/a",
+        "action_required": "none",
+        "experiment_affordance": "not_testable",
+        "topic_tags": [],
+        "contains_benefit_or_performance_claim": False,
+        "claim_directly_verifiable_in_artifact": False,
+    }
+    base.update(overrides)
+    return SourceItem.model_validate(base)
+
+
+def _profile() -> RelevanceProfile:
+    return load_profile(PROFILE_FIXTURE)
+
+
+def _signals() -> list[SourceItem]:
+    return load_signals(VALID_FIXTURE).items
+
+
+def _run(
+    *,
+    week_label: str = "2026-W28",
+    reference_date: str = W28_REFERENCE_DATE,
+    timezone: str = TIMEZONE,
+    prior_library: list[TopicLibraryEntry] | None = None,
+    signals: list[SourceItem] | None = None,
+    profile: RelevanceProfile | None = None,
+    execution_timestamp: str = "2026-07-12T18:00:00-03:00",
+    code_version: str | None = None,
+) -> weekly_module.WeeklyRunResult:
+    return run_weekly(
+        signals=signals if signals is not None else _signals(),
+        profile=profile if profile is not None else _profile(),
+        prior_library=prior_library if prior_library is not None else [],
+        week_label=week_label,
+        reference_date=reference_date,
+        timezone=timezone,
+        execution_timestamp=execution_timestamp,
+        code_version=code_version,
+    )
+
+
+# ------------------------------ window + timezone ---------------------------
+
+
+def test_resolve_window_boundary_convention() -> None:
+    """window = [reference_date-7d 00:00, reference_date 00:00), both at
+    local midnight in the given timezone -- the frozen convention documented
+    in weekly.py's module docstring."""
+    from zoneinfo import ZoneInfo
+
+    tz = ZoneInfo(TIMEZONE)
+    window = resolve_window(W28_REFERENCE_DATE, TIMEZONE)
+    assert window.end.year == 2026 and window.end.month == 7 and window.end.day == 12
+    assert window.end.hour == 0 and window.end.tzinfo == tz
+    assert window.start.year == 2026 and window.start.month == 7 and window.start.day == 5
+    assert window.end - window.start == timedelta(days=7)
+
+
+def test_window_boundary_inclusive_start_exclusive_end() -> None:
+    """Exact-boundary test: one second before window_start is excluded;
+    window_start itself is included; window_end is excluded."""
+    window = resolve_window(W28_REFERENCE_DATE, TIMEZONE)
+
+    assert is_within_window(window.start - timedelta(seconds=1), window) is False
+    assert is_within_window(window.start, window) is True
+    assert is_within_window(window.end - timedelta(seconds=1), window) is True
+    assert is_within_window(window.end, window) is False
+
+
+def test_reference_date_time_of_day_component_is_ignored() -> None:
+    """A reference_date's time-of-day (if given) never shifts the window --
+    only its calendar date matters (Saturday 18:00 is a CADENCE, not a
+    boundary)."""
+    date_only = resolve_window(W28_REFERENCE_DATE, TIMEZONE)
+    with_time = resolve_window(f"{W28_REFERENCE_DATE}T18:00:00", TIMEZONE)
+    assert date_only == with_time
+
+
+def test_timezone_changes_resolved_window_bounds_deterministically() -> None:
+    """Same reference_date, different timezone -> different resolved
+    bounds, but the same window LENGTH; applied deterministically (calling
+    twice with the same tz gives byte-identical bounds)."""
+    window_sp = resolve_window(W28_REFERENCE_DATE, "America/Sao_Paulo")
+    window_utc = resolve_window(W28_REFERENCE_DATE, "UTC")
+
+    assert window_sp.start != window_utc.start
+    assert window_sp.end != window_utc.end
+    assert (window_sp.end - window_sp.start) == (window_utc.end - window_utc.start)
+
+    # Deterministic: repeating with the same inputs gives the same result.
+    assert resolve_window(W28_REFERENCE_DATE, "America/Sao_Paulo") == window_sp
+
+
+def test_invalid_reference_date_raises_value_error() -> None:
+    with pytest.raises(ValueError):
+        resolve_window("not-a-date", TIMEZONE)
+
+
+# ------------------------------ signal-level window filtering ---------------
+
+
+def test_signal_filtering_respects_date_boundary_inclusivity_exclusivity() -> None:
+    window = resolve_window(W28_REFERENCE_DATE, TIMEZONE)  # [2026-07-05, 2026-07-12)
+
+    in_at_start = _make_item(
+        item_id="in_at_start", publication_date=date(2026, 7, 5), detection_date=date(2026, 7, 5)
+    )
+    out_before_start = _make_item(
+        item_id="out_before_start",
+        publication_date=date(2026, 7, 4),
+        detection_date=date(2026, 7, 4),
+    )
+    in_last_day = _make_item(
+        item_id="in_last_day",
+        publication_date=date(2026, 7, 11),
+        detection_date=date(2026, 7, 11),
+    )
+    out_at_end = _make_item(
+        item_id="out_at_end", publication_date=date(2026, 7, 12), detection_date=date(2026, 7, 12)
+    )
+
+    kept = filter_signals_to_window(
+        [in_at_start, out_before_start, in_last_day, out_at_end], window, TIMEZONE
+    )
+    assert {item.item_id for item in kept} == {"in_at_start", "in_last_day"}
+
+
+def test_signal_filtering_falls_back_to_detection_date() -> None:
+    window = resolve_window(W28_REFERENCE_DATE, TIMEZONE)
+    item = _make_item(
+        item_id="no_pub_date", publication_date=None, detection_date=date(2026, 7, 6)
+    )
+    kept = filter_signals_to_window([item], window, TIMEZONE)
+    assert kept == [item]
+
+
+def test_derive_week_label_deterministic() -> None:
+    assert derive_week_label(W28_REFERENCE_DATE, TIMEZONE) == "2026-W28"
+    assert derive_week_label(W28_REFERENCE_DATE, TIMEZONE) == derive_week_label(
+        W28_REFERENCE_DATE, TIMEZONE
+    )
+
+
+# ------------------------------ run_id / input_fingerprint -------------------
+
+
+def test_input_fingerprint_is_order_independent() -> None:
+    signals = _signals()
+    shuffled = list(reversed(signals))
+    assert signals != shuffled  # sanity: the shuffle actually changed order
+    assert compute_input_fingerprint(signals) == compute_input_fingerprint(shuffled)
+
+
+def test_run_id_deterministic_same_inputs() -> None:
+    fingerprint = compute_input_fingerprint(_signals())
+    first = compute_run_id("2026-W28", fingerprint, "0.1.0", "synthetic-1")
+    second = compute_run_id("2026-W28", fingerprint, "0.1.0", "synthetic-1")
+    assert first == second
+
+
+@pytest.mark.parametrize(
+    ("changed_field", "other_value"),
+    [
+        ("week_label", "2026-W29"),
+        ("input_fingerprint", "different-fingerprint"),
+        ("code_version", "9.9.9"),
+        ("profile_version", "synthetic-2"),
+    ],
+)
+def test_run_id_changes_when_any_component_changes(changed_field: str, other_value: str) -> None:
+    base_kwargs = {
+        "week_label": "2026-W28",
+        "input_fingerprint": compute_input_fingerprint(_signals()),
+        "code_version": "0.1.0",
+        "profile_version": "synthetic-1",
+    }
+    baseline = compute_run_id(**base_kwargs)  # type: ignore[arg-type]
+    changed_kwargs = {**base_kwargs, changed_field: other_value}
+    changed = compute_run_id(**changed_kwargs)  # type: ignore[arg-type]
+    assert baseline != changed
+
+
+# ------------------------------ full run_weekly integration -----------------
+
+
+def test_run_weekly_signal_count_reflects_window_only() -> None:
+    result = _run()
+    assert result.manifest.signal_count == 7
+    assert result.manifest.topic_count > 0
+
+
+def test_run_weekly_final_state_awaiting_founder_review() -> None:
+    result = _run()
+    assert result.brief.review_status == "awaiting_founder_review"
+    assert result.manifest.review_status == "awaiting_founder_review"
+
+
+def test_run_weekly_prior_library_preserved_across_a_run() -> None:
+    prior_untouched = TopicLibraryEntry(
+        topic_id="t_untouched_published",
+        canonical_title="An Already-Published Topic",
+        source_references=[],
+        first_seen="2026-W10",
+        last_updated="2026-W10",
+        current_score=77,
+        score_history=[],
+        ranking_explanation="n/a (test fixture)",
+        editorial_territory=[],
+        evidence_level=2,
+        evidence_anchor_id="evid_2_first_party_promotional",
+        claim_class="hypothesis",
+        learning_value="low",
+        experiment_possibility="not practically testable as a local experiment",
+        content_angle_possibilities=[],
+        reason_not_selected="published, frozen forever",
+        reconsideration_condition=None,
+        freshness="evergreen",
+        lifecycle_status="published",
+        audit_events=[],
+    )
+
+    result = _run(prior_library=[prior_untouched])
+    by_id = {entry.topic_id: entry for entry in result.library_entries}
+    assert "t_untouched_published" in by_id
+    assert by_id["t_untouched_published"].lifecycle_status == "published"
+    assert by_id["t_untouched_published"].current_score == 77
+
+
+def test_run_weekly_no_network(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _boom(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("network access attempted by content_machine.intelligence.weekly")
+
+    monkeypatch.setattr(socket, "socket", _boom)
+    monkeypatch.setattr(socket, "create_connection", _boom)
+    result = _run()
+    assert result.manifest.run_id  # ran to completion
+
+
+def test_module_source_never_reads_the_wall_clock() -> None:
+    """weekly.py legitimately imports `datetime`/`date` (to construct window
+    boundaries from caller-supplied strings), but must never CALL
+    `.now()`/`.today()`/`.utcnow()` anywhere in its actual code --
+    `execution_timestamp` is always a caller-supplied input (see
+    RunManifest's docstring). Checked via the AST (not a substring search)
+    so mentions of these calls in prose/docstrings never false-positive."""
+    source = inspect.getsource(weekly_module)
+    tree = ast.parse(source)
+    forbidden_attrs = {"now", "today", "utcnow"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            assert node.func.attr not in forbidden_attrs, (
+                f"forbidden wall-clock call found in weekly.py: .{node.func.attr}(...)"
+            )
+
+
+def test_fixtures_are_synthetic_example_domains_only() -> None:
+    # IANA-reserved documentation domains only (RFC 2606) -- never a real
+    # vendor or personal domain.
+    reserved_domains = ("example.com", "example.org", "example.net", "example.edu")
+    for item in _signals():
+        if item.stable_reference.startswith("http"):
+            assert any(domain in item.stable_reference for domain in reserved_domains)
+
+
+# ------------------------------ idempotency + atomicity ----------------------
+
+
+def test_dry_run_style_no_write_leaves_no_files(tmp_path: Path) -> None:
+    """Computing a result (as --dry-run does) without calling
+    write_weekly_run_outputs writes nothing."""
+    output_dir = tmp_path / "out"
+    _run()
+    assert not output_dir.exists()
+
+
+def test_write_creates_all_six_core_outputs(tmp_path: Path) -> None:
+    result = _run()
+    output_dir = tmp_path / "out"
+    outcome = write_weekly_run_outputs(result, output_dir)
+    assert outcome.wrote is True
+    assert set(outcome.files_written) == set(weekly_module.OUTPUT_FILENAMES)
+    for name in weekly_module.OUTPUT_FILENAMES:
+        assert (output_dir / name).exists()
+
+
+def test_same_run_twice_is_a_no_op_and_does_not_duplicate_rows(tmp_path: Path) -> None:
+    result = _run()
+    output_dir = tmp_path / "out"
+
+    first = write_weekly_run_outputs(result, output_dir)
+    assert first.wrote is True
+    audit_before = (output_dir / "audit.jsonl").read_text()
+    score_before = (output_dir / "score-history.jsonl").read_text()
+    manifest_before = (output_dir / "run-manifest.json").read_text()
+
+    second = write_weekly_run_outputs(result, output_dir)
+    assert second.wrote is False
+    assert second.run_id == result.manifest.run_id
+
+    assert (output_dir / "audit.jsonl").read_text() == audit_before
+    assert (output_dir / "score-history.jsonl").read_text() == score_before
+    assert (output_dir / "run-manifest.json").read_text() == manifest_before
+
+
+def test_regenerate_redoes_the_run_without_duplicating_append_only_rows(
+    tmp_path: Path,
+) -> None:
+    result = _run()
+    output_dir = tmp_path / "out"
+    write_weekly_run_outputs(result, output_dir)
+
+    audit_lines_before = (output_dir / "audit.jsonl").read_text().splitlines()
+    score_lines_before = (output_dir / "score-history.jsonl").read_text().splitlines()
+    assert audit_lines_before  # sanity: this week produced real rows
+
+    outcome = write_weekly_run_outputs(result, output_dir, regenerate=True)
+    assert outcome.wrote is True
+
+    audit_lines_after = (output_dir / "audit.jsonl").read_text().splitlines()
+    score_lines_after = (output_dir / "score-history.jsonl").read_text().splitlines()
+
+    assert len(audit_lines_after) == len(audit_lines_before)
+    assert len(score_lines_after) == len(score_lines_before)
+    assert sorted(audit_lines_after) == sorted(audit_lines_before)
+
+
+def test_regenerate_preserves_other_weeks_append_only_rows(tmp_path: Path) -> None:
+    output_dir = tmp_path / "out"
+
+    result_w27 = _run(
+        week_label="2026-W27",
+        reference_date=W27_REFERENCE_DATE,
+        execution_timestamp="2026-07-05T18:00:00-03:00",
+    )
+    write_weekly_run_outputs(result_w27, output_dir)
+
+    result_w28 = _run()
+    write_weekly_run_outputs(result_w28, output_dir)
+
+    audit_lines = (output_dir / "audit.jsonl").read_text().splitlines()
+    week_labels_present = {json.loads(line)["week_label"] for line in audit_lines}
+    assert {"2026-W27", "2026-W28"} <= week_labels_present
+
+    # Regenerating W28 must leave W27's rows completely untouched.
+    outcome = write_weekly_run_outputs(result_w28, output_dir, regenerate=True)
+    assert outcome.wrote is True
+    audit_lines_after = (output_dir / "audit.jsonl").read_text().splitlines()
+    w27_rows_after = sorted(
+        line for line in audit_lines_after if json.loads(line)["week_label"] == "2026-W27"
+    )
+    w27_rows_before = sorted(
+        line for line in audit_lines if json.loads(line)["week_label"] == "2026-W27"
+    )
+    assert w27_rows_after == w27_rows_before
+
+
+def test_simulated_write_failure_leaves_output_dir_unchanged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failure mid-write (simulated here as the 4th temp file failing to
+    stage) must leave every pre-existing destination file untouched and no
+    stray temp file behind -- the all-or-nothing atomicity guarantee."""
+    result = _run()
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    sentinel = output_dir / "pre-existing.txt"
+    sentinel.write_text("do not touch\n", encoding="utf-8")
+
+    real_fdopen = os.fdopen
+    call_count = {"n": 0}
+
+    def _flaky_fdopen(fd: int, *args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+        call_count["n"] += 1
+        if call_count["n"] == 4:
+            os.close(fd)
+            raise OSError("simulated disk failure")
+        return real_fdopen(fd, *args, **kwargs)
+
+    monkeypatch.setattr(weekly_module.os, "fdopen", _flaky_fdopen)
+
+    with pytest.raises(OSError, match="simulated disk failure"):
+        write_weekly_run_outputs(result, output_dir)
+
+    # Nothing from this run was written...
+    for name in weekly_module.OUTPUT_FILENAMES:
+        assert not (output_dir / name).exists()
+    # ...no stray temp files were left behind...
+    remaining = {p.name for p in output_dir.iterdir()}
+    assert remaining == {"pre-existing.txt"}
+    # ...and the pre-existing file is untouched.
+    assert sentinel.read_text(encoding="utf-8") == "do not touch\n"
+
+
+def test_regenerate_flag_is_required_to_redo_a_completed_run(tmp_path: Path) -> None:
+    result = _run()
+    output_dir = tmp_path / "out"
+    write_weekly_run_outputs(result, output_dir)
+
+    skipped = write_weekly_run_outputs(result, output_dir, regenerate=False)
+    assert skipped.wrote is False
+    assert skipped.skipped_reason is not None
+    assert "regenerate" in skipped.skipped_reason.lower()
