@@ -355,12 +355,25 @@ class LibraryMovementsSection(BaseModel):
     """Library movements for this week. ``deferred_note`` is populated (and
     ``movements`` empty) when no library-update result is wired into this
     brief -- e.g. a standalone M5 brief with no M6 library yet -- rather than
-    silently omitting the section."""
+    silently omitting the section.
+
+    v0.2 additions (Opus orchestrator, Gate C, §13; ADR 0004 D8): the
+    ``new``/``promoted``/``demoted``/``returning_from_deferred``/``stale``/
+    ``merged`` buckets mirror ``library.MovementsDocument``'s categories,
+    populated by ``library.library_movements_for_brief`` -- empty (never
+    ``None``) when no library-update result is wired in, same as
+    ``movements``/``deferred_note`` above."""
 
     model_config = ConfigDict(extra="forbid")
 
     movements: list[LibraryMovement] = Field(default_factory=list)
     deferred_note: str | None = None
+    new: list[LibraryMovement] = Field(default_factory=list)
+    promoted: list[LibraryMovement] = Field(default_factory=list)
+    demoted: list[LibraryMovement] = Field(default_factory=list)
+    returning_from_deferred: list[LibraryMovement] = Field(default_factory=list)
+    stale: list[LibraryMovement] = Field(default_factory=list)
+    merged: list[LibraryMovement] = Field(default_factory=list)
 
 
 class WeeklyBrief(BaseModel):
@@ -1172,6 +1185,23 @@ def _render_library_movements_section(brief: WeeklyBrief) -> list[str]:
             lines.append(
                 f"- **{movement.canonical_title}** -- {movement.movement}: {movement.reason}"
             )
+
+    # v0.2 (Opus orchestrator, Gate C, §13; ADR 0004 D8): bucketed subsections
+    # -- additive only (rendered only when non-empty), so this never changes
+    # what a pre-v0.2 brief (empty buckets) renders here.
+    def _bucket_subsection(title: str, items: list[LibraryMovement]) -> None:
+        if not items:
+            return
+        lines.append(f"### {title}")
+        for item in items:
+            lines.append(f"- **{item.canonical_title}** -- {item.reason}")
+
+    _bucket_subsection("New", movements.new)
+    _bucket_subsection("Promoted", movements.promoted)
+    _bucket_subsection("Demoted", movements.demoted)
+    _bucket_subsection("Returning From Deferred", movements.returning_from_deferred)
+    _bucket_subsection("Stale", movements.stale)
+    _bucket_subsection("Merged", movements.merged)
     return lines
 
 

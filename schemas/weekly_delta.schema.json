@@ -1,0 +1,107 @@
+{
+  "additionalProperties": false,
+  "description": "v0.2 (Opus orchestrator, Gate C, \u00a712.5; ADR 0004 D8): one topic's\nweek-over-week movement vs its PREVIOUS library appearance.\n\nCRITICAL (Founder-specified, never to regress): a topic absent from the\nprior library state is ``is_new=True`` with ``score_delta=None`` -- it is\nNEW, never treated as a drop from an implicit zero. A topic present\nbefore and now scoring/ranking lower reports a genuine negative delta.",
+  "properties": {
+    "topic_id": {
+      "title": "Topic Id",
+      "type": "string"
+    },
+    "previous_score": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Previous Score"
+    },
+    "current_score": {
+      "title": "Current Score",
+      "type": "integer"
+    },
+    "score_delta": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Score Delta"
+    },
+    "previous_rank": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Previous Rank"
+    },
+    "current_rank": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Current Rank"
+    },
+    "rank_delta": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Rank Delta"
+    },
+    "tier_change": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Tier Change"
+    },
+    "new_evidence": {
+      "title": "New Evidence",
+      "type": "boolean"
+    },
+    "is_new": {
+      "title": "Is New",
+      "type": "boolean"
+    },
+    "movement_reason": {
+      "title": "Movement Reason",
+      "type": "string"
+    }
+  },
+  "required": [
+    "topic_id",
+    "previous_score",
+    "current_score",
+    "score_delta",
+    "previous_rank",
+    "current_rank",
+    "rank_delta",
+    "tier_change",
+    "new_evidence",
+    "is_new",
+    "movement_reason"
+  ],
+  "title": "WeeklyDelta",
+  "type": "object"
+}

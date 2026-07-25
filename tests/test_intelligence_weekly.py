@@ -378,6 +378,8 @@ def test_run_weekly_prior_library_preserved_across_a_run() -> None:
         freshness="evergreen",
         lifecycle_status="published",
         audit_events=[],
+        profile_version="test-1",
+        normalized_summary="An Already-Published Topic.",
     )
 
     result = _run(prior_library=[prior_untouched])
@@ -434,7 +436,7 @@ def test_dry_run_style_no_write_leaves_no_files(tmp_path: Path) -> None:
     assert not output_dir.exists()
 
 
-def test_write_creates_all_six_core_outputs(tmp_path: Path) -> None:
+def test_write_creates_all_eight_core_outputs(tmp_path: Path) -> None:
     result = _run()
     output_dir = tmp_path / "out"
     outcome = write_weekly_run_outputs(result, output_dir)
@@ -442,6 +444,51 @@ def test_write_creates_all_six_core_outputs(tmp_path: Path) -> None:
     assert set(outcome.files_written) == set(weekly_module.OUTPUT_FILENAMES)
     for name in weekly_module.OUTPUT_FILENAMES:
         assert (output_dir / name).exists()
+
+
+# --- v0.2 (Opus orchestrator, Gate C; ADR 0004 D8): movements.md/discarded.jsonl
+
+
+def test_movements_markdown_is_wired_into_the_atomic_write_set(tmp_path: Path) -> None:
+    result = _run()
+    output_dir = tmp_path / "out"
+    write_weekly_run_outputs(result, output_dir)
+    on_disk = (output_dir / "movements.md").read_text(encoding="utf-8")
+    assert on_disk == result.movements_markdown
+    assert on_disk.startswith("# Library Movements -- Week 2026-W28")
+    headings = (
+        "## New",
+        "## Promoted",
+        "## Demoted",
+        "## Returning From Deferred",
+        "## Stale",
+        "## Merged",
+    )
+    for heading in headings:
+        assert heading in on_disk
+
+
+def test_discarded_jsonl_matches_the_brief_discarded_list_one_line_each(tmp_path: Path) -> None:
+    result = _run()
+    output_dir = tmp_path / "out"
+    write_weekly_run_outputs(result, output_dir)
+    lines = (output_dir / "discarded.jsonl").read_text(encoding="utf-8").splitlines()
+    assert len(lines) == len(result.brief.discarded)
+    on_disk_topic_ids = {json.loads(line)["topic_id"] for line in lines}
+    assert on_disk_topic_ids == {d.topic_id for d in result.brief.discarded}
+    if result.brief.discarded:
+        first = json.loads(lines[0])
+        assert set(first) == {"topic_id", "canonical_title", "score", "reason"}
+
+
+def test_run_weekly_deltas_cover_every_top_n_topic() -> None:
+    result = _run()
+    assert {d.topic_id for d in result.deltas} == {t.topic_id for t in result.brief.tier1}.union(
+        {t.topic_id for t in result.brief.tier2}, {t.topic_id for t in result.brief.tier3}
+    )
+    # First run against an empty prior_library: every topic is new.
+    assert all(d.is_new for d in result.deltas)
+    assert all(d.score_delta is None for d in result.deltas)
 
 
 def test_same_run_twice_is_a_no_op_and_does_not_duplicate_rows(tmp_path: Path) -> None:

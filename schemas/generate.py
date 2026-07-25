@@ -33,8 +33,10 @@ from content_machine.ingestion.csv_loader import RawConnection  # noqa: E402
 from content_machine.intelligence.brief import WeeklyBrief  # noqa: E402
 from content_machine.intelligence.library import (  # noqa: E402
     AuditRow,
+    MovementsDocument,
     ScoreHistoryRow,
     TopicLibraryEntry,
+    WeeklyDelta,
 )
 from content_machine.intelligence.models import (  # noqa: E402
     ClaimAssessment,
@@ -83,6 +85,8 @@ _MODELS = {
     "score_history_row.schema.json": ScoreHistoryRow,
     "audit_row.schema.json": AuditRow,
     "run_manifest.schema.json": RunManifest,
+    "weekly_delta.schema.json": WeeklyDelta,
+    "movements_document.schema.json": MovementsDocument,
 }
 
 

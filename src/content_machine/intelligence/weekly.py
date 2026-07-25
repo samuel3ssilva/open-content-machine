@@ -108,7 +108,10 @@ from content_machine.intelligence.library import (
     LibraryUpdateResult,
     ScoreHistoryRow,
     TopicLibraryEntry,
+    WeeklyDelta,
+    build_movements_document,
     library_movements_for_brief,
+    render_movements_markdown,
     update_library,
 )
 from content_machine.intelligence.models import RelevanceProfile, SourceItem
@@ -130,9 +133,10 @@ DEFAULT_CADENCE_DESCRIPTION = "Saturday 18:00 America/Sao_Paulo"
 
 WINDOW_DAYS = 7
 
-#: The six core outputs this task writes (per output-dir). ``movements.md``
-#: and ``discarded.jsonl`` are library v0.2 (topic merge/decay/deltas) --
-#: out of scope for this task; see the module docstring.
+#: The eight outputs this module writes (per output-dir). ``movements.md``
+#: and ``discarded.jsonl`` are library v0.2 (topic merge/decay/deltas,
+#: ADR 0004 D8) -- both are part of the same all-or-nothing write set as the
+#: original six.
 OUTPUT_FILENAMES: tuple[str, ...] = (
     "brief.md",
     "brief.json",
@@ -140,6 +144,8 @@ OUTPUT_FILENAMES: tuple[str, ...] = (
     "score-history.jsonl",
     "audit.jsonl",
     "run-manifest.json",
+    "movements.md",
+    "discarded.jsonl",
 )
 
 
@@ -338,7 +344,14 @@ class RunManifest(BaseModel):
 class WeeklyRunResult(BaseModel):
     """The full result of one :func:`run_weekly` call: the brief (both
     structured and rendered forms), the updated library state, this week's
-    new append-only rows, and the auditable :class:`RunManifest`."""
+    new append-only rows, and the auditable :class:`RunManifest`.
+
+    v0.2 additions (Opus orchestrator, Gate C; ADR 0004 D8): ``deltas`` (one
+    :class:`content_machine.intelligence.library.WeeklyDelta` per this
+    week's tracked topic) and ``movements_markdown`` (the rendered
+    ``movements.md`` content, from
+    :func:`content_machine.intelligence.library.render_movements_markdown`).
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -349,6 +362,8 @@ class WeeklyRunResult(BaseModel):
     library_entries: list[TopicLibraryEntry]
     new_score_history_rows: list[ScoreHistoryRow]
     new_audit_rows: list[AuditRow]
+    deltas: list[WeeklyDelta]
+    movements_markdown: str
 
 
 def run_weekly(
@@ -396,12 +411,22 @@ def run_weekly(
     tiered = assign_tiers(ranked, clusters_by_topic_id, items_by_id)
 
     library_result: LibraryUpdateResult = update_library(
-        tiered, ranked, clusters_by_topic_id, items_by_id, week_label, prior_library
+        tiered,
+        ranked,
+        clusters_by_topic_id,
+        items_by_id,
+        week_label,
+        prior_library,
+        profile=profile,
     )
     library_movements: LibraryMovementsSection = library_movements_for_brief(library_result)
 
     brief = build_weekly_brief(
         tiered, ranked, clusters_by_topic_id, items_by_id, week_label, library_movements
+    )
+
+    movements_markdown = render_movements_markdown(
+        build_movements_document(library_result), week_label
     )
 
     resolved_code_version = _resolve_code_version(code_version)
@@ -447,6 +472,8 @@ def run_weekly(
         library_entries=library_result.entries,
         new_score_history_rows=library_result.new_score_history_rows,
         new_audit_rows=library_result.new_audit_rows,
+        deltas=library_result.deltas,
+        movements_markdown=movements_markdown,
     )
 
 
@@ -599,7 +626,7 @@ def _atomic_write_all(staged: dict[Path, str]) -> None:
 def write_weekly_run_outputs(
     result: WeeklyRunResult, output_dir: str | Path, *, regenerate: bool = False
 ) -> WeeklyWriteOutcome:
-    """Write ``result``'s six outputs to ``output_dir`` (see
+    """Write ``result``'s eight outputs to ``output_dir`` (see
     :data:`OUTPUT_FILENAMES`), atomically and idempotently.
 
     IDEMPOTENCY: if ``output_dir`` already contains a ``run-manifest.json``
@@ -614,7 +641,7 @@ def write_weekly_run_outputs(
     are always the full current state, so they are naturally idempotent on
     re-write.
 
-    ATOMICITY: delegated to :func:`_atomic_write_all` -- either all six
+    ATOMICITY: delegated to :func:`_atomic_write_all` -- either all eight
     files land, or none of them change.
     """
     output_dir = Path(output_dir)
@@ -651,6 +678,11 @@ def write_weekly_run_outputs(
         for entry in sorted(result.library_entries, key=lambda entry: entry.topic_id)
     ]
 
+    # v0.2 (Opus orchestrator, Gate C; ADR 0004 D8): one line per topic ranked
+    # below the Top N, with its reason -- exactly `result.brief.discarded`,
+    # already computed by brief.build_weekly_brief; never re-derived here.
+    discarded_lines = [d.model_dump_json() for d in result.brief.discarded]
+
     staged: dict[Path, str] = {
         output_dir / "brief.md": result.brief_markdown,
         output_dir / "brief.json": result.brief_json,
@@ -658,6 +690,8 @@ def write_weekly_run_outputs(
         score_history_path: _jsonl_text([*prior_score_lines, *new_score_lines]),
         audit_path: _jsonl_text([*prior_audit_lines, *new_audit_lines]),
         output_dir / "run-manifest.json": result.manifest.model_dump_json(indent=2) + "\n",
+        output_dir / "movements.md": result.movements_markdown,
+        output_dir / "discarded.jsonl": _jsonl_text(discarded_lines),
     }
 
     _atomic_write_all(staged)

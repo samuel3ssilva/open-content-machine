@@ -1,0 +1,50 @@
+{
+  "additionalProperties": false,
+  "description": "v0.2 (Opus orchestrator, Gate C, \u00a713; ADR 0004 D8): the structured\ncontent behind the ``movements.md`` weekly output -- one bucket of\n``\"<canonical_title> (<topic_id>) -- <reason>\"`` lines per movement\ncategory. See :func:`build_movements_document` /\n:func:`render_movements_markdown`.",
+  "properties": {
+    "new": {
+      "items": {
+        "type": "string"
+      },
+      "title": "New",
+      "type": "array"
+    },
+    "promoted": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Promoted",
+      "type": "array"
+    },
+    "demoted": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Demoted",
+      "type": "array"
+    },
+    "returning_from_deferred": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Returning From Deferred",
+      "type": "array"
+    },
+    "stale": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Stale",
+      "type": "array"
+    },
+    "merged": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Merged",
+      "type": "array"
+    }
+  },
+  "title": "MovementsDocument",
+  "type": "object"
+}
