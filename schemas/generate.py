@@ -30,11 +30,20 @@ from content_machine.audience.run_comparison import (  # noqa: E402
     RunComparison,
 )
 from content_machine.ingestion.csv_loader import RawConnection  # noqa: E402
+from content_machine.intelligence.brief import WeeklyBrief  # noqa: E402
+from content_machine.intelligence.library import (  # noqa: E402
+    AuditRow,
+    ScoreHistoryRow,
+    TopicLibraryEntry,
+)
 from content_machine.intelligence.models import (  # noqa: E402
+    ClaimAssessment,
     RankedTopic,
     RankingBreakdown,
     RelevanceProfile,
     SourceItem,
+    TierAssignment,
+    TieredTopic,
     TopicCluster,
 )
 from content_machine.privacy.anonymizer import AnonymizedConnection  # noqa: E402
@@ -65,6 +74,13 @@ _MODELS = {
     "topic_cluster.schema.json": TopicCluster,
     "ranking_breakdown.schema.json": RankingBreakdown,
     "ranked_topic.schema.json": RankedTopic,
+    "claim_assessment.schema.json": ClaimAssessment,
+    "tier_assignment.schema.json": TierAssignment,
+    "tiered_topic.schema.json": TieredTopic,
+    "weekly_brief.schema.json": WeeklyBrief,
+    "topic_library_entry.schema.json": TopicLibraryEntry,
+    "score_history_row.schema.json": ScoreHistoryRow,
+    "audit_row.schema.json": AuditRow,
 }
 
 

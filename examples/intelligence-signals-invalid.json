@@ -50,7 +50,8 @@
     "action_required": "none",
     "experiment_affordance": "not_testable",
     "topic_tags": ["agents"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "bad004",
@@ -69,7 +70,8 @@
     "action_required": "none",
     "experiment_affordance": "not_testable",
     "topic_tags": ["agents"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "bad005",
@@ -88,7 +90,8 @@
     "action_required": "none",
     "experiment_affordance": "not_testable",
     "topic_tags": ["quantum-computing"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "bad006",
@@ -107,6 +110,7 @@
     "action_required": "none",
     "experiment_affordance": "not_testable",
     "topic_tags": ["agents"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   }
 ]

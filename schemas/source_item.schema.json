@@ -126,6 +126,10 @@
     "contains_benefit_or_performance_claim": {
       "title": "Contains Benefit Or Performance Claim",
       "type": "boolean"
+    },
+    "claim_directly_verifiable_in_artifact": {
+      "title": "Claim Directly Verifiable In Artifact",
+      "type": "boolean"
     }
   },
   "required": [
@@ -142,7 +146,8 @@
     "change_class_rationale",
     "action_required",
     "experiment_affordance",
-    "contains_benefit_or_performance_claim"
+    "contains_benefit_or_performance_claim",
+    "claim_directly_verifiable_in_artifact"
   ],
   "title": "SourceItem",
   "type": "object"

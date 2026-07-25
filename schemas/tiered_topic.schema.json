@@ -1,0 +1,160 @@
+{
+  "$defs": {
+    "ClaimAssessment": {
+      "additionalProperties": false,
+      "description": "M4 (ADR 0004): deterministic fact/hypothesis/marketing classification\nplus a confidence assessment, both derived ONLY from existing\n:class:`RankingInputs` fields -- no model, no prose parsing. See\n:mod:`content_machine.intelligence.tiers` for the derivation and\n``claim_class_reason``/``confidence_reason`` for which inputs drove each\nverdict.",
+      "properties": {
+        "claim_class": {
+          "enum": [
+            "fact",
+            "hypothesis",
+            "marketing"
+          ],
+          "title": "Claim Class",
+          "type": "string"
+        },
+        "claim_class_reason": {
+          "title": "Claim Class Reason",
+          "type": "string"
+        },
+        "confidence": {
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ],
+          "title": "Confidence",
+          "type": "string"
+        },
+        "confidence_reason": {
+          "title": "Confidence Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "claim_class",
+        "claim_class_reason",
+        "confidence",
+        "confidence_reason"
+      ],
+      "title": "ClaimAssessment",
+      "type": "object"
+    },
+    "TierAssignment": {
+      "additionalProperties": false,
+      "description": "M4 (ADR 0004): one topic's tier admission, gate reasons, D1 exception\noutcome, and recommended action.\n\nDeliberately reuses ``RankingBreakdown.tier1_eligible`` and\n``eligibility_reasons`` rather than re-deriving the base Tier-1 rule --\nthis model only adds the Founder D1 exception on top. Per the Founder's\nfinal ruling (ADR 0004, Gate C), D1 fires at ``evidence_level >= 3`` and\nis a REAL admission path: when ``d1_exception_fired`` is True and the base\nrule did not independently admit the topic, ``admission_reasons`` records\nthat the topic was admitted as an uncorroborated first-party-authoritative\nsource with no independent analysis -- that absence of independent\ncorroboration must remain visible, never silently implied.",
+      "properties": {
+        "tier": {
+          "enum": [
+            "tier_1",
+            "tier_2",
+            "tier_3"
+          ],
+          "title": "Tier",
+          "type": "string"
+        },
+        "tier_label": {
+          "title": "Tier Label",
+          "type": "string"
+        },
+        "rank": {
+          "title": "Rank",
+          "type": "integer"
+        },
+        "tier1_admitted": {
+          "title": "Tier1 Admitted",
+          "type": "boolean"
+        },
+        "admission_reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Admission Reasons",
+          "type": "array"
+        },
+        "exclusion_reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Exclusion Reasons",
+          "type": "array"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        },
+        "d1_exception_fired": {
+          "title": "D1 Exception Fired",
+          "type": "boolean"
+        },
+        "recommended_action": {
+          "enum": [
+            "study",
+            "read",
+            "save",
+            "monitor",
+            "ignore"
+          ],
+          "title": "Recommended Action",
+          "type": "string"
+        },
+        "recommended_action_reason": {
+          "title": "Recommended Action Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tier",
+        "tier_label",
+        "rank",
+        "tier1_admitted",
+        "d1_exception_fired",
+        "recommended_action",
+        "recommended_action_reason"
+      ],
+      "title": "TierAssignment",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "M4 (ADR 0004): one Top-10 topic with its claim assessment and tier\nassignment.\n\nDeliberately does NOT embed the full ``TopicCluster``/``RankingBreakdown``\n-- ``topic_id`` lets a caller re-join those if full detail is needed,\nmirroring ``RankedTopic``'s own note that such assembly happens outside\nthis package.",
+  "properties": {
+    "rank": {
+      "title": "Rank",
+      "type": "integer"
+    },
+    "topic_id": {
+      "title": "Topic Id",
+      "type": "string"
+    },
+    "canonical_title": {
+      "title": "Canonical Title",
+      "type": "string"
+    },
+    "score": {
+      "maximum": 100,
+      "minimum": 0,
+      "title": "Score",
+      "type": "integer"
+    },
+    "claim": {
+      "$ref": "#/$defs/ClaimAssessment"
+    },
+    "tier_assignment": {
+      "$ref": "#/$defs/TierAssignment"
+    }
+  },
+  "required": [
+    "rank",
+    "topic_id",
+    "canonical_title",
+    "score",
+    "claim",
+    "tier_assignment"
+  ],
+  "title": "TieredTopic",
+  "type": "object"
+}

@@ -87,6 +87,13 @@ ActionRequired = Literal[
 
 ExperimentAffordance = Literal["local_reproducible", "requires_paid_service", "not_testable"]
 
+# M4 (ADR 0004): deterministic, explainable outputs of
+# content_machine.intelligence.tiers -- never a model, never prose parsing.
+ClaimClass = Literal["fact", "hypothesis", "marketing"]
+ConfidenceLevel = Literal["high", "medium", "low"]
+TierName = Literal["tier_1", "tier_2", "tier_3"]
+RecommendedAction = Literal["study", "read", "save", "monitor", "ignore"]
+
 
 class SourceItem(BaseModel):
     """One observable fact-sheet about a single artifact (email/feed/doc item).
@@ -158,6 +165,19 @@ class SourceItem(BaseModel):
     # cluster's first_party_commentary (self-authored independent_analysis)
     # member; inert otherwise.
     contains_benefit_or_performance_claim: bool
+    # D1 (ADR 0004, M4): whether the claim this artifact makes is directly
+    # verifiable BY INSPECTING THE ARTIFACT ITSELF -- e.g. a deprecation
+    # notice that states a concrete removal date, or a spec change that
+    # states the concrete before/after behavior, as opposed to a vague or
+    # unfalsifiable assertion. An authored-but-checkable observable fact,
+    # exactly like ``contains_benefit_or_performance_claim`` (same precedent:
+    # a narrow yes/no question anyone reading the artifact can verify, not a
+    # judgment call about significance). REQUIRED, with no default: an
+    # unfilled field must never be silently interpreted as "verifiable".
+    # Only consulted by ``content_machine.intelligence.tiers`` when this item
+    # is a cluster's anchor and a candidate for the D1 Tier-1 waiver; inert
+    # otherwise. See ``tiers.py`` and ADR 0004 for the full predicate.
+    claim_directly_verifiable_in_artifact: bool
 
 
 class TerritoryPriority(BaseModel):
@@ -320,3 +340,69 @@ class RankedTopic(BaseModel):
     rank: int
     cluster: TopicCluster
     breakdown: RankingBreakdown
+
+
+class ClaimAssessment(BaseModel):
+    """M4 (ADR 0004): deterministic fact/hypothesis/marketing classification
+    plus a confidence assessment, both derived ONLY from existing
+    :class:`RankingInputs` fields -- no model, no prose parsing. See
+    :mod:`content_machine.intelligence.tiers` for the derivation and
+    ``claim_class_reason``/``confidence_reason`` for which inputs drove each
+    verdict.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    claim_class: ClaimClass
+    claim_class_reason: str
+    confidence: ConfidenceLevel
+    confidence_reason: str
+
+
+class TierAssignment(BaseModel):
+    """M4 (ADR 0004): one topic's tier admission, gate reasons, D1 exception
+    outcome, and recommended action.
+
+    Deliberately reuses ``RankingBreakdown.tier1_eligible`` and
+    ``eligibility_reasons`` rather than re-deriving the base Tier-1 rule --
+    this model only adds the Founder D1 exception on top. Per the Founder's
+    final ruling (ADR 0004, Gate C), D1 fires at ``evidence_level >= 3`` and
+    is a REAL admission path: when ``d1_exception_fired`` is True and the base
+    rule did not independently admit the topic, ``admission_reasons`` records
+    that the topic was admitted as an uncorroborated first-party-authoritative
+    source with no independent analysis -- that absence of independent
+    corroboration must remain visible, never silently implied.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    tier: TierName
+    tier_label: str
+    rank: int
+    tier1_admitted: bool
+    admission_reasons: list[str] = Field(default_factory=list)
+    exclusion_reasons: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    d1_exception_fired: bool
+    recommended_action: RecommendedAction
+    recommended_action_reason: str
+
+
+class TieredTopic(BaseModel):
+    """M4 (ADR 0004): one Top-10 topic with its claim assessment and tier
+    assignment.
+
+    Deliberately does NOT embed the full ``TopicCluster``/``RankingBreakdown``
+    -- ``topic_id`` lets a caller re-join those if full detail is needed,
+    mirroring ``RankedTopic``'s own note that such assembly happens outside
+    this package.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    rank: int
+    topic_id: str
+    canonical_title: str
+    score: int = Field(ge=0, le=100)
+    claim: ClaimAssessment
+    tier_assignment: TierAssignment

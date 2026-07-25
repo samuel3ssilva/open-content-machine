@@ -16,7 +16,8 @@
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
     "topic_tags": ["agents", "harnesses"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item002",
@@ -35,7 +36,8 @@
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
     "topic_tags": ["agents", "harnesses"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item003",
@@ -54,7 +56,8 @@
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
     "topic_tags": ["agents", "harnesses"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item004",
@@ -73,7 +76,8 @@
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
     "topic_tags": ["agents", "harnesses"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item005",
@@ -92,7 +96,8 @@
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
     "topic_tags": ["agents", "computer-use"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item006",
@@ -111,7 +116,8 @@
     "action_required": "migration_required",
     "experiment_affordance": "local_reproducible",
     "topic_tags": ["agent-cli", "mcp"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": true
   },
   {
     "item_id": "item007",
@@ -130,7 +136,8 @@
     "action_required": "migration_required",
     "experiment_affordance": "not_testable",
     "topic_tags": ["harnesses"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": true
   },
   {
     "item_id": "item008",
@@ -149,7 +156,8 @@
     "action_required": "changes_how_to_think",
     "experiment_affordance": "local_reproducible",
     "topic_tags": ["evals", "harnesses"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item009",
@@ -168,7 +176,8 @@
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
     "topic_tags": ["agents", "harnesses"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item010",
@@ -187,7 +196,8 @@
     "action_required": "none",
     "experiment_affordance": "not_testable",
     "topic_tags": ["careers-skills"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item011",
@@ -206,7 +216,8 @@
     "action_required": "none",
     "experiment_affordance": "not_testable",
     "topic_tags": ["careers-skills"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item012",
@@ -225,7 +236,8 @@
     "action_required": "none",
     "experiment_affordance": "not_testable",
     "topic_tags": ["careers-skills"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item013",
@@ -244,7 +256,8 @@
     "action_required": "none",
     "experiment_affordance": "not_testable",
     "topic_tags": ["careers-skills"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item014",
@@ -263,7 +276,8 @@
     "action_required": "changes_how_to_think",
     "experiment_affordance": "not_testable",
     "topic_tags": ["harnesses", "hooks-guardrails"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item015",
@@ -282,7 +296,8 @@
     "action_required": "config_or_code_change",
     "experiment_affordance": "local_reproducible",
     "topic_tags": ["computer-use", "local-first"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item016",
@@ -301,7 +316,8 @@
     "action_required": "new_option_available",
     "experiment_affordance": "local_reproducible",
     "topic_tags": ["mcp"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item017",
@@ -320,7 +336,8 @@
     "action_required": "new_option_available",
     "experiment_affordance": "local_reproducible",
     "topic_tags": ["mcp"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item018",
@@ -339,7 +356,8 @@
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
     "topic_tags": ["agents", "computer-use"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item019",
@@ -358,7 +376,8 @@
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
     "topic_tags": ["agents", "computer-use"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item020",
@@ -377,7 +396,8 @@
     "action_required": "none",
     "experiment_affordance": "not_testable",
     "topic_tags": ["multi-agent", "security-boundaries"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item021",
@@ -396,7 +416,8 @@
     "action_required": "none",
     "experiment_affordance": "not_testable",
     "topic_tags": ["multi-agent", "security-boundaries"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item022",
@@ -415,7 +436,8 @@
     "action_required": "none",
     "experiment_affordance": "not_testable",
     "topic_tags": ["multi-agent", "security-boundaries"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item023",
@@ -434,7 +456,8 @@
     "action_required": "none",
     "experiment_affordance": "not_testable",
     "topic_tags": ["multi-agent", "security-boundaries"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item024",
@@ -453,7 +476,8 @@
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
     "topic_tags": ["agents", "memory-context"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item025",
@@ -472,7 +496,8 @@
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
     "topic_tags": ["agents", "memory-context"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item026",
@@ -491,7 +516,8 @@
     "action_required": "changes_how_to_think",
     "experiment_affordance": "not_testable",
     "topic_tags": ["multi-agent", "evals"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item027",
@@ -510,7 +536,8 @@
     "action_required": "config_or_code_change",
     "experiment_affordance": "requires_paid_service",
     "topic_tags": ["computer-use"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": true
   },
   {
     "item_id": "item028",
@@ -529,7 +556,8 @@
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
     "topic_tags": ["memory-context", "agents"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item029",
@@ -548,7 +576,8 @@
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
     "topic_tags": ["memory-context", "agents"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item030",
@@ -567,7 +596,8 @@
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
     "topic_tags": ["memory-context", "agents"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item031",
@@ -586,7 +616,8 @@
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
     "topic_tags": ["memory-context", "agents"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item032",
@@ -605,7 +636,8 @@
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
     "topic_tags": ["memory-context", "agents"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item033",
@@ -624,7 +656,8 @@
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
     "topic_tags": ["memory-context", "agents"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item034",
@@ -643,7 +676,8 @@
     "action_required": "config_or_code_change",
     "experiment_affordance": "not_testable",
     "topic_tags": ["mcp"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": true
   },
   {
     "item_id": "item035",
@@ -662,7 +696,8 @@
     "action_required": "config_or_code_change",
     "experiment_affordance": "not_testable",
     "topic_tags": ["mcp"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": true
   },
   {
     "item_id": "item036",
@@ -681,7 +716,8 @@
     "action_required": "new_option_available",
     "experiment_affordance": "requires_paid_service",
     "topic_tags": ["skills", "agent-cli"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item037",
@@ -700,7 +736,8 @@
     "action_required": "config_or_code_change",
     "experiment_affordance": "not_testable",
     "topic_tags": ["security-boundaries"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": true
   },
   {
     "item_id": "item038",
@@ -719,7 +756,8 @@
     "action_required": "config_or_code_change",
     "experiment_affordance": "not_testable",
     "topic_tags": ["security-boundaries"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item039",
@@ -738,7 +776,8 @@
     "action_required": "config_or_code_change",
     "experiment_affordance": "local_reproducible",
     "topic_tags": ["security-boundaries"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item040",
@@ -757,7 +796,8 @@
     "action_required": "none",
     "experiment_affordance": "not_testable",
     "topic_tags": ["agents"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": false
   },
   {
     "item_id": "item041",
@@ -776,6 +816,7 @@
     "action_required": "config_or_code_change",
     "experiment_affordance": "not_testable",
     "topic_tags": ["security-boundaries"],
-    "contains_benefit_or_performance_claim": false
+    "contains_benefit_or_performance_claim": false,
+    "claim_directly_verifiable_in_artifact": true
   }
 ]

@@ -71,6 +71,7 @@ def _make_item(**overrides: object) -> SourceItem:
         "experiment_affordance": "not_testable",
         "topic_tags": [],
         "contains_benefit_or_performance_claim": False,
+        "claim_directly_verifiable_in_artifact": False,
     }
     base.update(overrides)
     return SourceItem.model_validate(base)
@@ -765,7 +766,10 @@ def test_first_party_authoritative_candidate_true_and_tier1_false_for_deprecatio
     breakdown = score_topic(inputs_by_anchor["item007"], profile)
     assert breakdown.first_party_authoritative_candidate is True
     assert breakdown.tier1_eligible is False
-    assert any("pending" in reason.lower() for reason in breakdown.eligibility_reasons)
+    assert any(
+        "informational" in reason.lower() and "ranking-layer signal" in reason.lower()
+        for reason in breakdown.eligibility_reasons
+    )
 
 
 def test_first_party_authoritative_candidate_fires_exactly_for_the_intended_topics() -> None:

@@ -1,0 +1,245 @@
+{
+  "$defs": {
+    "AuditEvent": {
+      "additionalProperties": false,
+      "description": "One append-only audit row (embedded in its :class:`TopicLibraryEntry`;\n``topic_id`` is implied by the parent). ``event_type`` is one of\n``created``, ``lifecycle_transition``, ``score_change``, or\n``rejected_reappearance``.",
+      "properties": {
+        "week_label": {
+          "title": "Week Label",
+          "type": "string"
+        },
+        "event_type": {
+          "title": "Event Type",
+          "type": "string"
+        },
+        "from_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "From Status"
+        },
+        "to_status": {
+          "title": "To Status",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "week_label",
+        "event_type",
+        "from_status",
+        "to_status",
+        "reason"
+      ],
+      "title": "AuditEvent",
+      "type": "object"
+    },
+    "ScoreHistoryEntry": {
+      "additionalProperties": false,
+      "description": "One append-only row of a topic's score over time (embedded in its\n:class:`TopicLibraryEntry`; ``topic_id`` is implied by the parent).",
+      "properties": {
+        "week_label": {
+          "title": "Week Label",
+          "type": "string"
+        },
+        "score": {
+          "title": "Score",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "week_label",
+        "score"
+      ],
+      "title": "ScoreHistoryEntry",
+      "type": "object"
+    },
+    "SourceReferenceMinimal": {
+      "additionalProperties": false,
+      "description": "The ONLY per-source facts the library retains -- never a title,\nsummary, or body. See the module docstring / Founder decision D.",
+      "properties": {
+        "stable_reference": {
+          "title": "Stable Reference",
+          "type": "string"
+        },
+        "source_category": {
+          "title": "Source Category",
+          "type": "string"
+        }
+      },
+      "required": [
+        "stable_reference",
+        "source_category"
+      ],
+      "title": "SourceReferenceMinimal",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One topic's persistent library record. Minimum fields only (Founder\ndecision D): NEVER a raw body or an item title beyond the topic's own\n``canonical_title``. A normalized (generated) summary is NOT a raw body\nand spec Sections 3/8 authorize persisting one, but this module\ndeliberately omits it in v0.1 as a conservative retention-scope choice,\nnot a permanent prohibition -- see ADR 0004 D7 and\n``test_no_raw_bodies_or_prose_beyond_canonical_title_is_persisted``,\nwhich pins today's (smaller) field set rather than declaring a\nnormalized summary forbidden forever.",
+  "properties": {
+    "topic_id": {
+      "title": "Topic Id",
+      "type": "string"
+    },
+    "canonical_title": {
+      "title": "Canonical Title",
+      "type": "string"
+    },
+    "source_references": {
+      "items": {
+        "$ref": "#/$defs/SourceReferenceMinimal"
+      },
+      "title": "Source References",
+      "type": "array"
+    },
+    "first_seen": {
+      "title": "First Seen",
+      "type": "string"
+    },
+    "last_updated": {
+      "title": "Last Updated",
+      "type": "string"
+    },
+    "current_score": {
+      "title": "Current Score",
+      "type": "integer"
+    },
+    "score_history": {
+      "items": {
+        "$ref": "#/$defs/ScoreHistoryEntry"
+      },
+      "title": "Score History",
+      "type": "array"
+    },
+    "ranking_explanation": {
+      "title": "Ranking Explanation",
+      "type": "string"
+    },
+    "editorial_territory": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Editorial Territory",
+      "type": "array"
+    },
+    "evidence_level": {
+      "title": "Evidence Level",
+      "type": "integer"
+    },
+    "evidence_anchor_id": {
+      "title": "Evidence Anchor Id",
+      "type": "string"
+    },
+    "claim_class": {
+      "enum": [
+        "fact",
+        "hypothesis",
+        "marketing"
+      ],
+      "title": "Claim Class",
+      "type": "string"
+    },
+    "learning_value": {
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ],
+      "title": "Learning Value",
+      "type": "string"
+    },
+    "experiment_possibility": {
+      "title": "Experiment Possibility",
+      "type": "string"
+    },
+    "content_angle_possibilities": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Content Angle Possibilities",
+      "type": "array"
+    },
+    "reason_not_selected": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Reason Not Selected"
+    },
+    "reconsideration_condition": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Reconsideration Condition"
+    },
+    "freshness": {
+      "enum": [
+        "urgent",
+        "time_sensitive",
+        "evergreen"
+      ],
+      "title": "Freshness",
+      "type": "string"
+    },
+    "lifecycle_status": {
+      "enum": [
+        "new",
+        "ranked",
+        "selected_for_brief",
+        "study_queue",
+        "experiment_candidate",
+        "content_candidate",
+        "deferred",
+        "published",
+        "rejected",
+        "stale"
+      ],
+      "title": "Lifecycle Status",
+      "type": "string"
+    },
+    "audit_events": {
+      "items": {
+        "$ref": "#/$defs/AuditEvent"
+      },
+      "title": "Audit Events",
+      "type": "array"
+    }
+  },
+  "required": [
+    "topic_id",
+    "canonical_title",
+    "first_seen",
+    "last_updated",
+    "current_score",
+    "ranking_explanation",
+    "evidence_level",
+    "evidence_anchor_id",
+    "claim_class",
+    "learning_value",
+    "experiment_possibility",
+    "reason_not_selected",
+    "reconsideration_condition",
+    "freshness",
+    "lifecycle_status"
+  ],
+  "title": "TopicLibraryEntry",
+  "type": "object"
+}
