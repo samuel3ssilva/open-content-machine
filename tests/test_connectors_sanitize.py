@@ -9,6 +9,8 @@ input than a bare assignment."""
 
 from __future__ import annotations
 
+import pytest
+
 from content_machine.connectors.sanitize import SecurityFlag, sanitize_error, sanitize_text
 
 
@@ -41,6 +43,67 @@ def test_credential_shaped_text_embedded_in_prose_is_redacted_and_flagged() -> N
     assert SecurityFlag.credential_shaped_text in result.flags
     assert "secret_SYNTHETIC_NOT_A_REAL_KEY" not in result.text
     assert "[redacted-credential]" in result.text
+
+
+# --- Gate D hygiene: full-alternation coverage for _CREDENTIAL_PREFIX_RE ---
+#
+# Fable's Gate D coverage finding: the tests above only ever exercised the
+# `token` and `secret` branches of `_CREDENTIAL_PREFIX_RE`'s alternation
+# (`sk|pk|api|token|secret|bearer`). A future edit that dropped `sk|pk` (or
+# `api`/`bearer`) from that pattern would not have failed any existing test
+# -- a regression-protection gap in the suite, not a runtime hole (the
+# detector itself was never wrong). Parametrizing over all six prefixes
+# means deleting any one of them from the alternation now fails loudly.
+#
+# Values are provider-neutral and self-describing (`<prefix>_SYNTHETIC_NOT_A_
+# REAL_KEY`) -- never a real-provider shape (no `sk_live_`/`sk_test_`/
+# `pk_live_`, no `AKIA...`, no `ghp_...`, no `xox...`, no `AIza...`) -- per
+# this branch's history: an earlier synthetic fixture matched a real
+# payment-provider key format and GitHub Push Protection rejected the push.
+# Embedded in prose, not a `key: "..."` assignment, for the same reason the
+# module docstring above gives: keeps this repo's own credential-shaped-
+# assignment CI scan honest rather than weakening it.
+_CREDENTIAL_PREFIXES = ("sk", "pk", "api", "token", "secret", "bearer")
+
+
+@pytest.mark.parametrize("prefix", _CREDENTIAL_PREFIXES)
+def test_every_credential_prefix_branch_is_flagged_and_redacted(prefix: str) -> None:
+    secret_value = f"{prefix}_SYNTHETIC_NOT_A_REAL_KEY"
+    raw = (
+        "In the reply she wrote that the key you asked for is "
+        f"{secret_value} and to keep it safe."
+    )
+    result = sanitize_text(raw, max_chars=280)
+    assert SecurityFlag.credential_shaped_text in result.flags
+    assert secret_value not in result.text
+    assert "[redacted-credential]" in result.text
+
+
+@pytest.mark.parametrize("prefix", _CREDENTIAL_PREFIXES)
+def test_every_credential_prefix_branch_is_absent_from_error_and_serialized_output(
+    prefix: str,
+) -> None:
+    """Extends the coverage above to the other two places a credential-
+    shaped value must never surface: ``sanitize_error``'s own output
+    (mirrors ``test_sanitize_error_on_string_scrubs_and_caps`` below) and
+    the ``SanitizedText`` model's own JSON serialization (mirrors
+    ``test_connectors_synthetic.py``'s
+    ``test_credential_fixture_value_absent_from_every_serialized_output``
+    leak-proof pattern, applied here directly to the sanitizer's own
+    return value rather than to a downstream ``DiscoveryResult``)."""
+    secret_value = f"{prefix}_SYNTHETIC_NOT_A_REAL_KEY"
+    raw = f"the key you asked for is {secret_value} and to keep it safe"
+
+    # sanitized/normalized result
+    sanitized = sanitize_text(raw, max_chars=280)
+    assert secret_value not in sanitized.text
+
+    # sanitized error path
+    error_result = sanitize_error(raw)
+    assert secret_value not in error_result
+
+    # serialized output (the model this module hands back to every caller)
+    assert secret_value not in sanitized.model_dump_json()
 
 
 def test_email_shaped_text_is_redacted_and_flagged() -> None:
