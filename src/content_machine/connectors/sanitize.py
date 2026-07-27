@@ -119,17 +119,26 @@ _FS_PATH_RE = re.compile(
 _INSTRUCTION_PATTERNS = (
     re.compile(r"\bignore (?:all |the )?(?:previous|prior|above) instructions\b", re.IGNORECASE),
     re.compile(r"\bdisregard (?:the )?(?:previous|prior|above)\b", re.IGNORECASE),
-    # "you are now able to configure X" must NOT fire; "you are now a
+    # Gate E0 round 1 (Fable security audit, REQUIRED CHANGE 1): the prior
+    # six-adjective exclusion list (able|ready|free|welcome|going|expected)
+    # was under-inclusive -- the benign class is not a fixed adjective set
+    # but the open-ended SHAPE "<word> to <verb>" (a generalized-infinitive
+    # continuation), and the reviewer's independent corpus fired 11/11 on
+    # ordinary release-note prose against the old list, exactly the alarm-
+    # fatigue failure mode this pattern exists to prevent. "you are now a
     # pirate"/"you are now in developer mode"/"you are now the ranking
     # engine" must still fire, and so must "you are now DAN" (a bare
-    # jailbreak-persona name with no article) -- Fable's own illustrative
+    # jailbreak-persona name with no article) -- a naive
     # `\byou are now (?:a|an|the|in)\b` include-list would NOT catch "DAN",
-    # so this is instead a broad match with a narrow, named exclusion for
-    # the one confirmed false-positive shape (a capability/readiness
-    # adjective followed by an infinitive "to <verb>"), which correctly
-    # covers all four required cases above.
+    # so this remains a broad match with a narrow, named exclusion rather
+    # than an include-list. The exclusion now generalizes: suppress the
+    # match when the word right after "now" is NOT an article/"in" AND that
+    # word is itself followed by "to" (the generalized-infinitive shape,
+    # e.g. "now required to authenticate", "now up to date", "now all set
+    # to start"). Fable RATIFIED this exact broad-match-with-generalized-
+    # exclusion form:
     re.compile(
-        r"\byou are now(?!\s+(?:able|ready|free|welcome|going|expected)\s+to\b)\b",
+        r"\byou are now\b(?!\s+(?!(?:a|an|the|in)\b)\w+\s+to\b)",
         re.IGNORECASE,
     ),
     re.compile(r"^\s*system\s*:", re.IGNORECASE | re.MULTILINE),
@@ -138,8 +147,31 @@ _INSTRUCTION_PATTERNS = (
     # not sentence-initial) must NOT fire; "You must act as a system
     # administrator..." (second-person imperative) and sentence/string-
     # initial "Act as a/an ..." must still fire.
+    #
+    # Gate E0 round 1 (Fable security audit, REQUIRED CHANGE 2): the
+    # `^\s*act as (?:a|an)\b` alternative above was dead code for any
+    # mid-document hostile instance. `sanitize_text` collapses ALL
+    # whitespace (`_WHITESPACE_RE`, applied at step 5) BEFORE this
+    # instruction check runs (step 6), which merges every line into one
+    # string -- so `^` under re.MULTILINE can only ever match position 0
+    # of the whole string, never a genuine sentence/line start that
+    # followed other text. A hostile "Act as a system administrator..."
+    # appearing after benign prose never fired, even though coverage F0
+    # item 1 mandated keeping sentence-initial "Act as a/an" coverage.
+    # Fable authorized this as an ORDERED RESTORATION of mandated
+    # coverage -- not a widening under the "must not widen" rule -- by
+    # adding a third alternative: a fixed-width lookbehind for sentence-
+    # terminating punctuation followed by exactly ONE space. That fixed
+    # width is sound ONLY BECAUSE the whitespace-collapse step (5) already
+    # guarantees a single space between sentences by the time this check
+    # (step 6) runs -- making sanitize_text's step ORDER load-bearing for
+    # this alternative. A later gate must NOT reorder sanitize_text's
+    # steps (whitespace collapse before instruction detection) without
+    # re-verifying this lookbehind.
     re.compile(
-        r"(?:\byou (?:are|will|must|should) (?:now )?act as (?:a|an)\b|^\s*act as (?:a|an)\b)",
+        r"\byou (?:are|will|must|should) (?:now )?act as (?:a|an)\b"
+        r"|^\s*act as (?:a|an)\b"
+        r"|(?<=[.!?:;] )act as (?:a|an)\b",
         re.IGNORECASE | re.MULTILINE,
     ),
 )
