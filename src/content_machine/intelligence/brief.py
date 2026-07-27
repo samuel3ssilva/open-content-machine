@@ -38,6 +38,8 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field
 
 from content_machine.intelligence.models import (
+    ADVERSARIAL_SECURITY_FLAGS,
+    HYGIENE_SECURITY_FLAGS,
     ClaimAssessment,
     ClaimClass,
     ConfidenceLevel,
@@ -51,7 +53,11 @@ from content_machine.intelligence.models import (
 )
 from content_machine.intelligence.tiers import TOP_N
 
-BRIEF_VERSION = "gate-b-m5-1"
+# Gate E0 (E0.1/E0.3, product ruling P4): bumped from "gate-b-m5-1" because
+# the brief schema gains a new security field (WeeklyBrief.security_flag_summary,
+# plus adversarial_security_flags on Tier1LeanItem/Tier2Item/Tier1AppendixRecord)
+# -- otherwise two structurally different JSON briefs would claim one version.
+BRIEF_VERSION = "gate-e0-m5-2"
 
 REVIEW_STATUS = "awaiting_founder_review"
 
@@ -214,6 +220,13 @@ class Tier1LeanItem(BaseModel):
     recommended_action_reason: str
     score: int
     ranking_explanation: str
+    # Gate E0 (E0.1, product ruling P1): ADVERSARIAL flag names only
+    # (instruction_shaped_text/credential_shaped_text) -- never hygiene
+    # flags, which are surfaced only as a run-level count elsewhere (never
+    # per-topic, to avoid alarm fatigue). Empty tuple when none are present.
+    # A distinct field from ``TierAssignment.warnings`` on purpose (P1: "Do
+    # NOT reuse TierAssignment.warnings").
+    adversarial_security_flags: tuple[str, ...] = Field(default_factory=tuple)
 
 
 class Tier2Item(BaseModel):
@@ -229,6 +242,9 @@ class Tier2Item(BaseModel):
     principal_evidence: str
     confidence: ConfidenceLevel
     recommended_action: RecommendedAction
+    # Gate E0 (E0.1, product ruling P1): see Tier1LeanItem's field of the
+    # same name -- identical semantics, applied to Tier 2.
+    adversarial_security_flags: tuple[str, ...] = Field(default_factory=tuple)
 
 
 class RadarItem(BaseModel):
@@ -309,17 +325,19 @@ class ContentOpportunitySelection(BaseModel):
 
 
 class Tier1AppendixRecord(BaseModel):
-    """The full twelve-field record for one Tier 1 topic -- every fact the
-    lean Tier 1 presentation omits. Exactly twelve named fields (see
-    ``tests/test_intelligence_brief.py`` for the field-count assertion):
+    """The full record for one Tier 1 topic -- every fact the lean Tier 1
+    presentation omits. Thirteen named fields (see
+    ``tests/test_intelligence_brief.py`` for the field-count assertion; was
+    twelve before Gate E0 added ``adversarial_security_flags`` below):
     ``topic_id``, ``rank``, ``canonical_title``, ``score``, ``claim_class``,
     ``claim_class_reason``, ``confidence``, ``confidence_reason``,
-    ``admission_reasons``, ``exclusion_reasons``, ``warnings``, and
+    ``admission_reasons``, ``exclusion_reasons``, ``warnings``,
     ``dimension_breakdown`` (one summary line per ``RankingBreakdown``
     dimension, so the full per-dimension detail is reachable without
-    re-running the rubric). ``tier1_admitted`` is deliberately not a
-    thirteenth field: every appendix record is for an admitted Tier 1 topic
-    by construction.
+    re-running the rubric), and ``adversarial_security_flags`` (Gate E0,
+    E0.1, product ruling P1 -- a field distinct from ``warnings`` on
+    purpose). ``tier1_admitted`` is deliberately not a fourteenth field:
+    every appendix record is for an admitted Tier 1 topic by construction.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -336,6 +354,7 @@ class Tier1AppendixRecord(BaseModel):
     exclusion_reasons: list[str]
     warnings: list[str]
     dimension_breakdown: list[str]
+    adversarial_security_flags: tuple[str, ...] = Field(default_factory=tuple)
 
 
 class LibraryMovement(BaseModel):
@@ -376,6 +395,35 @@ class LibraryMovementsSection(BaseModel):
     merged: list[LibraryMovement] = Field(default_factory=list)
 
 
+class SecurityFlagSummary(BaseModel):
+    """Gate E0 (E0.1), product ruling P1: the run-level security-flag
+    reporting that must NEVER be per-topic.
+
+    ``hygiene_note`` covers every ``SecurityFlag`` other than the two
+    ADVERSARIAL ones (see ``intelligence.models.HYGIENE_SECURITY_FLAGS``) --
+    markup neutralization, truncation, malformed encoding, unsupported MIME,
+    redirect-chain length, batch-level duplicate/conflicting-date detection
+    -- as a SINGLE count line over every item considered this run, never
+    named per-topic (these fire on nearly every real HTML item and would
+    become wallpaper).
+
+    ``tier3_and_discarded_adversarial_count``/``_note`` cover the narrower
+    case of an ADVERSARIAL flag (instruction_shaped_text/
+    credential_shaped_text) landing on a Tier 3 (Radar) or discarded topic:
+    adversarial flags are named per-topic only for Tier 1/2 (see
+    ``Tier1LeanItem``/``Tier2Item``/``Tier1AppendixRecord``); for Tier 3 and
+    discarded topics they are surfaced ONLY as a count here, never naming
+    which topic, per product ruling P1 ("Tier 3 / discarded: appendix count
+    only").
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    hygiene_note: str
+    tier3_and_discarded_adversarial_count: int = Field(ge=0)
+    tier3_and_discarded_adversarial_note: str
+
+
 class WeeklyBrief(BaseModel):
     """The full structured Intelligence Brief -- the single source of truth
     both the Markdown and the JSON outputs are derived from.
@@ -410,6 +458,7 @@ class WeeklyBrief(BaseModel):
     library_movements: LibraryMovementsSection
     ranking_explanation_pointer: str
     appendix: list[Tier1AppendixRecord]
+    security_flag_summary: SecurityFlagSummary
     review_status: str = REVIEW_STATUS
 
 
@@ -436,17 +485,37 @@ def _dimension_summary_line(breakdown: RankingBreakdown) -> list[str]:
     return lines
 
 
-def _primary_exclusion_category(eligibility_reasons: list[str]) -> str:
+def _primary_exclusion_category(
+    eligibility_reasons: list[str], independence_denied_by_registry: bool = False
+) -> str:
     """Deterministically pick the FIRST failing base-rule condition (fixed
     order: relevance, evidence, independence, marketing -- the order
     ``ranking._tier1_eligibility`` always emits them in) and map it to a
     human-readable category. If every condition passes (the topic actually
     met the Tier 1 bar but simply ranked below the Top N by score), a fifth,
-    distinct category is returned instead."""
+    distinct category is returned instead.
+
+    Gate E0 (E0.3), product ruling P3 (MUST-FIX): the independence category
+    used to be a single, ambiguous string -- "lack of independent
+    corroboration" -- for BOTH "no corroborating source has been found yet"
+    (find more sources) and "a source exists but the registry has not
+    authorised it to supply independence" (authorise the existing source),
+    two categories calling for OPPOSITE actions.
+    ``independence_denied_by_registry`` (``TopicCluster``'s own field, see
+    ``cluster._independence_denied_by_registry``) disambiguates: when True,
+    a distinct, registry-specific category is returned instead of the
+    generic one.
+    """
+    independence_category = (
+        "no source registry-authorised to supply independent evidence -- "
+        "authorise an independent/community source (E0.3), not merely find more sources"
+        if independence_denied_by_registry
+        else "lack of independent corroboration"
+    )
     category_by_prefix = (
         ("relevance effective_value", "insufficient relevance to current territory priorities"),
         ("evidence effective_value", "insufficient evidence level"),
-        ("has_independent_evidence", "lack of independent corroboration"),
+        ("has_independent_evidence", independence_category),
         ("not marketing_risk", "marketing risk not cleared by independent evidence"),
     )
     for reason in eligibility_reasons:
@@ -526,6 +595,17 @@ def _human_principal_evidence(inputs: RankingInputs, claim: ClaimAssessment) -> 
     )
 
 
+def _adversarial_flags(topic: TieredTopic) -> tuple[str, ...]:
+    """Gate E0 (E0.1), product ruling P1: the ADVERSARIAL subset of a
+    topic's (cluster-derived) ``security_flags``, as flag-name strings, in
+    deterministic sorted order. Hygiene flags are deliberately excluded here
+    -- they are never named per-topic (see ``_build_security_flag_summary``
+    for their single run-level count line instead)."""
+    return tuple(
+        sorted(flag.value for flag in topic.security_flags if flag in ADVERSARIAL_SECURITY_FLAGS)
+    )
+
+
 def _build_tier1_lean(
     topic: TieredTopic, breakdown: RankingBreakdown, inputs: RankingInputs, anchor: SourceItem
 ) -> Tier1LeanItem:
@@ -552,6 +632,7 @@ def _build_tier1_lean(
         recommended_action_reason=topic.tier_assignment.recommended_action_reason,
         score=topic.score,
         ranking_explanation=breakdown.ranking_explanation,
+        adversarial_security_flags=_adversarial_flags(topic),
     )
 
 
@@ -568,6 +649,7 @@ def _build_tier2(
         principal_evidence=_human_principal_evidence(inputs, topic.claim),
         confidence=topic.claim.confidence,
         recommended_action=topic.tier_assignment.recommended_action,
+        adversarial_security_flags=_adversarial_flags(topic),
     )
 
 
@@ -622,6 +704,7 @@ def _build_appendix_record(
         exclusion_reasons=list(topic.tier_assignment.exclusion_reasons),
         warnings=list(topic.tier_assignment.warnings),
         dimension_breakdown=_dimension_summary_line(breakdown),
+        adversarial_security_flags=_adversarial_flags(topic),
     )
 
 
@@ -776,13 +859,19 @@ def _build_discarded(
                 topic_id=inputs.topic_id,
                 canonical_title=cluster.canonical_title,
                 score=breakdown.score,
-                reason=_primary_exclusion_category(breakdown.eligibility_reasons),
+                reason=_primary_exclusion_category(
+                    breakdown.eligibility_reasons, cluster.independence_denied_by_registry
+                ),
             )
         )
     return discarded
 
 
-def _tier1_short_reason(top_n_topics: list[TieredTopic], tier1_count: int) -> str | None:
+def _tier1_short_reason(
+    top_n_topics: list[TieredTopic],
+    tier1_count: int,
+    clusters_by_topic_id: dict[str, TopicCluster],
+) -> str | None:
     if tier1_count >= 3:
         return None
     failed = [
@@ -797,7 +886,10 @@ def _tier1_short_reason(top_n_topics: list[TieredTopic], tier1_count: int) -> st
         )
     reasons = []
     for t in failed:
-        failing_condition = _primary_exclusion_category(t.tier_assignment.exclusion_reasons)
+        cluster = clusters_by_topic_id[t.topic_id]
+        failing_condition = _primary_exclusion_category(
+            t.tier_assignment.exclusion_reasons, cluster.independence_denied_by_registry
+        )
         reasons.append(
             f"rank {t.rank} ('{t.canonical_title}'): no-backfill rule applied -- fell through "
             f"to Tier 2 because it failed admission on {failing_condition}"
@@ -915,20 +1007,114 @@ def _estimate_study_minutes(*, deep_present: bool, light_count: int) -> int:
     return total
 
 
-def _build_tldr(tier1_topics: list[TieredTopic]) -> list[str]:
+def _build_tldr(tier1_topics: list[TieredTopic], items_by_id: dict[str, SourceItem]) -> list[str]:
     """The 3-line (at most, since Tier 1 never exceeds 3 items) "If you read
     nothing else" summary -- distinct from the executive summary, naming only
-    the top Tier 1 action(s) in rank order."""
+    the top Tier 1 action(s) in rank order.
+
+    Gate E0 (E0.3), product ruling P5 (MUST-FIX): when Tier 1 is empty, the
+    copy must state the CAUSE (how many of this week's source items are
+    registry-governed for independence, and how many of those the registry
+    actually authorises to supply it), not just the effect -- the old copy
+    read as a failed pipeline. An empty Tier 1 is the expected, correct
+    result until a second independent source is admitted, and this line
+    says so explicitly, using ``SourceItem.may_supply_independence`` (E0.3)
+    over every item considered this week.
+    """
     if not tier1_topics:
+        total_items = len(items_by_id)
+        governed_items = [
+            item for item in items_by_id.values() if item.may_supply_independence is not None
+        ]
+        permitted_items = [
+            item for item in governed_items if item.may_supply_independence is True
+        ]
         return [
             "No topics were admitted to Tier 1 this week -- see Tier 2 (Should Know) for the "
-            "highest-priority items instead."
+            "highest-priority items instead. This is not a failed pipeline: it is the "
+            "expected, correct result until a second independent source is admitted. Of "
+            f"{total_items} source item(s) considered this week, {len(governed_items)} are "
+            f"registry-governed for independence (E0.3) and only {len(permitted_items)} of "
+            "those are authorised to supply it -- see the appendix's registry-denied-"
+            "independence exclusion category for which topics that blocks."
         ]
     return [
         f"{t.rank}. {t.canonical_title} -- {t.tier_assignment.recommended_action}: "
         f"{t.tier_assignment.recommended_action_reason}"
         for t in tier1_topics
     ]
+
+
+# --- Gate E0 (E0.1), product ruling P1: run-level security-flag summary -----
+
+
+def _tier3_and_discarded_adversarial_count(
+    tier3_topics: list[TieredTopic],
+    ranked: list[tuple[RankingInputs, RankingBreakdown]],
+    clusters_by_topic_id: dict[str, TopicCluster],
+) -> int:
+    """Count of Tier 3 (Radar) or discarded (below the Top N) topics whose
+    cluster carries an ADVERSARIAL security flag -- a COUNT only (never
+    naming which topic), per product ruling P1's "Tier 3 / discarded:
+    appendix count only"."""
+    count = sum(
+        1
+        for topic in tier3_topics
+        if any(flag in ADVERSARIAL_SECURITY_FLAGS for flag in topic.security_flags)
+    )
+    for inputs, _breakdown in ranked[TOP_N:]:
+        cluster = clusters_by_topic_id[inputs.topic_id]
+        if any(flag in ADVERSARIAL_SECURITY_FLAGS for flag in cluster.security_flags):
+            count += 1
+    return count
+
+
+def _build_security_flag_summary(
+    items_by_id: dict[str, SourceItem],
+    tier3_topics: list[TieredTopic],
+    ranked: list[tuple[RankingInputs, RankingBreakdown]],
+    clusters_by_topic_id: dict[str, TopicCluster],
+) -> SecurityFlagSummary:
+    """Gate E0 (E0.1), product ruling P1: build the two run-level-only
+    displays -- the hygiene count line (never per-topic) and the Tier
+    3/discarded adversarial COUNT (never naming the topic; Tier 1/2 name
+    the flag directly instead, see ``_adversarial_flags``)."""
+    total_items = len(items_by_id)
+    hygiene_item_count = sum(
+        1
+        for item in items_by_id.values()
+        if any(flag in HYGIENE_SECURITY_FLAGS for flag in item.security_flags)
+    )
+    if total_items:
+        hygiene_note = (
+            f"{hygiene_item_count} of {total_items} item(s) required markup neutralization, "
+            "truncation, or other automated content handling this week (hygiene flags are "
+            "never surfaced per-topic, to avoid alarm fatigue -- see the connector coverage "
+            "report for detail)."
+        )
+    else:
+        hygiene_note = "No source items were considered this week."
+
+    tier3_discarded_count = _tier3_and_discarded_adversarial_count(
+        tier3_topics, ranked, clusters_by_topic_id
+    )
+    if tier3_discarded_count:
+        tier3_discarded_note = (
+            f"{tier3_discarded_count} Tier 3/discarded topic(s) carried an adversarial "
+            "security flag (instruction- or credential-shaped text) this week; named per-"
+            "topic only for Tier 1/2 above, counted only here for lower-priority topics to "
+            "avoid alarm fatigue."
+        )
+    else:
+        tier3_discarded_note = (
+            "No Tier 3/discarded topic carried an adversarial security flag this week."
+        )
+
+    return SecurityFlagSummary(
+        hygiene_note=hygiene_note,
+        tier3_and_discarded_adversarial_count=tier3_discarded_count,
+        tier3_and_discarded_adversarial_note=tier3_discarded_note,
+    )
 
 
 # ------------------------------ public API -----------------------------------
@@ -1000,7 +1186,10 @@ def build_weekly_brief(
     study_queue = _build_study_queue(tier1_topics, tier2_topics)
     experiment = _build_experiment(tiered, ranked, clusters_by_topic_id, items_by_id)
     content_opportunities = _build_content_opportunities(tier1_topics, breakdown_by_topic_id)
-    tier1_short_reason = _tier1_short_reason(tiered, len(tier1_topics))
+    tier1_short_reason = _tier1_short_reason(tiered, len(tier1_topics), clusters_by_topic_id)
+    security_flag_summary = _build_security_flag_summary(
+        items_by_id, tier3_topics, ranked, clusters_by_topic_id
+    )
     if library_movements is None:
         library_movements = LibraryMovementsSection(
             movements=[], deferred_note=LIBRARY_MOVEMENTS_DEFERRED_NOTE
@@ -1019,7 +1208,7 @@ def build_weekly_brief(
         tier1_short_reason=tier1_short_reason,
     )
 
-    tldr = _build_tldr(tier1_topics)
+    tldr = _build_tldr(tier1_topics, items_by_id)
 
     estimated_reading_minutes = _estimate_reading_minutes(
         {
@@ -1070,6 +1259,7 @@ def build_weekly_brief(
         library_movements=library_movements,
         ranking_explanation_pointer=ranking_explanation_pointer,
         appendix=appendix,
+        security_flag_summary=security_flag_summary,
         review_status=REVIEW_STATUS,
     )
 
@@ -1092,6 +1282,10 @@ def _render_tier1_section(brief: WeeklyBrief) -> list[str]:
             f"{item.recommended_action_reason}"
         )
         lines.append(f"- **Score:** {item.score}/100 -- {item.ranking_explanation}")
+        if item.adversarial_security_flags:
+            lines.append(
+                "- **Security flags:** " + ", ".join(item.adversarial_security_flags)
+            )
     return lines
 
 
@@ -1106,6 +1300,10 @@ def _render_tier2_section(brief: WeeklyBrief) -> list[str]:
         lines.append(f"- **Principal evidence:** {item.principal_evidence}")
         lines.append(f"- **Confidence:** {item.confidence}")
         lines.append(f"- **Recommended action:** {item.recommended_action}")
+        if item.adversarial_security_flags:
+            lines.append(
+                "- **Security flags:** " + ", ".join(item.adversarial_security_flags)
+            )
     return lines
 
 
@@ -1222,6 +1420,10 @@ def _render_appendix_section(brief: WeeklyBrief) -> list[str]:
         lines.append(f"- admission_reasons: {_render_string_list(record.admission_reasons)}")
         lines.append(f"- exclusion_reasons: {_render_string_list(record.exclusion_reasons)}")
         lines.append(f"- warnings: {_render_string_list(record.warnings)}")
+        lines.append(
+            "- adversarial_security_flags: "
+            f"{_render_string_list(list(record.adversarial_security_flags))}"
+        )
         lines.append("- dimension_breakdown:")
         for dim_line in record.dimension_breakdown:
             lines.append(f"  - {dim_line}")
@@ -1229,6 +1431,14 @@ def _render_appendix_section(brief: WeeklyBrief) -> list[str]:
     lines.append("### Reading & Study Time Method")
     lines.append(f"- Reading time method: {brief.estimated_reading_time_method}")
     lines.append(f"- Study time method: {brief.estimated_study_time_method}")
+    lines.append("")
+    # Gate E0 (E0.1), product ruling P1: hygiene flags and Tier 3/discarded
+    # adversarial flags are run-level/count-only -- rendered here, in the
+    # Appendix, never per-topic (see _render_tier1_section/_render_tier2_section
+    # for the per-topic adversarial-flag lines this is deliberately NOT).
+    lines.append("### Security Flag Summary")
+    lines.append(f"- {brief.security_flag_summary.hygiene_note}")
+    lines.append(f"- {brief.security_flag_summary.tier3_and_discarded_adversarial_note}")
     return lines
 
 
