@@ -333,6 +333,7 @@ def test_no_network_calls_during_full_synthetic_pipeline(
         assessment,
         registry_entry,
         detection_date=date(2026, 7, 18),
+        permission_registry=permission_registry,
     )
 
     items_by_id = {item.item_id: item}

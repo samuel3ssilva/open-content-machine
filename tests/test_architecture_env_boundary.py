@@ -19,11 +19,40 @@ substantially closes that gap here; (b) dynamic access via
 static AST walk can resolve. This is a cheap, fast, additional check, not an
 exhaustive guarantee -- exactly the same posture as the no-network scan.
 
+**R8 alias-tracking improvement (Part 2a correction, Finding 3).** The scan
+now also tracks ``import os as <alias>`` and flags ``<alias>.environ``/
+``<alias>.getenv``/``<alias>.environb`` -- a purely static rename
+(``import os as o; o.getenv(...)``) is fully resolvable by an AST walk
+(unlike the genuinely dynamic gaps below) and a prior revision of this scan
+missed it. The following residual gaps remain honestly disclosed, NOT
+closed by the alias tracking above, and this scan does not claim to be
+exhaustive:
+
+* ``getattr(os, "environ")``/``getattr(os, "getenv")`` (or similar
+  string-computed attribute access) -- no static AST walk can resolve a
+  dynamically-computed attribute name.
+* ``posix.environ`` -- on POSIX systems ``os.environ`` is itself backed by
+  the ``posix`` module; importing ``posix`` directly and reading
+  ``posix.environ`` bypasses ``os`` entirely and this scan does not track
+  ``posix`` as an alias of ``os``.
+* Indirect module access, e.g. ``importlib.import_module("os")`` bound to
+  an arbitrary local name, or ``os.__dict__["environ"]`` -- neither is a
+  literal ``os``/tracked-alias attribute access this scan's ``ast.Attribute``
+  matching can see.
+* Subprocess environment INHERITANCE (a child process started via
+  ``subprocess`` inheriting the parent's environment) -- a different
+  concern from this module reading an environment variable's VALUE into
+  Python code, and out of scope for what this scan checks.
+* TRANSITIVE reads, as already stated above.
+
 Detects, at minimum (per the ticket's required minimum):
 
 * ``os.environ`` (as a bare attribute access, subscripted, or via ``.get``)
 * ``os.getenv(...)``
+* ``os.environb`` (the bytes-keyed twin of ``os.environ``)
 * ``from os import environ`` / ``from os import getenv``
+* ``import os as <alias>`` followed by ``<alias>.environ``/
+  ``<alias>.getenv``/``<alias>.environb``
 
 Allowlists ``content_machine/config/`` only.
 """
@@ -37,7 +66,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 _PACKAGE_ROOT = REPO_ROOT / "src" / "content_machine"
 _ALLOWED_ENV_READING_DIR = _PACKAGE_ROOT / "config"
 
-_FORBIDDEN_OS_ATTRS = {"environ", "getenv"}
+_FORBIDDEN_OS_ATTRS = {"environ", "getenv", "environb"}
 
 
 def _all_python_files_outside_config() -> list[Path]:
@@ -60,8 +89,25 @@ def _env_reads_in_module(path: Path) -> list[str]:
     skipped by this loop's own ``continue``, so this carve-out only ever
     matters for the (empty, in practice) case of an `os.getenv` call that
     appears ONLY inside such a block and nowhere else.
+
+    **R8 alias tracking (Part 2a correction, Finding 3).** A first pass
+    collects every name a plain ``import os as <alias>`` binds in this
+    module (``"os"`` itself is always included, whether or not it is ever
+    imported under that name); the second pass then treats an attribute
+    access on ANY of those names as equivalent to ``os.<attr>`` -- this
+    resolves the purely static ``import os as o; o.getenv(...)`` rename,
+    which (unlike ``getattr``-based or ``posix``-based access -- see the
+    module docstring's disclosed residual gaps) an AST walk can fully see.
     """
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+
+    os_aliases = {"os"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "os" and alias.asname:
+                    os_aliases.add(alias.asname)
+
     violations: list[str] = []
     for node in ast.walk(tree):
         if (
@@ -85,13 +131,14 @@ def _env_reads_in_module(path: Path) -> list[str]:
             isinstance(node, ast.Attribute)
             and node.attr in _FORBIDDEN_OS_ATTRS
             and isinstance(node.value, ast.Name)
-            and node.value.id == "os"
+            and node.value.id in os_aliases
         ):
             # Catches os.environ (bare, subscripted via the enclosing
             # Subscript node, and os.environ.get(...) via the enclosing
-            # Call node) and os.getenv(...) -- ast.walk visits this
+            # Call node), os.getenv(...), os.environb, and the same three
+            # via any `import os as <alias>` rename -- ast.walk visits this
             # Attribute node regardless of what wraps it.
-            violations.append(f"os.{node.attr}")
+            violations.append(f"{node.value.id}.{node.attr}")
 
     return violations
 
@@ -174,3 +221,51 @@ def test_scan_catches_from_os_import_environ_and_getenv() -> None:
         if alias.name in _FORBIDDEN_OS_ATTRS
     }
     assert caught == {"environ", "getenv"}
+
+
+def test_scan_catches_os_environb() -> None:
+    source = 'import os\nvalue = os.environb.get(b"X")\n'
+    tree = ast.parse(source)
+    found = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute)
+        and node.attr in _FORBIDDEN_OS_ATTRS
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "os"
+    ]
+    assert found, "os.environb must be caught"
+
+
+def test_scan_catches_import_os_as_alias_getenv(tmp_path: Path) -> None:
+    """R8 alias-tracking improvement (Part 2a correction, Finding 3): the
+    purely static form ``import os as o; o.getenv(...)`` must be caught --
+    unlike the genuinely dynamic gaps disclosed in the module docstring
+    (``getattr(os, ...)``, ``posix.environ``, ``importlib``-computed module
+    references, ``os.__dict__`` access), an import-alias rename is fully
+    resolvable by an AST walk, and a prior revision of this scan missed it.
+
+    Exercises the ACTUAL checker function (``_env_reads_in_module``) against
+    a real file on disk, not hand-rolled ``ast.walk`` matching against a
+    parsed-in-memory tree as the ``test_scan_catches_os_*`` tests above do --
+    those tests prove the underlying Attribute-node shape is right; this one
+    proves the alias-tracking fix in ``_env_reads_in_module`` itself works
+    end to end."""
+    module_path = tmp_path / "aliased_env_read.py"
+    module_path.write_text('import os as o\nvalue = o.getenv("X")\n', encoding="utf-8")
+    assert _env_reads_in_module(module_path) == ["o.getenv"]
+
+
+def test_scan_catches_import_os_as_alias_environ_and_environb(tmp_path: Path) -> None:
+    """The same alias tracking must also cover ``environ`` and ``environb``,
+    not just ``getenv`` -- all three forbidden attrs are equally reachable
+    through a rename."""
+    module_path = tmp_path / "aliased_env_read_full.py"
+    module_path.write_text(
+        "import os as opsys\n"
+        'a = opsys.environ.get("X")\n'
+        'b = opsys.environb.get(b"X")\n',
+        encoding="utf-8",
+    )
+    violations = _env_reads_in_module(module_path)
+    assert set(violations) == {"opsys.environ", "opsys.environb"}

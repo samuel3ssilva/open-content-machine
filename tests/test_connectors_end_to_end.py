@@ -125,6 +125,7 @@ def test_synthetic_discovery_reaches_the_existing_pipeline_with_zero_changes() -
         assessment,
         registry_entry,
         detection_date=date(2026, 7, 18),
+        permission_registry=permission_registry,
     )
     assert item.publisher_id == registry_entry.publisher_id
     assert item.topic_tags == ["agents", "skills"]
