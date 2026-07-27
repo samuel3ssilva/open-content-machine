@@ -54,8 +54,7 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 from content_machine.connectors.retention import DisposalRecord, RetentionClass
-from content_machine.connectors.sanitize import SecurityFlag
-from content_machine.intelligence.models import EvidenceType
+from content_machine.intelligence.models import EvidenceType, SecurityFlag
 
 # --- §2 pinned literal constants ---------------------------------------------
 # Every constant below has a dedicated test asserting its LITERAL value in

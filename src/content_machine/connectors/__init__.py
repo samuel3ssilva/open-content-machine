@@ -109,12 +109,8 @@ from content_machine.connectors.runner import (
     format_coverage_report,
     run_discovery,
 )
-from content_machine.connectors.sanitize import (
-    SanitizedText,
-    SecurityFlag,
-    sanitize_error,
-    sanitize_text,
-)
+from content_machine.connectors.sanitize import SanitizedText, sanitize_error, sanitize_text
+from content_machine.intelligence.models import SecurityFlag
 
 __all__ = [
     "ALLOWED_CONTENT_TYPES",

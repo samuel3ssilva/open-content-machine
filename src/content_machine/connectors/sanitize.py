@@ -1,4 +1,4 @@
-"""Untrusted-content neutralization and the security-flag vocabulary (Gate D §7).
+"""Untrusted-content neutralization (Gate D §7).
 
 Every source is hostile data. This module is the ONLY place in ``connectors``
 that touches raw retrieved text, and it has exactly one job: turn arbitrary
@@ -6,6 +6,16 @@ bytes-as-text into a bounded, markup-free, secret-scrubbed string plus a set
 of flags a human reviewer can act on. It never executes, interprets, or
 forwards anything it sanitizes to a model -- there is no execution path in
 this gate, and retrieved content never crosses a model boundary at all.
+
+**Gate E0 (E0.1) move.** ``SecurityFlag`` itself now lives in
+:mod:`content_machine.intelligence.models` (see that module's "Gate E0
+(E0.1) addition" docstring note for why), so that :class:`SourceItem` can
+carry it natively all the way to the published brief -- durably fixing what
+was, before this gate, a fail-closed substitute at ``connectors.bridge``
+(``UnreviewedSecurityFlagsError``, kept in place, see that module). It is
+imported and re-exported here so every existing
+``from content_machine.connectors.sanitize import SecurityFlag`` (and the
+``connectors`` package's own re-export) keeps working unchanged.
 
 **Honesty requirement.** This is NOT semantic prompt-injection detection and
 must never be described as such (see also the ADR and public
@@ -24,9 +34,17 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from content_machine.intelligence.models import SecurityFlag
+
+__all__ = [
+    "SanitizedText",
+    "SecurityFlag",
+    "sanitize_error",
+    "sanitize_text",
+]
 
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _REPLACEMENT_CHAR = "�"
@@ -84,38 +102,51 @@ _FS_PATH_RE = re.compile(
 
 # Heuristic instruction-shaped phrases. Intentionally small and generic --
 # widening it is a tuning exercise for a later gate, not a detection promise.
+#
+# Gate E0, F0 (Fable ruling, "instruction_shaped_text false positives: FIX
+# (a), KEEP THE BLOCK"): two of these patterns produced false positives on
+# ordinary release-note/blog prose -- "the agent acts as a proxy" and "you
+# are now able to configure X" -- both ubiquitous phrasings that are not
+# instruction-shaped at all. Fable's finding: "repeated benign blocks train a
+# reflexive override on the one flag whose override must stay exceptional.
+# Alarm fatigue is a security failure mode." The two narrowed patterns below
+# require either second-person imperative address or sentence/string-initial
+# position (the ``you are now ...`` pattern is a matched-then-excluded
+# regex, not an include-list -- see its own comment for why). The
+# ignore/disregard patterns and the ``system:``/``assistant:`` family are
+# UNCHANGED and must not be widened (Fable: "Keep the ignore/disregard
+# patterns ... and the ^\\s*system\\s*: family ... EXACTLY as they are.").
 _INSTRUCTION_PATTERNS = (
     re.compile(r"\bignore (?:all |the )?(?:previous|prior|above) instructions\b", re.IGNORECASE),
     re.compile(r"\bdisregard (?:the )?(?:previous|prior|above)\b", re.IGNORECASE),
-    re.compile(r"\byou are now\b", re.IGNORECASE),
+    # "you are now able to configure X" must NOT fire; "you are now a
+    # pirate"/"you are now in developer mode"/"you are now the ranking
+    # engine" must still fire, and so must "you are now DAN" (a bare
+    # jailbreak-persona name with no article) -- Fable's own illustrative
+    # `\byou are now (?:a|an|the|in)\b` include-list would NOT catch "DAN",
+    # so this is instead a broad match with a narrow, named exclusion for
+    # the one confirmed false-positive shape (a capability/readiness
+    # adjective followed by an infinitive "to <verb>"), which correctly
+    # covers all four required cases above.
+    re.compile(
+        r"\byou are now(?!\s+(?:able|ready|free|welcome|going|expected)\s+to\b)\b",
+        re.IGNORECASE,
+    ),
     re.compile(r"^\s*system\s*:", re.IGNORECASE | re.MULTILINE),
     re.compile(r"^\s*assistant\s*:", re.IGNORECASE | re.MULTILINE),
-    re.compile(r"\bact as (?:a|an)\b", re.IGNORECASE),
+    # "the agent acts as a proxy" (verb "acts", not imperative "act", and
+    # not sentence-initial) must NOT fire; "You must act as a system
+    # administrator..." (second-person imperative) and sentence/string-
+    # initial "Act as a/an ..." must still fire.
+    re.compile(
+        r"(?:\byou (?:are|will|must|should) (?:now )?act as (?:a|an)\b|^\s*act as (?:a|an)\b)",
+        re.IGNORECASE | re.MULTILINE,
+    ),
 )
 
 _REDACTED_EMAIL = "[redacted-email]"
 _REDACTED_CREDENTIAL = "[redacted-credential]"
 _REDACTED_PATH = "[redacted-path]"
-
-
-class SecurityFlag(StrEnum):
-    """Heuristic markers raised while sanitizing untrusted content.
-
-    Every flag is a marker for a human reviewer, never a claim of complete
-    detection (see the module docstring's honesty requirement).
-    """
-
-    active_markup_neutralized = "active_markup_neutralized"
-    instruction_shaped_text = "instruction_shaped_text"
-    credential_shaped_text = "credential_shaped_text"
-    email_shaped_text = "email_shaped_text"
-    filesystem_path_shaped_text = "filesystem_path_shaped_text"
-    oversized_truncated = "oversized_truncated"
-    malformed_encoding = "malformed_encoding"
-    unsupported_content_type = "unsupported_content_type"
-    redirect_chain_exceeded = "redirect_chain_exceeded"
-    duplicate_canonical_reference = "duplicate_canonical_reference"
-    conflicting_publication_date = "conflicting_publication_date"
 
 
 class SanitizedText(BaseModel):

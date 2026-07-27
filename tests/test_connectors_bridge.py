@@ -49,14 +49,18 @@ from content_machine.intelligence.normalize import normalize_canonical_reference
 _NOW = datetime(2026, 7, 20, 12, 0, tzinfo=UTC)
 
 
-def _registry_entry(source_id: str = "src_vendor_alpha") -> SourceRegistryEntry:
+def _registry_entry(
+    source_id: str = "src_vendor_alpha",
+    *,
+    publisher_classification: PublisherClassification = PublisherClassification.vendor_first_party,
+) -> SourceRegistryEntry:
     return SourceRegistryEntry(
         source_id=source_id,
         source_group="grp_vendor_alpha",
         publisher_id="vendor-alpha",
         source_category="vendor_blog",
         source_type="feed",
-        publisher_classification=PublisherClassification.vendor_first_party,
+        publisher_classification=publisher_classification,
         endpoint_label="VendorAlpha blog",
     )
 
@@ -460,6 +464,122 @@ def test_detection_date_is_exactly_the_caller_supplied_value() -> None:
         _discovery_result(), _assessment(), _registry_entry(), detection_date=date(2020, 1, 1)
     )
     assert item.detection_date == date(2020, 1, 1)
+
+
+# --- Gate E0, E0.1: security_flags propagate onto SourceItem (durable fix) -
+
+
+def test_e0_1_non_blocking_security_flags_survive_onto_the_source_item() -> None:
+    """E0.1's durable fix: flags that don't require an override still land
+    on ``SourceItem.security_flags`` -- flag NAMES only, never the hostile
+    text, and never through any hop that could drop them."""
+    result = _discovery_result(
+        security_flags=(
+            SecurityFlag.credential_shaped_text,
+            SecurityFlag.oversized_truncated,
+        )
+    )
+    item = to_source_item(
+        result, _assessment(), _registry_entry(), detection_date=date(2026, 7, 18)
+    )
+    assert item.security_flags == (
+        SecurityFlag.credential_shaped_text,
+        SecurityFlag.oversized_truncated,
+    )
+
+
+def test_e0_1_reviewed_and_overridden_blocking_flags_still_survive_onto_the_item() -> None:
+    """A blocking flag that clears the human-reviewed-flags override must
+    STILL survive onto the item -- the override lets it cross the bridge at
+    all, but does not erase the flag itself; a downstream reviewer must
+    still be able to see it in the brief."""
+    result = _discovery_result(security_flags=(SecurityFlag.instruction_shaped_text,))
+    item = to_source_item(
+        result,
+        _assessment(),
+        _registry_entry(),
+        detection_date=date(2026, 7, 18),
+        human_reviewed_flags=frozenset({SecurityFlag.instruction_shaped_text}),
+        reviewer_note="Reviewed: benign, no injection found in context.",
+    )
+    assert item.security_flags == (SecurityFlag.instruction_shaped_text,)
+
+
+def test_e0_1_no_flags_yields_empty_security_flags_on_the_item() -> None:
+    result = _discovery_result(security_flags=())
+    item = to_source_item(
+        result, _assessment(), _registry_entry(), detection_date=date(2026, 7, 18)
+    )
+    assert item.security_flags == ()
+
+
+# --- Gate E0, E0.3: may_supply_independence is ALWAYS an explicit bool -----
+# (R3/F2: bridge must NEVER emit None -- every connector-sourced item is
+# governed by the curated source registry.)
+
+
+def test_e0_3_bridge_populates_may_supply_independence_true_for_independent_source() -> None:
+    item = to_source_item(
+        _discovery_result(),
+        _assessment(),
+        _registry_entry(publisher_classification=PublisherClassification.independent),
+        detection_date=date(2026, 7, 18),
+    )
+    assert item.may_supply_independence is True
+
+
+def test_e0_3_bridge_populates_may_supply_independence_true_for_community_source() -> None:
+    item = to_source_item(
+        _discovery_result(),
+        _assessment(),
+        _registry_entry(publisher_classification=PublisherClassification.community),
+        detection_date=date(2026, 7, 18),
+    )
+    assert item.may_supply_independence is True
+
+
+def test_e0_3_bridge_populates_may_supply_independence_false_for_vendor_first_party() -> None:
+    item = to_source_item(
+        _discovery_result(),
+        _assessment(),
+        _registry_entry(publisher_classification=PublisherClassification.vendor_first_party),
+        detection_date=date(2026, 7, 18),
+    )
+    assert item.may_supply_independence is False
+
+
+def test_e0_3_bridge_populates_may_supply_independence_false_for_unclassified() -> None:
+    """Fail-closed: unclassified is treated exactly as conservatively as a
+    known vendor source, never more favorably (SourceRegistryEntry's own
+    docstring) -- the bridge must never emit True, and must never emit
+    None, for an unclassified source."""
+    item = to_source_item(
+        _discovery_result(),
+        _assessment(),
+        _registry_entry(publisher_classification=PublisherClassification.unclassified),
+        detection_date=date(2026, 7, 18),
+    )
+    assert item.may_supply_independence is False
+
+
+@pytest.mark.parametrize(
+    "classification",
+    list(PublisherClassification),
+)
+def test_e0_3_bridge_never_emits_none_for_any_publisher_classification(
+    classification: PublisherClassification,
+) -> None:
+    """R3/F2's required test: the bridge always emits True/False, never
+    None, for EVERY registry classification -- exhaustive over the enum
+    rather than the four cases spelled out individually above."""
+    item = to_source_item(
+        _discovery_result(),
+        _assessment(),
+        _registry_entry(publisher_classification=classification),
+        detection_date=date(2026, 7, 18),
+    )
+    assert item.may_supply_independence is not None
+    assert isinstance(item.may_supply_independence, bool)
 
 
 def test_bridge_module_never_reads_the_wall_clock() -> None:

@@ -68,12 +68,30 @@ points.
 Independence is per (item, cluster-subject) pair::
 
     is_independent = (
-        publisher_id not in cluster.subject_entity_ids
+        may_supply_independence is not False
+        and publisher_id not in cluster.subject_entity_ids
         and evidence_type in {
             "independent_analysis", "benchmark_with_methodology",
             "independent_implementation", "research_paper",
         }
     )
+
+The ``may_supply_independence is not False`` conjunct is Gate E0's E0.3
+addition (R3/F2): ``may_supply_independence`` is tri-state
+(``bool | None``) on :class:`~content_machine.intelligence.models.SourceItem`
+-- ``None`` (no registry opinion; the loader/human-authored path) falls back
+to exactly the pre-E0.3 two-conjunct test above; ``True``/``False`` come
+from the curated source registry via ``connectors.bridge`` and NEVER from an
+adapter. This conjunct is a pure AND, so it can only ever REMOVE
+independence a subject-relation-plus-evidence-type test would otherwise
+grant, never add it -- see :func:`_is_independent` and
+:func:`_independence_denied_by_registry`.
+
+Security flags (Gate E0, E0.1): every member's ``security_flags`` are
+unioned onto the cluster's own ``security_flags`` field (see
+:func:`_cluster_security_flags`) -- a visibility signal for a human
+reviewer, computed independently of, and never influencing, the evidence
+rubric or any ranking dimension (R7: this bypasses ``ranking.py`` entirely).
 
 IDENTITY (documented per the frozen design): ``topic_id`` is
 ``"t_" + sha256(anchor_canonical_reference + "|" + sorted_subject_ids)[:12]``,
@@ -92,7 +110,12 @@ import hashlib
 from collections import defaultdict
 from datetime import date
 
-from content_machine.intelligence.models import RankingInputs, SourceItem, TopicCluster
+from content_machine.intelligence.models import (
+    RankingInputs,
+    SecurityFlag,
+    SourceItem,
+    TopicCluster,
+)
 from content_machine.intelligence.normalize import (
     jaccard,
     normalize_canonical_reference,
@@ -228,10 +251,72 @@ def _group_origin(group: list[SourceItem], subject_entity_ids: frozenset[str]) -
 
 
 def _is_independent(item: SourceItem, subject_entity_ids: frozenset[str]) -> bool:
+    """Gate E0 (E0.3, R3/F2): a pure AND-narrowing over the pre-E0.3 test.
+
+    Conjunct (a) -- ``publisher_id not in subject_entity_ids`` -- and
+    conjunct (c) -- ``evidence_type in _INDEPENDENT_EVIDENCE_TYPES`` -- are
+    unchanged from before E0.3 (Fable F2: conjunct (c) already existed).
+    Conjunct (b) is NEW: ``item.may_supply_independence`` is tri-state
+    (``bool | None``) --
+
+    * ``None`` (the loader/human-authored path, which never crosses
+      ``connectors.bridge``): no registry opinion, so conjunct (b) is
+      vacuously satisfied and this falls back to exactly the pre-E0.3 test.
+    * ``True`` (registry permits): also satisfied -- identical to today.
+    * ``False`` (registry forbids): conjunct (b) fails, so the item can
+      NEVER count as independent regardless of (a)/(c) -- the narrowing.
+
+    Because this can only ever remove independence an item would otherwise
+    have (never grant it), it cannot inflate ``evidence_level``,
+    ``has_independent_evidence``, ``marketing_risk``, or any ranking score
+    this feeds -- it can only ever lower or leave unchanged what the
+    pre-E0.3 test already computed.
+    """
     return (
-        item.publisher_id not in subject_entity_ids
+        item.may_supply_independence is not False
+        and item.publisher_id not in subject_entity_ids
         and item.evidence_type in _INDEPENDENT_EVIDENCE_TYPES
     )
+
+
+def _independence_denied_by_registry(
+    members_sorted: list[SourceItem],
+    member_roles: dict[str, str],
+    subject_entity_ids: frozenset[str],
+) -> bool:
+    """Gate E0 (E0.3, product ruling P3): True when at least one
+    evidence-counting member (role not in ``_EVIDENCE_EXCLUDED_ROLES`` --
+    mirrors ``_is_independent``'s own scope, so this stays consistent with
+    what the cluster's independence check actually evaluated) satisfies the
+    pre-E0.3 subject-relation-plus-evidence-type test -- conjuncts (a) and
+    (c) of :func:`_is_independent` -- but is excluded from independence
+    SOLELY because its ``may_supply_independence`` is ``False`` (the new
+    conjunct (b)). Lets ``intelligence.brief`` distinguish "no corroborating
+    source exists yet" from "a source exists but the registry has not
+    authorised it" -- two exclusion categories calling for opposite actions.
+    """
+    for member in members_sorted:
+        if member_roles[member.item_id] in _EVIDENCE_EXCLUDED_ROLES:
+            continue
+        if (
+            member.may_supply_independence is False
+            and member.publisher_id not in subject_entity_ids
+            and member.evidence_type in _INDEPENDENT_EVIDENCE_TYPES
+        ):
+            return True
+    return False
+
+
+def _cluster_security_flags(members_sorted: list[SourceItem]) -> tuple[SecurityFlag, ...]:
+    """Gate E0 (E0.1, R7): the UNION of every member's ``security_flags``,
+    including duplicate/syndicated/relay members. Unlike the evidence
+    rubric, this is a visibility signal for a human reviewer, not an
+    evidentiary computation -- it must never under-report by excluding a
+    role the evidence rubric excludes."""
+    flags: set[SecurityFlag] = set()
+    for member in members_sorted:
+        flags.update(member.security_flags)
+    return tuple(sorted(flags, key=lambda flag: flag.value))
 
 
 def _topic_id(anchor: SourceItem, subject_entity_ids: list[str]) -> str:
@@ -650,6 +735,11 @@ def _build_cluster(members: list[SourceItem], duplication_reasons: set[str]) -> 
     # key (ordering), never any dimension's points (see module docstring).
     dates = [_effective_date(m) for m in members_sorted]
 
+    security_flags = _cluster_security_flags(members_sorted)
+    independence_denied_by_registry = _independence_denied_by_registry(
+        members_sorted, member_roles, subject_set
+    )
+
     return TopicCluster(
         topic_id=_topic_id(anchor, subject_entity_ids),
         cluster_fingerprint=_cluster_fingerprint(members_sorted),
@@ -671,6 +761,8 @@ def _build_cluster(members: list[SourceItem], duplication_reasons: set[str]) -> 
         cluster_size=len(members_sorted),
         topic_tags=topic_tags,
         evidence_types=evidence_types,
+        security_flags=security_flags,
+        independence_denied_by_registry=independence_denied_by_registry,
     )
 
 

@@ -39,8 +39,9 @@ from content_machine.connectors.models import (
     SummaryProvenance,
 )
 from content_machine.connectors.runner import AdapterDiscoveryOutcome, ConnectorAdapterError
-from content_machine.connectors.sanitize import SecurityFlag, sanitize_text
+from content_machine.connectors.sanitize import sanitize_text
 from content_machine.connectors.synthetic import fixtures
+from content_machine.intelligence.models import SecurityFlag
 
 _DEFAULT_MAX_REDIRECTS = 3
 

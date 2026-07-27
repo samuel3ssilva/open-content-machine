@@ -26,20 +26,25 @@ every publisher look independent of every subject (``cluster.py``'s
 independence check is a subject-membership test). Both are rejected before
 construction, never silently accepted as "no tags"/"no subjects".
 
-**Fail closed on un-reviewed SecurityFlags (Gate D round-1 correction, B2).**
-Every ``SecurityFlag`` on the incoming ``DiscoveryResult`` was previously
-destroyed at this bridge -- ``SourceItem`` carries no ``security_flags``
-field, so a hostile item flagged ``instruction_shaped_text`` crossed into
-the pipeline with the injection text intact and the marker gone. This
-bridge now REJECTS (:class:`UnreviewedSecurityFlagsError`) any result
-carrying a member of :data:`BLOCKING_SECURITY_FLAGS` that a caller has not
-named via ``human_reviewed_flags``. This is a temporary, fail-closed
-substitute for the durable fix -- propagating ``security_flags`` onto
-``SourceItem`` itself and surfacing them in the published brief -- which is
-explicitly DEFERRED to the gate that ships the first real adapter, where
-extending the intelligence model is in scope under Fable review; the
-Founder's constraint against touching ``intelligence/`` in this gate rules
-that fix out here.
+**Fail closed on un-reviewed SecurityFlags (Gate D round-1 correction, B2;
+durable fix landed Gate E0, E0.1).** Every ``SecurityFlag`` on the incoming
+``DiscoveryResult`` used to be destroyed at this bridge -- ``SourceItem``
+carried no ``security_flags`` field, so a hostile item flagged
+``instruction_shaped_text`` crossed into the pipeline with the injection
+text intact and the marker gone. Gate D's round-1 fix REJECTED
+(:class:`UnreviewedSecurityFlagsError`) any result carrying a member of
+:data:`BLOCKING_SECURITY_FLAGS` that a caller had not named via
+``human_reviewed_flags`` -- a temporary, fail-closed substitute for the
+durable fix. **That fail-closed block STAYS in place, unchanged, per the
+Gate E0 Fable ruling** ("visibility is detective, the block is preventive;
+both must hold"): :func:`to_source_item` still REJECTS an unreviewed
+blocking flag exactly as before. Gate E0 (E0.1) ADDS the durable fix
+alongside it, additively: every admitted item now also carries its full
+``result.security_flags`` natively on ``SourceItem.security_flags`` (flag
+NAMES only, never the hostile text), which propagates onward to
+``TopicCluster``, the ranked/tiered topic, and the published brief -- see
+``intelligence.models.SecurityFlag``'s docstring and ``intelligence.brief``
+for the two product-mandated display classes (adversarial vs. hygiene).
 
 **Deterministic identity.** ``item_id`` is derived from the NORMALIZED
 canonical reference (:func:`content_machine.intelligence.normalize.normalize_canonical_reference`,
@@ -66,12 +71,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from content_machine.connectors.models import AuditEventKind, ConnectorAuditEvent, DiscoveryResult
 from content_machine.connectors.registry import SourceRegistryEntry
-from content_machine.connectors.sanitize import SecurityFlag
 from content_machine.intelligence.models import (
     ActionRequired,
     ChangeClass,
     EvidenceType,
     ExperimentAffordance,
+    SecurityFlag,
     SourceItem,
 )
 from content_machine.intelligence.normalize import normalize_canonical_reference
@@ -175,13 +180,20 @@ class UnreviewedSecurityFlagsError(PermissionError):
 
     Two fixes were offered: (a) add ``security_flags`` to ``SourceItem``, or
     (b) fail closed here instead. The Founder's constraint against touching
-    ``intelligence/`` in this gate makes (a) out of scope, so (b) is what is
-    implemented: this is a **temporary, fail-closed substitute** for
-    propagating the flag downstream, not the durable fix. The durable fix --
-    adding ``security_flags`` to ``SourceItem`` and surfacing them in the
-    brief for a human reviewer -- is DEFERRED to the gate that ships the
-    first real adapter, where extending the intelligence model is in scope
-    under Fable review (see ADR 0005's round-1 findings section).
+    ``intelligence/`` in Gate D made (a) out of scope there, so (b) is what
+    Gate D implemented: a **fail-closed substitute** for propagating the
+    flag downstream, not the durable fix.
+
+    **Gate E0 (E0.1): the durable fix has now landed, ADDITIVELY.** Per the
+    Fable ruling on the Gate E0 design ("visibility is detective, the block
+    is preventive; both must hold ... reconsidering the block requires ...
+    a NEW explicit Fable ruling"), this exception and
+    :data:`BLOCKING_SECURITY_FLAGS` remain exactly as Gate D left them --
+    still fail-closed, still required. ``SourceItem`` now ALSO carries
+    ``security_flags`` natively (see
+    :class:`~content_machine.intelligence.models.SourceItem`), so a flag
+    survives to the brief for every admitted item, reviewed-and-overridden
+    or not; that propagation does not relax this check in any way.
     """
 
 
@@ -237,9 +249,17 @@ def to_source_item(
     default) or an empty set never admits a flagged item -- naming the wrong
     flag (one not actually present, or missing one that IS present) also
     still rejects, since every blocking flag on the result must be covered.
-    See :class:`UnreviewedSecurityFlagsError` for why this is fail-closed
-    rather than propagating the flag itself, which is the durable fix
-    deferred to a future gate.
+    See :class:`UnreviewedSecurityFlagsError` for why this is fail-closed;
+    Gate E0 (E0.1) additionally propagates ``result.security_flags`` onto
+    the returned ``SourceItem`` natively for every admitted item (reviewed-
+    and-overridden or not) -- this durable propagation does not relax the
+    fail-closed check above in any way.
+
+    ``registry_entry`` also supplies ``may_supply_independence`` (Gate E0,
+    E0.3, R3/F2): the returned ``SourceItem`` ALWAYS carries the registry's
+    explicit ``True``/``False`` answer, never ``None`` -- only the loader/
+    human-authored path (which never crosses this bridge) can leave that
+    field unset.
 
     ``reviewer_note`` (Gate D round-2 correction, C2) is REQUIRED, non-empty
     (after stripping), whenever ``human_reviewed_flags`` is passed as a
@@ -319,6 +339,13 @@ def to_source_item(
         topic_tags=list(assessment.topic_tags),
         contains_benefit_or_performance_claim=assessment.contains_benefit_or_performance_claim,
         claim_directly_verifiable_in_artifact=assessment.claim_directly_verifiable_in_artifact,
+        # Gate E0 (E0.1): the durable propagation -- flag NAMES only, never
+        # the hostile text (that text lives only in already-sanitized
+        # result.title/summary_normalized fields, unchanged by this).
+        security_flags=result.security_flags,
+        # Gate E0 (E0.3, R3/F2): ALWAYS an explicit bool from the registry,
+        # never None -- every connector-sourced item is governed.
+        may_supply_independence=registry_entry.may_supply_independence,
     )
 
 
