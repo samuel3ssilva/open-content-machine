@@ -144,12 +144,21 @@ rendering behavior are completely untouched by this gate.
 - Threat model: nine new connector threats (T13–T21) and a Prevented/
   Detected/Mitigated/Accepted/Deferred honesty subsection stating plainly
   that there is no claim of semantic prompt-injection detection.
-- Suite grew to 734 tests (142 new), all offline; `ruff` and `mypy` clean.
+- Suite grew to 800 tests (208 new), all offline; `ruff` and `mypy` clean.
 
 Not implemented and explicitly out of scope for this gate: any real adapter,
 any network call, any credential, any scheduler, coverage reporting wired
 into the published brief, and any change to ranking calibration or
 admission-policy for non-human-authored assessments.
+
+**Known test-coverage gaps (not runtime holes).** Independent QA mutation
+testing found two branches of `sanitize.py`'s patterns that the suite does
+not regression-lock: removing `password`/`passwd` from
+`_CREDENTIAL_ASSIGNMENT_RE`, and removing `\x7f` (DEL) from
+`_CONTROL_CHAR_RE`, each survive the test suite unnoticed. Both tokens are
+still present in the shipped patterns — nothing is missing at runtime — but
+a future edit could silently drop either without a failing test catching it.
+Recorded here for a follow-up test addition.
 
 ### Documentation
 

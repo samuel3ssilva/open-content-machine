@@ -1,12 +1,12 @@
 # MVP Status — Painel Oficial
 
-Atualizado: 2026-07-25 · Release atual: **v0.0.1** · Branch: `main` · CI: verde
+Atualizado: 2026-07-27 · Release atual: **v0.0.1** · Branch: `main` · CI: verde
 
 ## Public summary (English)
 
 - `v0.0.1` is tagged and released; Sprint 1.x additions are merged on `main`
   but not yet in a tagged release.
-- Current quality gates: 734 automated tests passing, `ruff` clean, `mypy`
+- Current quality gates: 800 automated tests passing, `ruff` clean, `mypy`
   clean, CI green on GitHub Actions.
 - The weekly AI & Claude Intelligence Brief (v0.1) is merged on `main` and
   runs **fully offline against synthetic fixtures only** — no connector, no
