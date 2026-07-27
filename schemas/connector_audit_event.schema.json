@@ -1,0 +1,51 @@
+{
+  "$defs": {
+    "AuditEventKind": {
+      "description": "The four event families ``ConnectorAuditEvent`` covers.\n\nOne closed schema for all four (per spec \u00a78) rather than a schema per\nfamily -- ``reason_code`` carries the family-specific machine code (e.g.\nan ``AuthorizationReasonCode`` or ``FailureKind`` value) as a plain\nstring, since a single field cannot be typed against four different\nenums without a discriminated union this gate does not need.",
+      "enum": [
+        "permission",
+        "retention",
+        "failure",
+        "security"
+      ],
+      "title": "AuditEventKind",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One audit row. Never carries a source body -- ``detail`` is a short,\nalready-sanitized human-readable note, never raw content.\n\nFrozen (Gate D round-1 correction, B3): an audit row is a record of a\npast event and must never be mutable after construction.",
+  "properties": {
+    "source_id": {
+      "title": "Source Id",
+      "type": "string"
+    },
+    "event_kind": {
+      "$ref": "#/$defs/AuditEventKind"
+    },
+    "reason_code": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Reason Code",
+      "type": "string"
+    },
+    "occurred_at": {
+      "format": "date-time",
+      "title": "Occurred At",
+      "type": "string"
+    },
+    "detail": {
+      "default": "",
+      "maxLength": 280,
+      "title": "Detail",
+      "type": "string"
+    }
+  },
+  "required": [
+    "source_id",
+    "event_kind",
+    "reason_code",
+    "occurred_at"
+  ],
+  "title": "ConnectorAuditEvent",
+  "type": "object"
+}

@@ -1,0 +1,63 @@
+{
+  "$defs": {
+    "PublisherClassification": {
+      "description": "Where a source sits relative to the subjects it covers.\n\nDecided once, when the source is curated -- never inferred from a single\nitem, and never present on ``models.DiscoveryResult`` (see that model's\ndocstring): it is a property of the source, known before any retrieval.",
+      "enum": [
+        "vendor_first_party",
+        "independent",
+        "community",
+        "unclassified"
+      ],
+      "title": "PublisherClassification",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One curated source, known and classified before any retrieval happens.",
+  "properties": {
+    "source_id": {
+      "title": "Source Id",
+      "type": "string"
+    },
+    "source_group": {
+      "title": "Source Group",
+      "type": "string"
+    },
+    "publisher_id": {
+      "title": "Publisher Id",
+      "type": "string"
+    },
+    "source_category": {
+      "title": "Source Category",
+      "type": "string"
+    },
+    "source_type": {
+      "enum": [
+        "email",
+        "feed",
+        "doc"
+      ],
+      "title": "Source Type",
+      "type": "string"
+    },
+    "publisher_classification": {
+      "$ref": "#/$defs/PublisherClassification"
+    },
+    "endpoint_label": {
+      "maxLength": 200,
+      "title": "Endpoint Label",
+      "type": "string"
+    }
+  },
+  "required": [
+    "source_id",
+    "source_group",
+    "publisher_id",
+    "source_category",
+    "source_type",
+    "publisher_classification",
+    "endpoint_label"
+  ],
+  "title": "SourceRegistryEntry",
+  "type": "object"
+}

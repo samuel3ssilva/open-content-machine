@@ -1,0 +1,265 @@
+{
+  "$defs": {
+    "AuditEventKind": {
+      "description": "The four event families ``ConnectorAuditEvent`` covers.\n\nOne closed schema for all four (per spec \u00a78) rather than a schema per\nfamily -- ``reason_code`` carries the family-specific machine code (e.g.\nan ``AuthorizationReasonCode`` or ``FailureKind`` value) as a plain\nstring, since a single field cannot be typed against four different\nenums without a discriminated union this gate does not need.",
+      "enum": [
+        "permission",
+        "retention",
+        "failure",
+        "security"
+      ],
+      "title": "AuditEventKind",
+      "type": "string"
+    },
+    "ConnectorAuditEvent": {
+      "additionalProperties": false,
+      "description": "One audit row. Never carries a source body -- ``detail`` is a short,\nalready-sanitized human-readable note, never raw content.\n\nFrozen (Gate D round-1 correction, B3): an audit row is a record of a\npast event and must never be mutable after construction.",
+      "properties": {
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "event_kind": {
+          "$ref": "#/$defs/AuditEventKind"
+        },
+        "reason_code": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Reason Code",
+          "type": "string"
+        },
+        "occurred_at": {
+          "format": "date-time",
+          "title": "Occurred At",
+          "type": "string"
+        },
+        "detail": {
+          "default": "",
+          "maxLength": 280,
+          "title": "Detail",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id",
+        "event_kind",
+        "reason_code",
+        "occurred_at"
+      ],
+      "title": "ConnectorAuditEvent",
+      "type": "object"
+    },
+    "DisposalRecord": {
+      "additionalProperties": false,
+      "description": "Proof that a piece of ``temporary_full_content`` was disposed of.\n\nCarries no body, ever -- only ``byte_count`` (a size, not the content)\nand a short ``reason``. Frozen (Gate D round-1 correction, B3): a\ndisposal record is evidence of a past event and must never be mutated\nafter construction, including via ``model_copy(update=...)``.",
+      "properties": {
+        "canonical_reference": {
+          "title": "Canonical Reference",
+          "type": "string"
+        },
+        "retention_class": {
+          "$ref": "#/$defs/RetentionClass"
+        },
+        "byte_count": {
+          "minimum": 0,
+          "title": "Byte Count",
+          "type": "integer"
+        },
+        "disposed": {
+          "title": "Disposed",
+          "type": "boolean"
+        },
+        "reason": {
+          "maxLength": 200,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "canonical_reference",
+        "retention_class",
+        "byte_count",
+        "disposed",
+        "reason"
+      ],
+      "title": "DisposalRecord",
+      "type": "object"
+    },
+    "ExtractionResult": {
+      "additionalProperties": false,
+      "description": "Minimum traceable fields from a verification fetch. No body, ever.\n\nFrozen (Gate D round-1 correction, B3): a persisted, body-free record of\na past extraction, never mutated after construction.",
+      "properties": {
+        "canonical_reference": {
+          "title": "Canonical Reference",
+          "type": "string"
+        },
+        "content_type": {
+          "title": "Content Type",
+          "type": "string"
+        },
+        "byte_count": {
+          "minimum": 0,
+          "title": "Byte Count",
+          "type": "integer"
+        },
+        "extracted_at": {
+          "format": "date-time",
+          "title": "Extracted At",
+          "type": "string"
+        },
+        "upgrade": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VerificationUpgrade"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "security_flags": {
+          "items": {
+            "$ref": "#/$defs/SecurityFlag"
+          },
+          "title": "Security Flags",
+          "type": "array"
+        }
+      },
+      "required": [
+        "canonical_reference",
+        "content_type",
+        "byte_count",
+        "extracted_at"
+      ],
+      "title": "ExtractionResult",
+      "type": "object"
+    },
+    "RetentionClass": {
+      "description": "The closed set of value classes a connector can ever produce.",
+      "enum": [
+        "metadata",
+        "normalized_summary",
+        "temporary_full_content",
+        "extraction_artifact",
+        "audit_log",
+        "error_record"
+      ],
+      "title": "RetentionClass",
+      "type": "string"
+    },
+    "SecurityFlag": {
+      "description": "Heuristic markers raised while sanitizing untrusted content.\n\nEvery flag is a marker for a human reviewer, never a claim of complete\ndetection (see the module docstring's honesty requirement).",
+      "enum": [
+        "active_markup_neutralized",
+        "instruction_shaped_text",
+        "credential_shaped_text",
+        "email_shaped_text",
+        "filesystem_path_shaped_text",
+        "oversized_truncated",
+        "malformed_encoding",
+        "unsupported_content_type",
+        "redirect_chain_exceeded",
+        "duplicate_canonical_reference",
+        "conflicting_publication_date"
+      ],
+      "title": "SecurityFlag",
+      "type": "string"
+    },
+    "VerificationUpgrade": {
+      "additionalProperties": false,
+      "description": "Typed, bounded feedback from deep verification.\n\n**Honest scope statement (Gate D round-2 correction, D2):** this is a\nCONTRACT only in Gate D -- nothing in this codebase applies it to an\n``AuthoredAssessment`` before bridging; ``bridge.py`` has zero\nreferences to ``VerificationUpgrade``. Wiring that application is\nfirst-real-adapter-gate work (see the module docstring's deep\nverification section and ADR 0005's deferred list), not something this\ncorrection round builds. Whatever future gate wires it must never\nmutate an already-ranked topic, an already-written brief, or any\nlibrary entry -- verification happens strictly before a topic exists in\nthe M1-M7 pipeline. Reuses ``intelligence.models.EvidenceType`` so a\nverified upgrade speaks the exact vocabulary ``ranking.py`` already\nunderstands, rather than a second, connector-local evidence taxonomy.",
+      "properties": {
+        "confirmed_evidence_type": {
+          "anyOf": [
+            {
+              "enum": [
+                "roundup",
+                "relay",
+                "rumor",
+                "announcement",
+                "release_note",
+                "official_doc",
+                "spec_change",
+                "deprecation_notice",
+                "security_advisory",
+                "official_api_behavior_change",
+                "independent_analysis",
+                "benchmark_with_methodology",
+                "independent_implementation",
+                "research_paper"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confirmed Evidence Type"
+        },
+        "claim_directly_verifiable_in_artifact": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Claim Directly Verifiable In Artifact"
+        },
+        "independent_of_subject": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Independent Of Subject"
+        },
+        "upgrade_reason": {
+          "maxLength": 500,
+          "title": "Upgrade Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "upgrade_reason"
+      ],
+      "title": "VerificationUpgrade",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The full, persistable result of one verification: the body-free\nextraction, proof of disposal, the audit trail, and any flags raised\nduring the audit/disposal step itself (in addition to\n``extraction.security_flags``, which covers flags raised during\nextraction). Frozen (Gate D round-1 correction, B3): a persisted result,\nnever mutated after construction.",
+  "properties": {
+    "extraction": {
+      "$ref": "#/$defs/ExtractionResult"
+    },
+    "disposal": {
+      "$ref": "#/$defs/DisposalRecord"
+    },
+    "audit_event": {
+      "$ref": "#/$defs/ConnectorAuditEvent"
+    },
+    "security_flags": {
+      "items": {
+        "$ref": "#/$defs/SecurityFlag"
+      },
+      "title": "Security Flags",
+      "type": "array"
+    }
+  },
+  "required": [
+    "extraction",
+    "disposal",
+    "audit_event"
+  ],
+  "title": "VerificationOutcome",
+  "type": "object"
+}

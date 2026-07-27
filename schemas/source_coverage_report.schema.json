@@ -1,0 +1,108 @@
+{
+  "$defs": {
+    "FailureKind": {
+      "description": "The closed set of ways discovery or verification of one source can fail.",
+      "enum": [
+        "timeout",
+        "rate_limited",
+        "unavailable",
+        "invalid_response",
+        "unsupported_content",
+        "extraction_failure",
+        "permission_revoked",
+        "partial_batch",
+        "source_id_mismatch"
+      ],
+      "title": "FailureKind",
+      "type": "string"
+    },
+    "SourceCoverage": {
+      "additionalProperties": false,
+      "description": "One source's outcome within a single :func:`run_discovery` call (spec\n\u00a78's ``SourceCoverageReport`` per-source fields). Frozen (Gate D\nround-1 correction, B3): a result value, never mutated after\nconstruction.",
+      "properties": {
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "attempted": {
+          "title": "Attempted",
+          "type": "boolean"
+        },
+        "discovered": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Discovered",
+          "type": "integer"
+        },
+        "dropped_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Dropped Count",
+          "type": "integer"
+        },
+        "truncated": {
+          "default": false,
+          "title": "Truncated",
+          "type": "boolean"
+        },
+        "failed": {
+          "default": false,
+          "title": "Failed",
+          "type": "boolean"
+        },
+        "failure_kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FailureKind"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "sanitized_reason": {
+          "default": "",
+          "maxLength": 200,
+          "title": "Sanitized Reason",
+          "type": "string"
+        },
+        "skipped_not_approved": {
+          "default": false,
+          "title": "Skipped Not Approved",
+          "type": "boolean"
+        },
+        "consecutive_failure_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Consecutive Failure Count",
+          "type": "integer"
+        },
+        "review_overdue": {
+          "default": false,
+          "title": "Review Overdue",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "source_id",
+        "attempted"
+      ],
+      "title": "SourceCoverage",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Per-source coverage for one batch, sorted by ``source_id`` -- its own\nobject (see the module docstring's scope boundary: never wired into\n``brief.py``/``weekly.py``/the CLI in this gate). Frozen (Gate D\nround-1 correction, B3).",
+  "properties": {
+    "sources": {
+      "items": {
+        "$ref": "#/$defs/SourceCoverage"
+      },
+      "title": "Sources",
+      "type": "array"
+    }
+  },
+  "title": "SourceCoverageReport",
+  "type": "object"
+}
