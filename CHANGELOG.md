@@ -81,6 +81,76 @@ Not implemented and explicitly out of scope for v0.1: real connectors of any
 kind (Gmail, RSS, HTML), an active scheduler or daemon, ranking calibration
 against real signals, and the editorial/drafting layer.
 
+### Added (Gate D — connector security foundation, contracts + synthetic harness only)
+
+A new `content_machine.connectors` package: the permission, retention,
+sanitization, and failure-taxonomy foundation future real source connectors
+(RSS, vendor changelogs, a Gmail digest, etc.) will be built on. **This is
+contracts and a synthetic harness only: nothing fetches, there is no network
+code anywhere in this package, no credential, no scheduler, and no real
+source.** `git diff` confirms zero lines changed in `intelligence`,
+`audience`, `privacy`, `ingestion`, `providers`, or `cli` — ranking and
+rendering behavior are completely untouched by this gate.
+
+- Bounded discovery (`DiscoveryResult`, no body field — full-body persistence
+  is structurally impossible, not merely discouraged) and deep verification
+  (`VerificationRequest` with a required, non-empty `retrieval_reason`;
+  content lives only in an in-memory `TemporaryContentHandle` that must be
+  disposed via `minimize()`) as two separately-permissioned modes.
+- `SourceRegistry`: the curated, pre-retrieval, authoritative source of
+  `publisher_id`/`source_category`/`publisher_classification`; an
+  `unclassified` source fails exactly as closed as a known vendor source and
+  can never supply evidence independence.
+- `PermissionRegistry`: a fail-closed `proposed`/`approved`/`suspended`/
+  `revoked` lifecycle × mode × `permitted_fields` allowlist, with a distinct
+  reason code per denial invariant; a result that populates a field outside
+  its source's `permitted_fields` is rejected and audited, never silently
+  stripped.
+- `sanitize.sanitize_text`/`sanitize_error`: neutralizes markup and control
+  characters, redacts credential-/email-/filesystem-path-shaped substrings,
+  and flags (never claims to reliably detect) instruction-shaped text — the
+  real control against retrieved hostile content is architectural, not
+  semantic detection.
+- `RetentionPolicy`: every value a connector produces belongs to exactly one
+  retention class; raw retrieved content is the one class that may never be
+  persisted and must be disposed with a `DisposalRecord` as proof.
+- `run_discovery`: batch orchestration with per-source isolation (one
+  adapter's failure never aborts the batch), a deterministic
+  `SourceCoverageReport`, and a closed `FailureKind` taxonomy with
+  retry-eligibility as advisory metadata only — no automatic retry exists
+  anywhere in this gate.
+- `bridge.to_source_item`: the single choke point (trust boundary TB-4) from
+  connector output into the M1–M7 pipeline. Fails closed on provenance (only
+  `AssessmentProvenance.human_authored` may cross in this gate — admitting a
+  derived or model-proposed assessment is a policy change reserved for a
+  future Fable review and gate) and on empty `topic_tags`/
+  `subject_entity_ids`, whose empty default would otherwise silently corrupt
+  the relevance and independence dimensions of ranking.
+- Seven deterministic, network-free synthetic adapters exercising success,
+  timeout, rate-limit, malicious-content, oversized/malformed/unsupported-
+  content, revoked-permission, and partial-batch scenarios.
+- ADR 0005 — records the placement, TB-4, fail-closed provenance, the two-mode
+  split, the registry's fail-closed classification, the permission/
+  `permitted_fields` model, retention/disposal, the failure/isolation model,
+  and the pinned constants (`DEFAULT_MAX_BYTES` 2,000,000,
+  `DEFAULT_TIMEOUT_SECONDS` 20, `DEFAULT_MAX_REDIRECTS` 3,
+  `DEFAULT_MAX_ITEMS_PER_SOURCE` 50, `DEFAULT_MAX_REQUESTS_PER_RUN` 200,
+  `SUMMARY_MAX_CHARS` 280, `TITLE_MAX_CHARS` 300, plus a closed
+  `ALLOWED_CONTENT_TYPES` allowlist).
+- New `docs/connector-security.md`: the contributor-facing guide to the two
+  modes, the permission lifecycle, what a future adapter author must and must
+  not do, retention defaults, credential rules, and the checklist a real
+  adapter must pass before activation.
+- Threat model: nine new connector threats (T13–T21) and a Prevented/
+  Detected/Mitigated/Accepted/Deferred honesty subsection stating plainly
+  that there is no claim of semantic prompt-injection detection.
+- Suite grew to 734 tests (142 new), all offline; `ruff` and `mypy` clean.
+
+Not implemented and explicitly out of scope for this gate: any real adapter,
+any network call, any credential, any scheduler, coverage reporting wired
+into the published brief, and any change to ranking calibration or
+admission-policy for non-human-authored assessments.
+
 ### Documentation
 
 - Portfolio readiness pass: public status alignment across README,

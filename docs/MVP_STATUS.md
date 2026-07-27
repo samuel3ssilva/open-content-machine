@@ -6,7 +6,7 @@ Atualizado: 2026-07-25 · Release atual: **v0.0.1** · Branch: `main` · CI: ver
 
 - `v0.0.1` is tagged and released; Sprint 1.x additions are merged on `main`
   but not yet in a tagged release.
-- Current quality gates: 592 automated tests passing, `ruff` clean, `mypy`
+- Current quality gates: 734 automated tests passing, `ruff` clean, `mypy`
   clean, CI green on GitHub Actions.
 - The weekly AI & Claude Intelligence Brief (v0.1) is merged on `main` and
   runs **fully offline against synthetic fixtures only** — no connector, no
@@ -81,8 +81,16 @@ marcada). Nenhum dado real foi processado.
 - ✅ Demonstração sintética de 3 semanas (outputs privados fora do repo)
 - ⬜ Refinamentos v0.3 (decay consumido por output, fall-out reporting,
   `deltas.jsonl`, exibição do resumo normalizado)
-- 🔒 Fundação de conectores reais → requer escopo do Founder + revisão de
-  segurança/privacidade Fable antes de qualquer implementação
+- ✅ **Gate D — fundação de segurança de conectores (contratos + harness
+  sintético)**: `content_machine.connectors` — permissões, retenção,
+  sanitização, taxonomia de falhas, `run_discovery` com isolamento por fonte,
+  e `bridge.to_source_item` (fronteira TB-4, fail-closed em provenance);
+  ADR 0005; 7 adaptadores sintéticos determinísticos; **nada busca dados
+  reais** — zero código de rede, zero credencial, zero scheduler, zero fonte
+  real; zero linhas alteradas em ranking/rendering
+- 🔒 Conectores reais (adaptador de verdade contra uma fonte real) → requer
+  decisão de escopo do Founder + revisão de segurança/privacidade Fable antes
+  de qualquer implementação
 
 ## Segurança e privacidade
 
@@ -142,10 +150,12 @@ marcada). Nenhum dado real foi processado.
 > **v0.1.0**
 >
 > Eixo Intelligence Brief: M1–M7 ✅ merged em `main` (Gates A, B e C) →
+> fundação de segurança de conectores ✅ (Gate D: contratos + harness
+> sintético, ADR 0005 — nada busca dados reais) →
 > **➡️ próximo gate de engenharia AGUARDA AUTORIZAÇÃO DO FOUNDER**, entre
-> (a) refinamentos v0.3 dentro do escopo sintético e (b) a fundação do
-> contrato `SourceAdapter` para fonte real. Conectores reais não começam
-> antes de escopo/permissões definidos e revisão Fable.
+> (a) refinamentos v0.3 dentro do escopo sintético e (b) o primeiro adaptador
+> real sobre a fundação já construída. Conectores reais não começam antes de
+> escopo/permissões definidos e revisão Fable.
 >
 > Nota: a revisão manual dos 100 títulos está pausada por decisão do Founder
 > (arquivo preservado em ambiente privado); será substituída por uma amostra
