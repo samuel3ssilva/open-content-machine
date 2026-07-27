@@ -1,0 +1,171 @@
+{
+  "$defs": {
+    "PermissionRef": {
+      "additionalProperties": false,
+      "description": "Closed, point-in-time snapshot of the permission that authorized one\n:class:`DiscoveryResult`.\n\nDeliberately stores ``approved_mode``/``status_at_discovery`` as plain,\nlength-capped strings rather than the live ``SourceMode``/\n``PermissionStatus`` enums from :mod:`content_machine.connectors.permissions`:\nthis module is the base contracts layer that ``permissions.py`` imports\nFROM (for ``DiscoveryResult`` field enforcement and audit events), so\nimporting ``permissions`` back into this module would create a cycle.\nThis ref is an audit snapshot, not a live permission handle -- a caller\nthat needs the live object looks it up in a ``PermissionRegistry`` by\n``source_id``.\n\nFrozen (Gate D round-1 correction, B3): a point-in-time snapshot, never\nmutated after construction. Also see ``runner.run_discovery`` (B1): the\nrunner now constructs this ref itself, from the AUTHORIZED\n``PermissionRegistry`` entry, rather than trusting whatever an adapter\nself-reports on the ``DiscoveryResult`` it returns.",
+      "properties": {
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "approved_mode": {
+          "maxLength": 20,
+          "minLength": 1,
+          "title": "Approved Mode",
+          "type": "string"
+        },
+        "status_at_discovery": {
+          "maxLength": 20,
+          "minLength": 1,
+          "title": "Status At Discovery",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id",
+        "approved_mode",
+        "status_at_discovery"
+      ],
+      "title": "PermissionRef",
+      "type": "object"
+    },
+    "ProvenanceMetadata": {
+      "additionalProperties": false,
+      "description": "Closed, scalar-only record of where and how a :class:`DiscoveryResult`\nwas produced. Never a ``dict[str, Any]`` -- an open shape is exactly\nwhere a raw body could sneak back in. Frozen (Gate D round-1 correction,\nB3): a provenance snapshot, never mutated after construction.",
+      "properties": {
+        "adapter_name": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Adapter Name",
+          "type": "string"
+        },
+        "discovery_run_id": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Discovery Run Id",
+          "type": "string"
+        },
+        "discovered_at": {
+          "format": "date-time",
+          "title": "Discovered At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "adapter_name",
+        "discovery_run_id",
+        "discovered_at"
+      ],
+      "title": "ProvenanceMetadata",
+      "type": "object"
+    },
+    "SecurityFlag": {
+      "description": "Heuristic markers raised while sanitizing untrusted content.\n\nEvery flag is a marker for a human reviewer, never a claim of complete\ndetection (see the module docstring's honesty requirement).",
+      "enum": [
+        "active_markup_neutralized",
+        "instruction_shaped_text",
+        "credential_shaped_text",
+        "email_shaped_text",
+        "filesystem_path_shaped_text",
+        "oversized_truncated",
+        "malformed_encoding",
+        "unsupported_content_type",
+        "redirect_chain_exceeded",
+        "duplicate_canonical_reference",
+        "conflicting_publication_date"
+      ],
+      "title": "SecurityFlag",
+      "type": "string"
+    },
+    "SummaryProvenance": {
+      "description": "Whether a discovery result's summary is the source's own words or was\nderived by the system -- so a vendor's own blurb is never rendered as\nsystem analysis.",
+      "enum": [
+        "source_supplied",
+        "system_derived"
+      ],
+      "title": "SummaryProvenance",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One bounded, allowlisted fact-sheet about a discovered artifact.\n\nThere is deliberately NO body/raw/content field: full-body persistence in\ndiscovery is structurally impossible, not merely discouraged, because the\nfield does not exist on this model. ``provenance`` and ``permission_ref``\nare closed, scalar-only models -- never an open ``dict[str, Any]``, which\nis exactly where a body would come back in.\n\nNo ``publisher_classification`` here: that is a property of the curated\nsource, decided before any retrieval, and lives on\n``registry.SourceRegistryEntry`` instead.\n\nFrozen (Gate D round-1 correction, B3): every bound above (length caps,\nthe content_type allowlist, and canonical_reference's cap/scheme/\ncontrol-character checks below) is enforced by CONSTRUCTION -- a\nvalidator that runs once, when the object is made. Frozen closes the\nother half of that story: without it, ``model_copy(update=...)`` (or\nplain attribute assignment) could set any field to an out-of-bound value\nAFTER construction with no validator ever running again. Enforced by\nconstruction plus immutability together, not by any single mechanism\nthat would make an out-of-bound instance impossible to obtain in\nprinciple (``model_construct()`` still bypasses validation, as it does\nfor every Pydantic model) -- see the round-1 findings section of\nADR 0005 for why this is described this way rather than as \"structural.\"",
+  "properties": {
+    "source_id": {
+      "title": "Source Id",
+      "type": "string"
+    },
+    "source_group": {
+      "title": "Source Group",
+      "type": "string"
+    },
+    "title": {
+      "maxLength": 300,
+      "minLength": 1,
+      "title": "Title",
+      "type": "string"
+    },
+    "publication_date": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Publication Date"
+    },
+    "canonical_reference": {
+      "maxLength": 2048,
+      "minLength": 1,
+      "title": "Canonical Reference",
+      "type": "string"
+    },
+    "summary_normalized": {
+      "default": "",
+      "maxLength": 280,
+      "title": "Summary Normalized",
+      "type": "string"
+    },
+    "summary_provenance": {
+      "$ref": "#/$defs/SummaryProvenance"
+    },
+    "content_type": {
+      "title": "Content Type",
+      "type": "string"
+    },
+    "retrieved_at": {
+      "format": "date-time",
+      "title": "Retrieved At",
+      "type": "string"
+    },
+    "provenance": {
+      "$ref": "#/$defs/ProvenanceMetadata"
+    },
+    "permission_ref": {
+      "$ref": "#/$defs/PermissionRef"
+    },
+    "security_flags": {
+      "items": {
+        "$ref": "#/$defs/SecurityFlag"
+      },
+      "title": "Security Flags",
+      "type": "array"
+    }
+  },
+  "required": [
+    "source_id",
+    "source_group",
+    "title",
+    "canonical_reference",
+    "summary_provenance",
+    "content_type",
+    "retrieved_at",
+    "provenance",
+    "permission_ref"
+  ],
+  "title": "DiscoveryResult",
+  "type": "object"
+}

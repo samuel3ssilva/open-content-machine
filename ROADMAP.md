@@ -23,8 +23,16 @@ deltas), and eight artifacts per run.
 
 **Runs only against synthetic fixtures, fully offline.** No connector, no
 scheduler, and no real source is implemented; ranking is not yet calibrated
-against real signals. Real-source work stays gated on an explicit Founder
-scope decision plus a Fable security and privacy review.
+against real signals.
+
+**Gate D — connector security foundation shipped (contracts only).** The
+permission model, retention policy, sanitizer, failure taxonomy, and pipeline
+bridge (`content_machine.connectors`, ADR 0005) that a real connector will be
+built on are now implemented and tested against seven deterministic synthetic
+adapters. Nothing fetches: no network code, no credential, no scheduler, and
+no real source exists yet. Real connectors remain gated on an explicit
+Founder scope decision plus a Fable security and privacy review before any
+adapter is authorized to run against a real source.
 
 This work anticipates parts of Phase 5 (prioritization) and Phase 8 (evidence
 checking) below; the remaining phases and their order are unchanged.

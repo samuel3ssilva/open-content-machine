@@ -29,6 +29,9 @@ src/content_machine/
 ├── privacy/     # PII detection/stripping, deterministic pseudonymization
 ├── audience/    # normalization, statistics, report generation (MD + JSON)
 ├── providers/   # ModelProvider interface + Anthropic/OpenAI/Mock implementations
+├── connectors/  # future external-source contracts: permissions, retention,
+│                # sanitizer, failure taxonomy, synthetic adapters (Gate D);
+│                # no network I/O yet — see ADR 0005
 └── cli/         # Typer app: `content-machine` root, `audience` subcommands
 ```
 
@@ -45,6 +48,13 @@ schemas in `schemas/`.
 - `providers` may import only `config`. Vendor SDKs are imported **only inside**
   the corresponding provider module, lazily, so the core installs and runs
   without them.
+- `connectors` may import `config` and, narrowly, the intelligence module's
+  shared taxonomy types and normalization helper (`intelligence.models` for
+  reused enums; `intelligence.normalize` for the pipeline bridge only) —
+  nothing else. Nothing in `intelligence`, `audience`, or `privacy` may import
+  `connectors`. `connectors` is the sole future network boundary outside
+  `providers`: any vendor/network SDK it ever needs is imported lazily, inside
+  a concrete adapter module, exactly like `providers`' own rule. See ADR 0005.
 - No module reads environment variables directly; only `config` does.
 
 ## 3. Data zones and trust boundaries
@@ -68,6 +78,15 @@ implementation exercised.
 **Trust boundary TB-3 (report → publication):** reports are generated from the
 anonymized zone only, and publication is always a human action. The system never
 posts anywhere automatically.
+
+**Trust boundary TB-4 (retrieval → pipeline):** `connectors.bridge.to_source_item`
+is the single choke point through which any future connector's output may enter
+the M1–M7 pipeline — no other code path may construct a `SourceItem` from
+connector output. Only `AssessmentProvenance.human_authored` may cross the
+bridge in this gate (fail-closed by construction; see ADR 0005); a raw
+retrieved body never reaches persistence at all — discovery results have no
+body field, and verification content lives only in a transient, in-memory
+handle that must be disposed after minimization.
 
 ## 4. Audience Intelligence flow (MVP)
 
@@ -138,3 +157,9 @@ All commands work offline, with no API key, and print actionable errors
 Kubernetes, microservices, remote databases, distributed queues, web dashboard,
 cloud infra, agent frameworks, real provider calls, scraping of any kind. Each
 requires a future ADR with demonstrated need.
+
+`connectors/` (ADR 0005) ships contracts, a permission model, a retention
+policy, a sanitizer, a failure taxonomy, and a synthetic adapter harness only.
+No real adapter, no network call, no credential, and no scheduler exists yet;
+each real source stays gated on an explicit Founder scope decision plus a
+Fable security and privacy review.

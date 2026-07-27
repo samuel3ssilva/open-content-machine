@@ -29,6 +29,15 @@ from content_machine.audience.run_comparison import (  # noqa: E402
     ReclassificationStats,
     RunComparison,
 )
+from content_machine.connectors.models import (  # noqa: E402
+    ConnectorAuditEvent,
+    DiscoveryResult,
+    VerificationOutcome,
+    VerificationRequest,
+)
+from content_machine.connectors.permissions import SourcePermission  # noqa: E402
+from content_machine.connectors.registry import SourceRegistryEntry  # noqa: E402
+from content_machine.connectors.runner import SourceCoverageReport  # noqa: E402
 from content_machine.ingestion.csv_loader import RawConnection  # noqa: E402
 from content_machine.intelligence.brief import WeeklyBrief  # noqa: E402
 from content_machine.intelligence.library import (  # noqa: E402
@@ -87,6 +96,13 @@ _MODELS = {
     "run_manifest.schema.json": RunManifest,
     "weekly_delta.schema.json": WeeklyDelta,
     "movements_document.schema.json": MovementsDocument,
+    "source_registry_entry.schema.json": SourceRegistryEntry,
+    "source_permission.schema.json": SourcePermission,
+    "discovery_result.schema.json": DiscoveryResult,
+    "verification_request.schema.json": VerificationRequest,
+    "verification_outcome.schema.json": VerificationOutcome,
+    "connector_audit_event.schema.json": ConnectorAuditEvent,
+    "source_coverage_report.schema.json": SourceCoverageReport,
 }
 
 

@@ -1,0 +1,52 @@
+{
+  "additionalProperties": false,
+  "description": "A request to fetch and inspect ONE artifact beyond its discovery\nsummary. ``retrieval_reason`` is required and non-empty after stripping\n-- an unreasoned deep fetch is not permitted to be constructed.",
+  "properties": {
+    "source_id": {
+      "title": "Source Id",
+      "type": "string"
+    },
+    "canonical_reference": {
+      "title": "Canonical Reference",
+      "type": "string"
+    },
+    "retrieval_reason": {
+      "minLength": 1,
+      "title": "Retrieval Reason",
+      "type": "string"
+    },
+    "max_bytes": {
+      "default": 2000000,
+      "exclusiveMinimum": 0,
+      "title": "Max Bytes",
+      "type": "integer"
+    },
+    "timeout_seconds": {
+      "default": 20,
+      "exclusiveMinimum": 0,
+      "title": "Timeout Seconds",
+      "type": "integer"
+    },
+    "allowed_content_types": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Allowed Content Types",
+      "type": "array",
+      "uniqueItems": true
+    },
+    "max_redirects": {
+      "default": 3,
+      "minimum": 0,
+      "title": "Max Redirects",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "source_id",
+    "canonical_reference",
+    "retrieval_reason"
+  ],
+  "title": "VerificationRequest",
+  "type": "object"
+}

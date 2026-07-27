@@ -1,0 +1,78 @@
+{
+  "$defs": {
+    "PermissionStatus": {
+      "description": "A permission's lifecycle state. Only ``approved`` ever executes.",
+      "enum": [
+        "proposed",
+        "approved",
+        "suspended",
+        "revoked"
+      ],
+      "title": "PermissionStatus",
+      "type": "string"
+    },
+    "SourceMode": {
+      "description": "What a source is permitted to do.",
+      "enum": [
+        "discovery",
+        "verification",
+        "both"
+      ],
+      "title": "SourceMode",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One source's standing permission: what mode, what fields, what\nretention policy, under whose authorization, and its current status.\n\nFrozen (Gate D round-1 correction, B3): a status/lifecycle change is\nalways a NEW registry entry (the caller rebuilds the ``PermissionRegistry``\nwith an updated ``SourcePermission``), never an in-place mutation of an\nexisting one.",
+  "properties": {
+    "source_id": {
+      "title": "Source Id",
+      "type": "string"
+    },
+    "approved_mode": {
+      "$ref": "#/$defs/SourceMode"
+    },
+    "permitted_fields": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Permitted Fields",
+      "type": "array",
+      "uniqueItems": true
+    },
+    "retention_policy_id": {
+      "title": "Retention Policy Id",
+      "type": "string"
+    },
+    "review_due": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Review Due"
+    },
+    "authorization_owner": {
+      "title": "Authorization Owner",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/PermissionStatus"
+    }
+  },
+  "required": [
+    "source_id",
+    "approved_mode",
+    "permitted_fields",
+    "retention_policy_id",
+    "authorization_owner",
+    "status"
+  ],
+  "title": "SourcePermission",
+  "type": "object"
+}
