@@ -19,11 +19,27 @@ This package imports only the standard library and Pydantic (see the module
 docstrings in ``loader.py``/``cluster.py``/``ranking.py`` for the intra-package
 dependency direction). Nothing outside this package imports it in Gate A: no
 network code, no provider imports, no LLM, no CLI command.
+
+**Gate E0 (E0.1) addition.** :class:`SecurityFlag` lives here, not in
+``connectors``, on purpose: ``docs/architecture.md``'s dependency rule
+permits ``connectors`` to import ONLY ``intelligence.models`` (for reused
+enums) and ``intelligence.normalize`` (for the bridge) -- "nothing else".
+Putting the flag vocabulary in a new ``intelligence.security`` module would
+have required widening that rule (an architecture change, out of scope for
+an implementation ticket); putting it here instead needs no rule change at
+all, since ``SecurityFlag`` is exactly a "reused enum" in the sense that
+phrase already covers. ``connectors.sanitize`` re-exports it so every
+existing ``from content_machine.connectors.sanitize import SecurityFlag``
+import keeps working unchanged. See :class:`SourceItem.security_flags` and
+:class:`TopicCluster.security_flags` for the propagation this enables, and
+:data:`ADVERSARIAL_SECURITY_FLAGS`/:data:`HYGIENE_SECURITY_FLAGS` for the
+two brief-display classes (product ruling P1).
 """
 
 from __future__ import annotations
 
 from datetime import date
+from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -93,6 +109,54 @@ ClaimClass = Literal["fact", "hypothesis", "marketing"]
 ConfidenceLevel = Literal["high", "medium", "low"]
 TierName = Literal["tier_1", "tier_2", "tier_3"]
 RecommendedAction = Literal["study", "read", "save", "monitor", "ignore"]
+
+
+class SecurityFlag(StrEnum):
+    """Heuristic markers raised while sanitizing untrusted connector content.
+
+    **Moved here from ``connectors.sanitize`` in Gate E0 (E0.1)** so
+    :class:`SourceItem` (and, transitively, :class:`TopicCluster` and
+    :class:`TieredTopic`) can carry these flags natively -- see the module
+    docstring's "Gate E0 (E0.1) addition" note for why this module, and
+    ``connectors/sanitize.py``'s module docstring for the un-changed honesty
+    requirement these flags are still subject to: every flag here is a
+    marker for a human reviewer, never a claim of complete detection, and
+    never a description of semantic prompt-injection detection.
+    """
+
+    active_markup_neutralized = "active_markup_neutralized"
+    instruction_shaped_text = "instruction_shaped_text"
+    credential_shaped_text = "credential_shaped_text"
+    email_shaped_text = "email_shaped_text"
+    filesystem_path_shaped_text = "filesystem_path_shaped_text"
+    oversized_truncated = "oversized_truncated"
+    malformed_encoding = "malformed_encoding"
+    unsupported_content_type = "unsupported_content_type"
+    redirect_chain_exceeded = "redirect_chain_exceeded"
+    duplicate_canonical_reference = "duplicate_canonical_reference"
+    conflicting_publication_date = "conflicting_publication_date"
+
+
+# Product ruling P1 (Gate E0 pre-review, Opus): security flags are surfaced
+# in the brief as TWO distinct display classes, never one undifferentiated
+# list -- see ``intelligence.brief`` for where each class is actually
+# rendered.
+#
+# ADVERSARIAL: content that may be attempting to manipulate a human reviewer
+# or a future automated consumer. Named per-topic on the Tier 1/2 entry (and
+# recorded in the Tier 1 appendix) precisely BECAUSE it is rare and
+# consequential enough that naming it does not cause alarm fatigue.
+ADVERSARIAL_SECURITY_FLAGS: frozenset[SecurityFlag] = frozenset(
+    {SecurityFlag.instruction_shaped_text, SecurityFlag.credential_shaped_text}
+)
+# HYGIENE: everything else -- markup neutralization, truncation, malformed
+# encoding, unsupported MIME, redirect-chain length, and batch-level
+# duplicate/conflicting-date detection. These fire on nearly every
+# real-world HTML item and would become wallpaper if named per-topic (P1);
+# they are surfaced ONLY as a single run-level count line.
+HYGIENE_SECURITY_FLAGS: frozenset[SecurityFlag] = frozenset(
+    flag for flag in SecurityFlag if flag not in ADVERSARIAL_SECURITY_FLAGS
+)
 
 
 class SourceItem(BaseModel):
@@ -178,6 +242,26 @@ class SourceItem(BaseModel):
     # is a cluster's anchor and a candidate for the D1 Tier-1 waiver; inert
     # otherwise. See ``tiers.py`` and ADR 0004 for the full predicate.
     claim_directly_verifiable_in_artifact: bool
+    # Gate E0 (E0.1): the durable fix for the flags a connector-sourced item
+    # carried BEFORE this field existed (see ``connectors.bridge``'s
+    # now-historical ``UnreviewedSecurityFlagsError`` fail-closed substitute).
+    # Empty by default for every authored/loader fixture, which never crosses
+    # the connector bridge and therefore has nothing to report. Never holds
+    # the hostile text itself -- flag NAMES only (see ``SecurityFlag``).
+    security_flags: tuple[SecurityFlag, ...] = Field(default_factory=tuple)
+    # Gate E0 (E0.3), tri-state (R3, Fable F2): ``None`` -- the default -- is
+    # "no registry opinion" (the loader/human-authored path, which never
+    # crosses ``connectors.bridge`` and therefore has no registry to consult)
+    # and falls back to the pre-E0.3 subject-relation test in
+    # ``cluster._is_independent``. ``True``/``False`` come ONLY from
+    # ``connectors.bridge.to_source_item``, which reads the curated source
+    # registry's ``SourceRegistryEntry.may_supply_independence`` and NEVER
+    # emits ``None`` -- every connector-sourced item is governed. ``False``
+    # narrows (can only REMOVE independence a subject-relation test would
+    # otherwise grant, never add it); an adapter can never set this field at
+    # all, since it is populated by the bridge from the registry, not from
+    # connector output.
+    may_supply_independence: bool | None = None
 
 
 class TerritoryPriority(BaseModel):
@@ -257,6 +341,25 @@ class TopicCluster(BaseModel):
     cluster_size: int = 0
     topic_tags: list[str] = Field(default_factory=list)
     evidence_types: list[str] = Field(default_factory=list)
+    # Gate E0 (E0.1, R7): the UNION of every member's ``security_flags``
+    # (including duplicate/syndicated/relay members -- unlike the evidence
+    # rubric, this is a visibility signal for a human reviewer, not an
+    # evidentiary computation, so it must never under-report). Computed in
+    # ``cluster._build_cluster``, bypassing ``ranking.py`` entirely: this
+    # field is attached where the cluster joins the ranked/tiered topic
+    # (``tiers.build_tiered_topic``), never threaded through
+    # ``RankingInputs``/``RankingBreakdown``, so no ranking score, weight, or
+    # dimension is touched by this field's existence.
+    security_flags: tuple[SecurityFlag, ...] = Field(default_factory=tuple)
+    # Gate E0 (E0.3, product ruling P3): True when at least one member would
+    # satisfy the pre-E0.3 subject-relation-plus-evidence-type independence
+    # test but was excluded SOLELY because the source registry denied it
+    # (``may_supply_independence is False``). Lets ``intelligence.brief``
+    # distinguish "no corroborating source has been found yet" from "a
+    # source exists but the registry has not authorised it to supply
+    # independence" -- two exclusion categories that call for opposite
+    # actions (find more sources vs. authorise the existing one).
+    independence_denied_by_registry: bool = False
 
 
 class RankingInputs(BaseModel):
@@ -406,3 +509,10 @@ class TieredTopic(BaseModel):
     score: int = Field(ge=0, le=100)
     claim: ClaimAssessment
     tier_assignment: TierAssignment
+    # Gate E0 (E0.1, R7): copied verbatim from the joined ``TopicCluster`` at
+    # the point ``tiers.build_tiered_topic`` pairs a cluster with its ranked
+    # position -- "where clusters join ranked topics", never through
+    # ``ranking.py``. See ``TopicCluster.security_flags`` for how this union
+    # is computed and ``intelligence.brief`` for the two P1 display classes
+    # built from it.
+    security_flags: tuple[SecurityFlag, ...] = Field(default_factory=tuple)
