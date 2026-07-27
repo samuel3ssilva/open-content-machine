@@ -177,6 +177,13 @@ def test_golden_existing_synthetic_fixture_output_is_unchanged_by_gate_d() -> No
     brief = build_weekly_brief(tiered, ranked, clusters_by_topic_id, items_by_id, "2026-W29")
     markdown = render_markdown(brief)
 
+    # Structural counts, re-verified unchanged after Gate E0 (R4): 22
+    # clusters / 22 ranked / 10 tiered / 3 tier_1 / same top topic_id and
+    # score. Nothing here moved, which is the proof the security-flag
+    # propagation (E0.1) and may_supply_independence narrowing (E0.3) are
+    # purely additive on this fixture (it has no security-flagged items and
+    # no registry-denied-independence items, so neither change alters any
+    # existing computation).
     assert len(clusters) == 22
     assert len(ranked) == 22
     assert len(tiered) == 10
@@ -184,11 +191,19 @@ def test_golden_existing_synthetic_fixture_output_is_unchanged_by_gate_d() -> No
     assert ranked[0][0].topic_id == "t_d19f893857e2"
     assert ranked[0][1].score == 80
 
+    # Gate E0 re-pin (R4): the hashes below MUST change, and did, because
+    # WeeklyBrief/Tier1LeanItem/Tier2Item/Tier1AppendixRecord all gained new
+    # fields (security_flag_summary, adversarial_security_flags) and
+    # BRIEF_VERSION was bumped (product ruling P4) -- both additive schema
+    # changes, not a change in any ranking/tiering/evidence computation, as
+    # the unchanged structural counts above prove. Old hashes (pre-Gate-E0):
+    # markdown "695a5f6854654e8ef4b09a77258083efe43daee21c54e60cd64eb3b4c46f4d7b",
+    # json "860ac9d6c85896fba281925fbc1afd66cdab5b8cd0312766bfbb6bcb6c070bfe".
     assert (
         hashlib.sha256(markdown.encode("utf-8")).hexdigest()
-        == "695a5f6854654e8ef4b09a77258083efe43daee21c54e60cd64eb3b4c46f4d7b"
+        == "dced152158d2c669e7dd0cf624b2c5c4df5a46106ae3effe466b635d7f4ce30d"
     )
     assert (
         hashlib.sha256(brief.model_dump_json().encode("utf-8")).hexdigest()
-        == "860ac9d6c85896fba281925fbc1afd66cdab5b8cd0312766bfbb6bcb6c070bfe"
+        == "6ffa84f2440007140a02a5c6b8731792feb85541952277b4a587dee481e65cbf"
     )
