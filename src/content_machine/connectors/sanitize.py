@@ -134,8 +134,8 @@ _INSTRUCTION_PATTERNS = (
     # than an include-list. The exclusion now generalizes: suppress the
     # match when the word right after "now" is NOT an article/"in" AND that
     # word is itself followed by "to" (the generalized-infinitive shape,
-    # e.g. "now required to authenticate", "now up to date", "now all set
-    # to start"). Fable RATIFIED this exact broad-match-with-generalized-
+    # e.g. "now required to authenticate", "now up to date"). Fable
+    # RATIFIED this exact broad-match-with-generalized-
     # exclusion form:
     re.compile(
         r"\byou are now\b(?!\s+(?!(?:a|an|the|in)\b)\w+\s+to\b)",

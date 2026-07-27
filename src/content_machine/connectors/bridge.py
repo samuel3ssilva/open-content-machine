@@ -17,6 +17,17 @@ future gates may legitimately want them -- but :func:`to_source_item` raises
 admission-POLICY change and belongs to Fable plus a future gate, never to an
 implementer quietly relaxing a check here.
 
+**Live re-verification at bridging time (ADR 0005 entry condition 2, Gate
+E0 close-out).** ``to_source_item``'s optional ``permission_registry``
+parameter, when supplied, re-checks ``result.source_id`` against a LIVE
+:class:`~content_machine.connectors.permissions.PermissionRegistry` at the
+moment of bridging -- not just the point-in-time snapshot
+``result.permission_ref.status_at_discovery`` recorded at discovery time --
+and fails closed with :class:`StalePermissionAtBridgeError` if the source is
+unregistered or no longer ``approved``. See that exception's docstring for
+why this closes a real gap (a permission suspended/revoked between
+discovery and bridging previously went unnoticed here).
+
 **Fail closed on empty authored fields.** ``topic_tags``/``subject_entity_ids``
 Pydantic-default to an empty tuple, and an unfilled default is actively
 harmful here, not merely incomplete: empty ``topic_tags`` zero the 40% of the
@@ -70,6 +81,7 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field
 
 from content_machine.connectors.models import AuditEventKind, ConnectorAuditEvent, DiscoveryResult
+from content_machine.connectors.permissions import PermissionRegistry, PermissionStatus
 from content_machine.connectors.registry import SourceRegistryEntry
 from content_machine.intelligence.models import (
     ActionRequired,
@@ -197,6 +209,40 @@ class UnreviewedSecurityFlagsError(PermissionError):
     """
 
 
+class StalePermissionAtBridgeError(PermissionError):
+    """Raised by :func:`to_source_item` when ``permission_registry`` is
+    supplied and a LIVE re-check of ``result.source_id`` finds the
+    permission unregistered or not ``status == approved`` at the moment of
+    bridging.
+
+    **ADR 0005 entry condition 2 (Gate E0 close-out).** Fable's round-2
+    review of Gate D proved a gap: ``to_source_item`` trusted whatever
+    ``DiscoveryResult`` it was handed and never re-verified against a live
+    ``PermissionRegistry`` that the source was STILL ``approved`` at the
+    moment of bridging, as opposed to at discovery time (which
+    ``run_discovery`` does check). Between a discovery run and a bridging
+    call, a permission could be suspended or revoked with nothing at the
+    bridge noticing -- ``DiscoveryResult.permission_ref.status_at_discovery``
+    is only a point-in-time snapshot string, never a live handle (see
+    ``PermissionRef``'s own docstring), so trusting it alone would let a
+    since-revoked source's item cross the bridge anyway.
+
+    ``permission_registry`` is an OPTIONAL keyword argument (default
+    ``None``): passing it is what activates this fail-closed re-check.
+    ``None`` preserves this function's existing call signature and behavior
+    for every caller that predates this check (mirroring how
+    ``to_source_item_with_audit`` was added as a companion function rather
+    than changing ``to_source_item``'s established return type) -- wiring
+    every real caller to always supply a live registry is a follow-on
+    integration step, not this ticket's scope. When supplied, the check is
+    fully fail-closed: unregistered or non-``approved`` both raise this
+    error, and this re-check runs independently of, and does not replace or
+    weaken, the existing ``UnreviewedSecurityFlagsError``/
+    ``MissingReviewerNoteError``/``AssessmentProvenanceNotPermitted``/
+    ``EmptyTopicTagsError``/``EmptySubjectEntityIdsError`` controls below.
+    """
+
+
 class MissingReviewerNoteError(ValueError):
     """Raised by :func:`to_source_item` when ``human_reviewed_flags`` is
     passed (non-empty) but ``reviewer_note`` is ``None`` or empty/whitespace
@@ -233,6 +279,7 @@ def to_source_item(
     detection_date: date,
     human_reviewed_flags: frozenset[SecurityFlag] | None = None,
     reviewer_note: str | None = None,
+    permission_registry: PermissionRegistry | None = None,
 ) -> SourceItem:
     """The ONLY code path from connector output into M1-M7 (see the module
     docstring). Fails closed on provenance, on the two authored fields
@@ -261,6 +308,16 @@ def to_source_item(
     human-authored path (which never crosses this bridge) can leave that
     field unset.
 
+    ``permission_registry`` (Gate E0, ADR 0005 entry condition 2) is an
+    OPTIONAL live re-verification of ``result.source_id``'s permission
+    status AT THE MOMENT OF BRIDGING, independent of whatever
+    ``result.permission_ref.status_at_discovery`` snapshotted at discovery
+    time. When supplied, an unregistered or non-``approved`` source raises
+    :class:`StalePermissionAtBridgeError`, fail-closed, BEFORE any of the
+    checks below run. ``None`` (the default) skips this re-check, preserving
+    every existing caller's behavior unchanged -- see
+    :class:`StalePermissionAtBridgeError` for the full rationale.
+
     ``reviewer_note`` (Gate D round-2 correction, C2) is REQUIRED, non-empty
     (after stripping), whenever ``human_reviewed_flags`` is passed as a
     non-empty set -- i.e. whenever an override actually takes effect. Round 1
@@ -281,6 +338,16 @@ def to_source_item(
         raise RegistryEntryMismatchError(
             "registry_entry.source_id does not match result.source_id"
         )
+
+    if permission_registry is not None:
+        live_permission = permission_registry.get(result.source_id)
+        if live_permission is None or live_permission.status != PermissionStatus.approved:
+            raise StalePermissionAtBridgeError(
+                "permission_registry re-check at bridging time found source_id not "
+                "registered or not approved (independent of "
+                "result.permission_ref.status_at_discovery's point-in-time snapshot) -- "
+                "see StalePermissionAtBridgeError (ADR 0005 entry condition 2)"
+            )
 
     unreviewed_blocking_flags = (set(result.security_flags) & BLOCKING_SECURITY_FLAGS) - set(
         human_reviewed_flags or ()
@@ -358,9 +425,13 @@ def to_source_item_with_audit(
     occurred_at: datetime,
     human_reviewed_flags: frozenset[SecurityFlag] | None = None,
     reviewer_note: str | None = None,
+    permission_registry: PermissionRegistry | None = None,
 ) -> tuple[SourceItem, ConnectorAuditEvent | None]:
     """Companion to :func:`to_source_item` (Gate D round-2 correction, C2)
     that also returns the audit trail of a human-reviewed-flags override.
+    ``permission_registry`` (Gate E0, ADR 0005 entry condition 2) is passed
+    straight through to :func:`to_source_item`'s own live re-verification --
+    see that parameter's docstring there.
 
     **Design choice, stated explicitly.** ``to_source_item``'s return type
     (``SourceItem`` alone) is a contract every existing caller and test in
@@ -390,6 +461,7 @@ def to_source_item_with_audit(
         detection_date=detection_date,
         human_reviewed_flags=human_reviewed_flags,
         reviewer_note=reviewer_note,
+        permission_registry=permission_registry,
     )
     if not human_reviewed_flags:
         return item, None

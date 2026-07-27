@@ -30,6 +30,7 @@ from content_machine.connectors.bridge import (
     EmptyTopicTagsError,
     MissingReviewerNoteError,
     RegistryEntryMismatchError,
+    StalePermissionAtBridgeError,
     UnreviewedSecurityFlagsError,
     derive_item_id,
     to_source_item,
@@ -41,6 +42,12 @@ from content_machine.connectors.models import (
     PermissionRef,
     ProvenanceMetadata,
     SummaryProvenance,
+)
+from content_machine.connectors.permissions import (
+    PermissionRegistry,
+    PermissionStatus,
+    SourceMode,
+    SourcePermission,
 )
 from content_machine.connectors.registry import PublisherClassification, SourceRegistryEntry
 from content_machine.connectors.sanitize import SecurityFlag
@@ -107,6 +114,31 @@ def _assessment(**overrides: object) -> AuthoredAssessment:
     }
     base.update(overrides)
     return AuthoredAssessment.model_validate(base)
+
+
+def _permission_registry(
+    *, source_id: str = "src_vendor_alpha", status: PermissionStatus = PermissionStatus.approved
+) -> PermissionRegistry:
+    return PermissionRegistry(
+        [
+            SourcePermission(
+                source_id=source_id,
+                approved_mode=SourceMode.discovery,
+                permitted_fields=frozenset(
+                    {
+                        "title",
+                        "canonical_reference",
+                        "content_type",
+                        "publication_date",
+                        "summary_normalized",
+                    }
+                ),
+                retention_policy_id="policy_default",
+                authorization_owner="founder",
+                status=status,
+            )
+        ]
+    )
 
 
 # --- B2 (Gate D round-1 correction): fail closed on unreviewed SecurityFlags
@@ -600,3 +632,102 @@ def test_bridge_module_never_reads_the_wall_clock() -> None:
             assert node.func.attr not in forbidden_attrs, (
                 f"forbidden wall-clock call: {node.func.attr}()"
             )
+
+
+# --- ADR 0005 entry condition 2: live permission re-verification at bridging
+# --- time (Gate E0 close-out) -----------------------------------------------
+
+
+def test_permission_registry_omitted_preserves_existing_behavior() -> None:
+    """The default (permission_registry=None) skips the live re-check
+    entirely, so every existing caller that predates this parameter is
+    unaffected -- proven by admitting an item with no permission_registry
+    argument at all, exactly as every other test in this file already does."""
+    item = to_source_item(
+        _discovery_result(), _assessment(), _registry_entry(), detection_date=date(2026, 7, 18)
+    )
+    assert item is not None
+
+
+def test_live_approved_permission_registry_admits_the_item() -> None:
+    item = to_source_item(
+        _discovery_result(),
+        _assessment(),
+        _registry_entry(),
+        detection_date=date(2026, 7, 18),
+        permission_registry=_permission_registry(status=PermissionStatus.approved),
+    )
+    assert item is not None
+
+
+@pytest.mark.parametrize(
+    "status",
+    [PermissionStatus.proposed, PermissionStatus.suspended, PermissionStatus.revoked],
+)
+def test_live_non_approved_permission_registry_raises_stale_permission_error(
+    status: PermissionStatus,
+) -> None:
+    with pytest.raises(StalePermissionAtBridgeError):
+        to_source_item(
+            _discovery_result(),
+            _assessment(),
+            _registry_entry(),
+            detection_date=date(2026, 7, 18),
+            permission_registry=_permission_registry(status=status),
+        )
+
+
+def test_live_unregistered_source_in_permission_registry_raises_stale_permission_error() -> None:
+    with pytest.raises(StalePermissionAtBridgeError):
+        to_source_item(
+            _discovery_result(),
+            _assessment(),
+            _registry_entry(),
+            detection_date=date(2026, 7, 18),
+            permission_registry=_permission_registry(source_id="src_someone_else"),
+        )
+
+
+def test_live_re_verification_is_live_not_the_discovery_time_snapshot() -> None:
+    """The point of this check: result.permission_ref.status_at_discovery
+    says "approved" (baked in at discovery time by _discovery_result's
+    fixture default), but the freshly rebuilt PermissionRegistry passed at
+    bridging time says revoked -- the live re-check must catch this
+    divergence rather than trusting the stale snapshot."""
+    result = _discovery_result()
+    assert result.permission_ref.status_at_discovery == "approved"
+    with pytest.raises(StalePermissionAtBridgeError):
+        to_source_item(
+            result,
+            _assessment(),
+            _registry_entry(),
+            detection_date=date(2026, 7, 18),
+            permission_registry=_permission_registry(status=PermissionStatus.revoked),
+        )
+
+
+def test_live_re_verification_does_not_weaken_the_security_flag_control() -> None:
+    """A caller cannot use a permitted permission_registry to bypass the
+    pre-existing UnreviewedSecurityFlagsError control -- both checks must
+    independently hold."""
+    result = _discovery_result(security_flags=(SecurityFlag.instruction_shaped_text,))
+    with pytest.raises(UnreviewedSecurityFlagsError):
+        to_source_item(
+            result,
+            _assessment(),
+            _registry_entry(),
+            detection_date=date(2026, 7, 18),
+            permission_registry=_permission_registry(status=PermissionStatus.approved),
+        )
+
+
+def test_to_source_item_with_audit_forwards_permission_registry() -> None:
+    with pytest.raises(StalePermissionAtBridgeError):
+        to_source_item_with_audit(
+            _discovery_result(),
+            _assessment(),
+            _registry_entry(),
+            detection_date=date(2026, 7, 18),
+            occurred_at=_NOW,
+            permission_registry=_permission_registry(status=PermissionStatus.revoked),
+        )

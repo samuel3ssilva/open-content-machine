@@ -57,6 +57,19 @@
       "default": null,
       "title": "Review Due"
     },
+    "expires_at": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expires At"
+    },
     "authorization_owner": {
       "title": "Authorization Owner",
       "type": "string"
