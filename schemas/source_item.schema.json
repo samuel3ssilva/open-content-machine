@@ -1,4 +1,24 @@
 {
+  "$defs": {
+    "SecurityFlag": {
+      "description": "Heuristic markers raised while sanitizing untrusted connector content.\n\n**Moved here from ``connectors.sanitize`` in Gate E0 (E0.1)** so\n:class:`SourceItem` (and, transitively, :class:`TopicCluster` and\n:class:`TieredTopic`) can carry these flags natively -- see the module\ndocstring's \"Gate E0 (E0.1) addition\" note for why this module, and\n``connectors/sanitize.py``'s module docstring for the un-changed honesty\nrequirement these flags are still subject to: every flag here is a\nmarker for a human reviewer, never a claim of complete detection, and\nnever a description of semantic prompt-injection detection.",
+      "enum": [
+        "active_markup_neutralized",
+        "instruction_shaped_text",
+        "credential_shaped_text",
+        "email_shaped_text",
+        "filesystem_path_shaped_text",
+        "oversized_truncated",
+        "malformed_encoding",
+        "unsupported_content_type",
+        "redirect_chain_exceeded",
+        "duplicate_canonical_reference",
+        "conflicting_publication_date"
+      ],
+      "title": "SecurityFlag",
+      "type": "string"
+    }
+  },
   "additionalProperties": false,
   "description": "One observable fact-sheet about a single artifact (email/feed/doc item).\n\nFillable by someone who has never met the Founder and cannot see the\nRELEVANCE or EVIDENCE rubric: every field describes the artifact itself,\nnever how relevant or important it is, and there is deliberately no\n``relevance``, ``marketing_risk``, or ``body`` field here. ``change_class``,\n``action_required``, and ``experiment_affordance`` are, however, AUTHORED\nenums -- a human judgment call about the artifact, not an observable fact\nin the same sense as ``publisher_id`` or ``evidence_type``. That is a\nknown, documented Gate A limitation: the only check on an authored enum\nis the free-text ``change_class_rationale`` field (surfaced in the\nmagnitude dimension's ``inputs`` -- see ``ranking.py``), which a human\nreviewer can audit but the system does not itself verify.\n\n``contains_benefit_or_performance_claim`` (Founder decision D4) is a\nsimilarly AUTHORED-but-checkable observable fact, not an inference: a\ndeterministic pipeline cannot itself classify prose as a benefit/\nperformance claim, so a human fills this in the same way they fill\n``change_class`` -- but unlike ``change_class`` it is a narrow yes/no\nquestion anyone reading the artifact can verify (\"does this text claim a\nbenefit or a performance characteristic?\"), not a judgment call about\nsignificance. It is REQUIRED, with no default: an unfilled field must\nnever be silently interpreted as \"clean\" (Opus F2/F3) -- every authored\nitem must state whether it carries such a claim, even when the answer is\nFalse. It feeds ``marketing_risk`` (see\n``cluster._evidence_level_and_marketing_risk``) whenever this item is the\ncluster's ``first_party_commentary`` member (the subject analysing\nitself), and is otherwise inert.\n\nAuthoring guidance for downstream release notes: a non-subject\n``release_note`` can genuinely be a PRIMARY ARTIFACT of the publishing\nproject, not mere secondary news about someone else -- e.g. a downstream\nproject's own release note stating \"upgraded to VendorA 3.0, requires\nmigration\" is that downstream project's first-party artifact, even\nthough it is also coverage of VendorA. To be scored as such (rather than\nD2's ``secondary_news_uncorroborated``), the downstream project MUST be\nlisted in that item's own ``subject_entity_ids`` -- publisher_id alone is\nnot enough, since evidence polarity is judged per (item, cluster-subject)\npair, and a cluster's ``subject_entity_ids`` is the union of every\nmember's.",
   "properties": {
@@ -130,6 +150,25 @@
     "claim_directly_verifiable_in_artifact": {
       "title": "Claim Directly Verifiable In Artifact",
       "type": "boolean"
+    },
+    "security_flags": {
+      "items": {
+        "$ref": "#/$defs/SecurityFlag"
+      },
+      "title": "Security Flags",
+      "type": "array"
+    },
+    "may_supply_independence": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "May Supply Independence"
     }
   },
   "required": [

@@ -157,6 +157,24 @@
       "title": "RankingBreakdown",
       "type": "object"
     },
+    "SecurityFlag": {
+      "description": "Heuristic markers raised while sanitizing untrusted connector content.\n\n**Moved here from ``connectors.sanitize`` in Gate E0 (E0.1)** so\n:class:`SourceItem` (and, transitively, :class:`TopicCluster` and\n:class:`TieredTopic`) can carry these flags natively -- see the module\ndocstring's \"Gate E0 (E0.1) addition\" note for why this module, and\n``connectors/sanitize.py``'s module docstring for the un-changed honesty\nrequirement these flags are still subject to: every flag here is a\nmarker for a human reviewer, never a claim of complete detection, and\nnever a description of semantic prompt-injection detection.",
+      "enum": [
+        "active_markup_neutralized",
+        "instruction_shaped_text",
+        "credential_shaped_text",
+        "email_shaped_text",
+        "filesystem_path_shaped_text",
+        "oversized_truncated",
+        "malformed_encoding",
+        "unsupported_content_type",
+        "redirect_chain_exceeded",
+        "duplicate_canonical_reference",
+        "conflicting_publication_date"
+      ],
+      "title": "SecurityFlag",
+      "type": "string"
+    },
     "TopicCluster": {
       "additionalProperties": false,
       "description": "Facts DERIVED from the corpus by :mod:`content_machine.intelligence.cluster`.\n\nNever authored directly in a fixture -- every field here is computed from\na group of merged :class:`SourceItem` records. ``topic_id`` identifies the\ncluster only within a single run (see the identity docstring on\n:func:`content_machine.intelligence.cluster.cluster_items`); persistent\ncross-run identity is out of scope for Gate A and lands at M6.",
@@ -270,6 +288,18 @@
           },
           "title": "Evidence Types",
           "type": "array"
+        },
+        "security_flags": {
+          "items": {
+            "$ref": "#/$defs/SecurityFlag"
+          },
+          "title": "Security Flags",
+          "type": "array"
+        },
+        "independence_denied_by_registry": {
+          "default": false,
+          "title": "Independence Denied By Registry",
+          "type": "boolean"
         }
       },
       "required": [
