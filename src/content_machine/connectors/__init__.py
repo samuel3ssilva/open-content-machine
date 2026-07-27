@@ -30,9 +30,14 @@ and workflow (``runner``/``bridge``) surface -- the models, decisions, and
 entry points a caller outside this package needs to run a discovery batch
 and hand its results to the intelligence pipeline. It does NOT re-export
 every internal helper or narrow validation error defined in the submodules
-(e.g. ``bridge.derive_item_id`` or ``bridge``'s per-field ``ValueError``
-subclasses); those remain reachable via their owning submodule for callers
-who need them, without cluttering this package's public surface.
+-- e.g. ``bridge.derive_item_id``, or ``bridge``'s per-field ``ValueError``
+subclasses ``EmptyTopicTagsError``, ``EmptySubjectEntityIdsError``, and
+``RegistryEntryMismatchError`` -- those remain reachable via their owning
+submodule for callers who need them, without cluttering this package's
+public surface. (``MissingReviewerNoteError``, also a ``ValueError``
+subclass, IS re-exported above: it is part of this package's public
+override-with-audit contract, not an internal per-field validation
+detail.)
 """
 
 from __future__ import annotations
