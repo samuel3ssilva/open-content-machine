@@ -6,7 +6,7 @@ Atualizado: 2026-07-27 · Release atual: **v0.0.1** · Branch: `main` · CI: ver
 
 - `v0.0.1` is tagged and released; Sprint 1.x additions are merged on `main`
   but not yet in a tagged release.
-- Current quality gates: 800 automated tests passing, `ruff` clean, `mypy`
+- Current quality gates: 965 automated tests passing, `ruff` clean, `mypy`
   clean, CI green on GitHub Actions.
 - The weekly AI & Claude Intelligence Brief (v0.1) is merged on `main` and
   runs **fully offline against synthetic fixtures only** — no connector, no
@@ -88,6 +88,22 @@ marcada). Nenhum dado real foi processado.
   ADR 0005; 7 adaptadores sintéticos determinísticos; **nada busca dados
   reais** — zero código de rede, zero credencial, zero scheduler, zero fonte
   real; zero linhas alteradas em ranking/rendering
+- ✅ **Gate E0 — pré-requisitos de segurança dos conectores**: as quatro
+  condições de entrada do ADR 0005 mais o mecanismo de configuração privada
+  de endpoint. `security_flags` propagam até o brief (só nomes de flag, nunca
+  texto hostil); gate vivo de permissão imediatamente antes da coleta, com
+  `expires_at` fail-closed e relógio próprio que nenhum chamador pode
+  fornecer; `may_supply_independence` consumido como conjunção que só pode
+  REMOVER independência; `connectors/network.py` — o segundo e último módulo
+  com I/O de rede — impondo HTTPS, allowlist de host **por fonte**, bloqueio
+  de loopback/privados/link-local/IP literal, redirects revalidados a cada
+  salto, defesa contra DNS rebinding fixando a conexão no IP vetado enquanto
+  valida o certificado contra o hostname original, timeouts, corte de bytes
+  no meio do stream, allowlist de MIME e rate limit; loader de config privada
+  fail-closed com `SecretStr` e erros sanitizados; scan AST garantindo que só
+  `config/` lê variáveis de ambiente. **Nenhum adaptador está ligado a esse
+  fetcher** — é uma fronteira imposta e testada, ainda sem chamador. Zero
+  chamadas externas, zero fonte real, zero credencial
 - 🔒 Conectores reais (adaptador de verdade contra uma fonte real) → requer
   decisão de escopo do Founder + revisão de segurança/privacidade Fable antes
   de qualquer implementação
