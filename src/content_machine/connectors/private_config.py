@@ -51,7 +51,7 @@ leaks the real value that way either.
 **Fail CLOSED, always, with a distinct exception per invariant** (mirrors
 the "one distinct code per invariant, never collapsed" philosophy already
 used by ``permissions.AuthorizationReasonCode`` and
-``network._FetchReasonCode``): missing file, unreadable file, invalid
+``network.FetchReasonCode``): missing file, unreadable file, invalid
 content, and an expired/unauthorized source are each their own exception
 type under :class:`PrivateConfigError`. There is no default endpoint to
 fall back to and no partial/silent success path -- an expired source causes
@@ -121,7 +121,7 @@ class PrivateSourceEndpoint(BaseModel):
 
     Never populated with a real value anywhere in this repository. Frozen,
     ``extra="forbid"`` -- matching every other point-in-time contract record
-    in ``connectors`` (``SourcePermission``, ``_FetchResult``,
+    in ``connectors`` (``SourcePermission``, ``FetchResult``,
     ``AuthorizationDecision``).
 
     ``hostname``/``endpoint`` are ``SecretStr`` so that this object's own

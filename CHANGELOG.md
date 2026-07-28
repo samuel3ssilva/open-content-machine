@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (pre-E1 connector fetch-semantics fixes, per Fable ruling 2026-07-27)
+
+- `connectors/network.py` — `NetworkFetcher.fetch` now consumes its
+  rate-limit budget PER HOP, immediately before that hop's DNS resolution
+  and connection attempt, instead of once up front before URL validation
+  and the permission check. Closes the known-open gap noted in the Gate E0
+  changelog entry below: a statically-invalid URL (`host_not_allowed`,
+  `scheme_not_https`, ...) or a denied permission (`permission_denied`) now
+  consumes no budget and is never masked as `rate_limited`, and a redirect
+  chain can no longer spend one budget unit to buy up to `max_redirects + 1`
+  outbound connects and DNS queries. A refusal at any hop — including
+  mid-redirect-chain — is still reported as `rate_limited`; no new reason
+  code was introduced.
+- `connectors/network.py` — promoted `_FetchResult` → `FetchResult` and
+  `_FetchReasonCode` → `FetchReasonCode` to public names (`__all__` is now
+  `["FetchReasonCode", "FetchResult", "NetworkFetcher"]`), so a caller can
+  name what `NetworkFetcher.fetch()` returns without reaching past a
+  private name. All other connection primitives in the module remain
+  private; `NetworkFetcher` remains the module's only public, enforced
+  *entry point*.
+- `connectors/network.py` — the per-hop budget change above had an
+  unintended side effect: with the constructor's own shipped defaults
+  (`max_redirects=5`, `rate_limit_max_calls=5`), reaching the
+  post-loop `too_many_redirects` return needed 6 successful `allow()`
+  calls against a budget of 5, so the 6th hop always refused first and
+  `too_many_redirects` became unreachable — a chain long enough to
+  exhaust `max_redirects` was always reported `rate_limited` instead.
+  Fixed by lowering the shipped default `max_redirects` from `5` to `4`
+  (the rate-limit budget itself is unchanged, since raising it would
+  weaken a security control just to make a diagnostic code reachable).
+  `too_many_redirects` is now reachable whenever at least
+  `max_redirects + 1` budget units remain in the source's window at the
+  start of the call; otherwise the chain still correctly ends
+  `rate_limited` at whichever hop the budget runs out on.
+
 ### Added (AI & Claude Intelligence Brief v0.1 — weekly, synthetic signals only)
 
 The Intelligence Brief turns many authorized signals into a small number of
