@@ -129,21 +129,30 @@ and `community`.
 section's overclaim is, in Fable's words, "the same overclaim species I
 blocked in round 1").** The paragraph above describes
 `may_supply_independence` as though it were an operative control that closes
-the ad-hoc-independence hole. It is not: `may_supply_independence` has **zero
-call sites in `src/`** — only its own definition and its own tests reference
-it. Independence is decided, today, solely by `intelligence.cluster.py`'s
-subject-membership test (`_is_independent`, comparing an item's
-`subject_entity_ids` against a topic's subjects) — a check that has no idea
-`SourceRegistryEntry` or `PublisherClassification` exist. `may_supply_independence`
-is therefore a **curated but not-yet-consumed classification**: the registry
-correctly captures, per source, whether a human has judged it capable of
-supplying independent evidence, and `unclassified` correctly fails exactly as
-closed as `vendor_first_party` in that curation — but nothing today reads the
-property to gate anything a real item does. Wiring `may_supply_independence`
-into the actual independence decision is deferred to the first-real-adapter
-gate (see this ADR's deferred list), the same gate that must also decide HOW
-it composes with `cluster.py`'s existing subject-membership test, under
-Fable review.
+the ad-hoc-independence hole. **At the time this ADR was written it was not**,
+and the rest of this paragraph records that state for history.
+
+**RESOLVED IN GATE E0 (E0.3, rulings R3/F2) — no longer deferred.** The
+property is now consumed. `bridge.to_source_item` bakes the registry's answer
+onto the item (`bridge.py:469`), and `intelligence.cluster._is_independent`
+reads that field as an additional AND-conjunct (`cluster.py:276`,
+`item.may_supply_independence is not False`). The field is **tri-state**:
+`None` means no registry opinion and falls back to the pre-existing
+subject-membership test, so no existing fixture regressed; `True` behaves as
+before; `False` DENIES independence. Because it is a pure conjunct it can only
+ever REMOVE independence, never grant it, and the bridge never emits `None` —
+every connector-sourced item carries an explicit registry answer.
+
+The historical description follows. Independence was decided, at the time,
+solely by `intelligence.cluster.py`'s subject-membership test
+(`_is_independent`, comparing an item's `subject_entity_ids` against a topic's
+subjects) — a check that had no idea `SourceRegistryEntry` or
+`PublisherClassification` exist. `may_supply_independence` was therefore a
+**curated but not-yet-consumed classification**: the registry correctly
+captured, per source, whether a human had judged it capable of supplying
+independent evidence, and `unclassified` correctly failed exactly as closed as
+`vendor_first_party` in that curation — but nothing then read the property to
+gate anything a real item did.
 
 **On the tempting mechanical predicate.** A natural-looking shortcut for that
 future wiring is `vendor_first_party AND publisher_id not in subject_entity_ids`
@@ -164,7 +173,7 @@ Without this registry, "is this publisher independent?" would have to be
 answered ad hoc, per item, by whichever future adapter or reviewer author
 encounters it — the same class of silent, unauditable judgment call Gate A's
 evidence rubric was built to eliminate; the registry's curation is real and
-correct, only its consumption is what remains deferred.
+correct — and its consumption landed in Gate E0 (E0.3), as recorded above.
 
 ### 6. Permission model: proposed/approved/suspended/revoked × mode × permitted_fields; violations REJECTED + audited, never silently stripped
 
