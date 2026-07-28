@@ -7,54 +7,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed (RC-1-R2, blocking precondition of Gate E1, per Fable ruling 2026-07-28, supersedes RC-1-R below)
+### Fixed (RC-1-R3, blocking precondition of Gate E1, per Fable ruling 2026-07-28, final iteration of this loop, supersedes RC-1-R2 and RC-1-R below)
 
-- `connectors/sanitize.py` — RC-1-R (same day, same file, superseded by this
-  entry) fixed one member of a bigger class: `sanitize_text` no longer
-  misses an `instruction_shaped_text` phrase that has a markup tag placed
-  BETWEEN two of its words (e.g. `previous<br/>instructions`,
-  `<span>previous</span>instructions`). Fable's follow-up adversarial probe
-  found the same "empty-string deletion merges the two words it separated"
-  defeat via other deletion sites `sanitize_text` already had: the Unicode
-  replacement character, zero-width/bidi-control characters, and — with **no
-  flag raised at all**, the one true gap — bare C0/DEL control characters
-  (vertical tab, bell, DEL).
-  - The retained (empty-string) string and its existing flagging sites are
-    unchanged: `active_markup_neutralized` still flags from the same single
-    `without_brackets != working` comparison, and `malformed_encoding` still
-    flags from the same replacement-character and bidi/zero-width checks as
-    before (golden fixture hashes did not move; verified explicitly, see PR
-    notes). `_INSTRUCTION_PATTERNS` itself remains untouched — Fable
-    explicitly rejected widening the patterns to tolerate intra-phrase junk,
-    in both rulings.
-  - **New:** a second, local, detection-only string is now maintained in
-    parallel with the retained one, substituting a single SPACE at every
-    site the retained string substitutes the empty string — across all of
-    replacement-character handling, control-character stripping,
-    zero-width/bidi stripping, and markup neutralization (RC-1-R's narrower
-    "derive after steps 1-3, markup only" variant is superseded by this
-    parallel-from-the-start construction). `instruction_shaped_text` is now
-    checked against both strings (an OR). The variant is never stored,
-    returned, logged, redacted, or truncated.
-  - **New:** C0/DEL control-character stripping now also flags
-    `malformed_encoding` (it previously flagged nothing), closing the one
-    taxonomy gap Fable's probe found — the other two deletion sites already
-    flagged their own deletions before this change.
-  - **Accepted residual, not fixed by this change:** a single input
-    combining a character-deleted-INSIDE-a-word split (e.g. `ig<b>nore</b>`,
-    or an equivalent zero-width-space/control-character split, caught only
-    by the retained empty-string string) with a different,
-    character-deleted-BETWEEN-words join (e.g. `previous<br/>instructions`,
-    caught only by the space-substituted variant) in the SAME string is
-    still not flagged. This is a known, pinned ceiling of the regex
-    heuristic, not an oversight; see the dedicated test and the
-    module/threat-model documentation for detail.
-  - This closes the MEASURED bypasses above; it does not close the class of
-    empty-string-deletion-adjacency evasions of `instruction_shaped_text` in
-    general, and it changes nothing about the actual (architectural)
-    controls: sanitized connector output still never reaches a model
-    boundary in this gate, and can only reach the pipeline through the
-    fail-closed, human-provenance bridge.
+- `connectors/sanitize.py` — RC-1-R (same day, superseded) fixed the markup
+  member of a bigger class: `sanitize_text` no longer misses an
+  `instruction_shaped_text` phrase that has a markup tag placed BETWEEN two
+  of its words (e.g. `previous<br/>instructions`). RC-1-R2 (same day,
+  superseded) generalized to a single space-substituted detection variant
+  covering every deletion site (replacement character, C0/DEL control
+  characters, zero-width/bidi characters, markup), closing six of ten
+  hostile rows in Fable's adversarial probe (10 hostile / 8 benign synthetic
+  cases) with zero new false positives. RC-1-R3 replaces that one variant
+  with the full set of independent normalizations, because RC-1-R2's single
+  variant GAVE UP one row RC-1-R happened to catch: a word split by an
+  invisible character combined with a different word pair joined by a
+  deleted markup separator (e.g. `ig{ZWSP}nore all previous<br/>instructions`)
+  — spacing every deletion site turns "ignore" into "ig nore", losing the
+  match.
+  - **N0 (the retained string) is untouched and never recomputed:** the
+    pipeline that produces `working` — every substitution and every
+    flag-raising site, including RC-1-R2's `malformed_encoding` addition on
+    control-character stripping — stays byte-for-byte what shipped at
+    RC-1-R2 (golden fixture hashes and structural counts did not move;
+    verified explicitly, see PR notes).
+  - **New:** one private, parametrized helper,
+    `_instruction_detection_variant(raw, *, invisible_sub, markup_sub)`,
+    replicates the retained pipeline's steps 1-5 in the exact shipped order
+    but takes two independent substitution choices — one axis for the
+    replacement character, control characters, and bidi/invisible
+    characters TOGETHER (one axis, not three — see the rejected
+    16-variant refinement below), one axis for markup. `sanitize_text` now
+    builds three variants from `raw` directly (not chained through
+    `working`): N1 = (" ", " ") (RC-1-R2's variant), N2 = ("", " "), and
+    N3 = (" ", ""). These, together with the retained string as the
+    (empty, empty) cell, cover the full 2x2 of available normalizations.
+    None of the three variants raises any flag of its own — all flagging
+    stays on the retained pipeline, exactly once, as always.
+    `instruction_shaped_text` is now checked against all four strings, one
+    OR, one `flags.append`.
+  - **Rejected by Fable:** splitting the invisible axis into its three
+    constituent character families (replacement/control/bidi) for a
+    16-variant refinement. The extra cells it would add are all
+    cross-family instances of the same already-accepted,
+    already-bridge-blocked ceiling below, for zero containment gain against
+    a quadrupled reasoning surface.
+  - **Ceiling, restated precisely and split into two pins:** the accepted
+    ceiling is one substitution axis required in contradictory roles
+    (word-split and word-separator) — whether by one character family or
+    by two families sharing the axis.
+    - **Pin (i), the PRIORITY residual:** the markup axis in both roles
+      (e.g. `ig<b>nore</b> all previous<br/>instructions`) is still not
+      flagged. This is the one vector that is **neither detected nor
+      blocked** — it raises only `active_markup_neutralized`, which is not
+      in `bridge.BLOCKING_SECURITY_FLAGS`. For this vector, the preventive
+      controls (no-model-path architecture, fail-closed human-provenance
+      bridge) are the entire boundary.
+    - **Pin (ii):** the invisible axis in both roles, same-family (two
+      zero-width spaces) or cross-family (an RTL override plus a control
+      character) — both still not flagged for `instruction_shaped_text`,
+      but both already carry `malformed_encoding` and are bridge-blocked
+      regardless. Per Fable's framing, the marginal gain this fix offers
+      over RC-1-R2 on rows like this is not containment — it is correct
+      adversarial labeling on an already-blocked item, protecting against
+      reviewer override-fatigue.
+  - `_INSTRUCTION_PATTERNS` itself remains untouched, per every ruling in
+    this series. This closes the MEASURED bypasses above; it does not
+    close the class of empty-string-deletion-adjacency evasions of
+    `instruction_shaped_text` in general, and it changes nothing about the
+    actual (architectural) controls: sanitized connector output still never
+    reaches a model boundary in this gate, and can only reach the pipeline
+    through the fail-closed, human-provenance bridge.
 
 ### Fixed (pre-E1 connector fetch-semantics fixes, per Fable ruling 2026-07-27)
 

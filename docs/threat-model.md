@@ -91,49 +91,78 @@ trust-boundary change. Method: lightweight STRIDE over the data-flow in
   M1–M7 pipeline through the authored, human-provenance bridge (TB-4).
   `SecurityFlag` markers are heuristic and traceable for a human reviewer —
   they are a marker, not a guarantee.
-- **RC-1-R2 (Fable ruling, 2026-07-28, superseding RC-1-R) — open evasion of
-  the detective layer, accepted, described as a CLASS:** the underlying
-  defect is general, not markup-specific — every empty-string deletion in
-  `sanitize_text` merges whatever flanks the deleted span, and a deleted
-  character placed BETWEEN two words of an instruction phrase can defeat the
-  word-boundary-anchored patterns regardless of which character class was
-  deleted. RC-1-R (same day, superseded) closed only the markup member
-  (`previous<br/>instructions`). Fable's follow-up adversarial probe found
-  the same defeat via the replacement character, zero-width/bidi characters,
-  and bare C0/DEL control characters. The members differ in how they were
-  contained, not in whether they were real:
+- **RC-1-R3 (Fable ruling, 2026-07-28, superseding RC-1-R2 and RC-1-R, final
+  iteration of this loop) — open evasion of the detective layer, accepted,
+  described as a CLASS:** the underlying defect is general, not
+  markup-specific — every empty-string deletion in `sanitize_text` merges
+  whatever flanks the deleted span, and a deleted character placed BETWEEN
+  two words of an instruction phrase can defeat the word-boundary-anchored
+  patterns regardless of which character class was deleted. RC-1-R (same
+  day, superseded) closed only the markup member (`previous<br/>instructions`).
+  RC-1-R2 (same day, superseded) generalized to a single space-substituted
+  variant covering every deletion site, closing six of ten hostile rows in
+  Fable's adversarial probe (10 hostile / 8 benign synthetic cases) with
+  zero new false positives — but that single variant gave up one row RC-1-R
+  happened to catch (a word split by an invisible character combined with a
+  different word pair joined by a deleted markup separator). RC-1-R3
+  replaces the one variant with the full set of independent normalizations.
+  The members differ in how they were contained, not in whether they were
+  real:
   - Replacement character, zero-width/bidi characters: each already raised
     `malformed_encoding` on deletion — a **blocking** flag (see T14's
     control and `bridge.BLOCKING_SECURITY_FLAGS`) — so these were already
     fail-closed at the bridge choke point (TB-4) even before any detection
-    fix, though `instruction_shaped_text` itself did not yet fire on them.
-  - C0/DEL control characters: raised **no flag at all** on deletion —
-    neither blocking nor advisory — the one true gap in the taxonomy, now
-    closed in the same change by also flagging `malformed_encoding` on that
-    deletion.
+    fix, though `instruction_shaped_text` itself did not always fire on
+    them.
+  - C0/DEL control characters: raised **no flag at all** on deletion before
+    RC-1-R2 — neither blocking nor advisory — the one true gap in the
+    taxonomy, closed by RC-1-R2's addition of `malformed_encoding` to that
+    deletion, unchanged here.
   - Markup tags: raise only `active_markup_neutralized`, which is **not**
     blocking — the sole defense against this member is detection
-    (`instruction_shaped_text` firing), which is what RC-1-R added and
-    RC-1-R2 generalizes to every deletion site.
+    (`instruction_shaped_text` firing).
 
-  `sanitize_text` now maintains a second, space-substituted, detection-only
-  string in parallel with the retained one, from the same deletion sites
-  across every step that deletes a character, and checks
-  `instruction_shaped_text` against both. This closes the MEASURED bypasses
-  above; it does not close the class in general. A single input combining a
-  character-deleted-inside-a-word split (defeated only by the retained,
-  empty-string string) with a different, separator-deleted-between-words
-  join (defeated only by the space-substituted variant) in the SAME
-  string — e.g. `ig<b>nore</b> all previous<br/>instructions` — remains a
-  known, accepted residual that neither normalization alone, nor their OR,
-  catches; pinned explicitly in `tests/test_connectors_sanitize.py`. Neither
-  RC-1-R nor RC-1-R2 may be described as closing the class of
-  empty-string-deletion-adjacency evasions of `instruction_shaped_text`,
-  only these measured bypasses. The preventive controls remain unchanged and
-  are what actually matter here: the no-model-path architecture (sanitized
-  content never reaches a model boundary in this gate) and the fail-closed,
-  human-provenance bridge (TB-4) that is the only way connector output ever
-  reaches the M1–M7 pipeline.
+  There are exactly four normalizations available: `{invisible-class
+  deletions -> "" | " "} x {markup deletions -> "" | " "}`. The retained
+  string (`working`, N0) already IS the (empty, empty) cell; `sanitize_text`
+  now also checks three further detection-only variants (N1/N2/N3, one per
+  remaining cell, built by a single private parametrized helper,
+  `_instruction_detection_variant`) and ORs all four into one
+  `instruction_shaped_text` flag append. Fable explicitly **rejected**
+  splitting the invisible axis into its three constituent character
+  families (replacement/control/bidi) for a 16-variant refinement: the
+  extra cells it would add are all cross-family instances of the SAME
+  ceiling named below, already bridge-blocked, for zero containment gain
+  against a quadrupled reasoning surface.
+
+  **The accepted ceiling, precisely stated:** one substitution axis
+  required in contradictory roles (word-split and word-separator) —
+  whether by one character family or by two families sharing the axis —
+  defeats all four normalizations at once, since no single cell of the 2x2
+  can hold two different values on the same axis simultaneously. Two pinned
+  shapes in `tests/test_connectors_sanitize.py`:
+  - **Pin (i), the PRIORITY residual:** the markup axis required in both
+    roles (e.g. `ig<b>nore</b> all previous<br/>instructions`). This is the
+    one vector that is **neither detected nor blocked** — it raises only
+    `active_markup_neutralized`, which carries no blocking weight. For this
+    vector specifically, the preventive controls are the entire boundary:
+    the no-model-path architecture (sanitized content never reaches a model
+    boundary in this gate) and the fail-closed, human-provenance bridge
+    (TB-4) that is the only way connector output ever reaches the M1–M7
+    pipeline.
+  - **Pin (ii):** the invisible axis required in both roles, same-family
+    (e.g. two zero-width spaces) or cross-family (e.g. an RTL-override split
+    plus a control-character separator) — both cases already raise
+    `malformed_encoding` and are bridge-blocked regardless of what
+    `instruction_shaped_text` does, so these two pins document a
+    **labeling** ceiling (correct adversarial labeling on an already-blocked
+    item, which protects against reviewer override-fatigue), not a
+    containment gap.
+
+  RC-1-R3 must never be described as closing the class of
+  empty-string-deletion-adjacency evasions of `instruction_shaped_text` in
+  general — only these measured bypasses, with the two ceiling shapes above
+  named and pinned. As always, the detective marker is not the control.
 
 ## Non-threats (out of scope, by design)
 
