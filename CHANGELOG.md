@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (RC-1-R, blocking precondition of Gate E1, per Fable ruling 2026-07-28)
+
+- `connectors/sanitize.py` — `sanitize_text` no longer misses an
+  `instruction_shaped_text` phrase that has a markup tag placed BETWEEN two
+  of its words (e.g. `previous<br/>instructions`, `<span>previous</span>instructions`).
+  The retained markup strip still substitutes the empty string for a tag,
+  unchanged, and `active_markup_neutralized` still flags from the same
+  single `without_brackets != working` comparison as before (golden fixture
+  hashes did not move). Detection now ALSO checks a separate, local,
+  detection-only variant that substitutes a SPACE for markup instead,
+  derived from the text after replacement-character/NFC/control-character/
+  bidi-and-invisible-character handling has already run (so the existing
+  zero-width/bidi defense is not reopened on this new detection path); the
+  variant is never stored, returned, logged, redacted, or truncated.
+  `_INSTRUCTION_PATTERNS` itself is unchanged — Fable explicitly rejected
+  widening the patterns to tolerate intra-phrase junk.
+  - **Accepted residual, not fixed by this change:** a single input
+    combining BOTH known evasion techniques at once — a word deliberately
+    split by a tag (e.g. `ig<b>nore</b>`, caught only by the retained
+    empty-string normalization) and a different word pair joined across a
+    tag (e.g. `previous<br/>instructions`, caught only by the new
+    space-substituted variant) — is still not flagged. This is a known,
+    pinned ceiling of the regex heuristic, not an oversight; see the
+    dedicated test and the module/threat-model documentation for detail.
+  - This closes one measured bypass of a heuristic, human-facing marker. It
+    does not close the class of markup-adjacency evasions, and it changes
+    nothing about the actual (architectural) controls: sanitized connector
+    output still never reaches a model boundary in this gate, and can only
+    reach the pipeline through the fail-closed, human-provenance bridge.
+
 ### Fixed (pre-E1 connector fetch-semantics fixes, per Fable ruling 2026-07-27)
 
 - `connectors/network.py` — `NetworkFetcher.fetch` now consumes its

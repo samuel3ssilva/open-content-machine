@@ -91,6 +91,25 @@ trust-boundary change. Method: lightweight STRIDE over the data-flow in
   M1–M7 pipeline through the authored, human-provenance bridge (TB-4).
   `SecurityFlag` markers are heuristic and traceable for a human reviewer —
   they are a marker, not a guarantee.
+- **RC-1-R (Fable ruling, 2026-07-28) — open evasion of the detective layer,
+  accepted:** `sanitize_text` closed the measured tag-between-words bypass of
+  `instruction_shaped_text` (e.g. `previous<br/>instructions`, where the
+  retained empty-string markup strip previously merged the two words and
+  defeated the word-boundary-anchored patterns) by also checking a separate,
+  detection-only, space-substituted normalization. This closes ONE bypass; it
+  does not close the class. A single input COMBINING both known
+  techniques — a word deliberately split by a tag (e.g. `ig<b>nore</b>`,
+  caught only by the retained empty-string normalization) AND a different
+  word pair joined across a tag (e.g. `previous<br/>instructions`, caught
+  only by the space-substituted variant) in the SAME string — is a known,
+  accepted residual that neither normalization alone, nor their OR, catches;
+  pinned explicitly in `tests/test_connectors_sanitize.py`. RC-1-R must never
+  be described as closing the class of markup-adjacency evasions of
+  `instruction_shaped_text`, only this one measured bypass. The preventive
+  controls remain unchanged and are what actually matter here: the
+  no-model-path architecture (sanitized content never reaches a model
+  boundary in this gate) and the fail-closed, human-provenance bridge (TB-4)
+  that is the only way connector output ever reaches the M1–M7 pipeline.
 
 ## Non-threats (out of scope, by design)
 
