@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (retention cap correction, per Fable ruling 2026-07-28)
+
+- Raised `SUMMARY_MAX_CHARS` (governing `DiscoveryResult.summary_normalized`,
+  and now also `SourceItem.summary_normalized`) from **280 to 2000**. The
+  first real connector run retained 20 items, every one truncated to exactly
+  280 characters mid-sentence — too little material for the Founder to
+  author the `AuthoredAssessment` `bridge.to_source_item` requires. The
+  constant's single source of truth is now
+  `content_machine.intelligence.models.SUMMARY_RETENTION_MAX_CHARS`;
+  `connectors.models.SUMMARY_MAX_CHARS` re-exports it, so every existing
+  import site is unchanged.
+- `intelligence.models.SourceItem.summary_normalized` gains a `max_length`
+  bound (previously unbounded) governed by the same constant, closing the
+  receiving-side half of the `DiscoveryResult.summary_normalized` <->
+  `SourceItem.summary_normalized` pair that actually shares this bound.
+- `intelligence.library.NORMALIZED_SUMMARY_MAX_CHARS` is unchanged at 280 —
+  it bounds locally-derived text with no connector data flow and was never
+  part of this correction.
+- Corrected `connectors/models.py`'s comment on `SUMMARY_MAX_CHARS`, which
+  had claimed alignment with `NORMALIZED_SUMMARY_MAX_CHARS`; that alignment
+  was cosmetic, and ADR 0005 carries an append-only amendment recording the
+  full correction.
+- No change to `connectors/sanitize.py` detection logic: truncation to the
+  cap happens only after every detector has already run, so this is a
+  retention-length change only.
+
 ### Fixed (RC-1-R3, blocking precondition of Gate E1, per Fable ruling 2026-07-28, final iteration of this loop, supersedes RC-1-R2 and RC-1-R below)
 
 - `connectors/sanitize.py` — RC-1-R (same day, superseded) fixed the markup

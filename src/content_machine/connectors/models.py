@@ -54,7 +54,11 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 from content_machine.connectors.retention import DisposalRecord, RetentionClass
-from content_machine.intelligence.models import EvidenceType, SecurityFlag
+from content_machine.intelligence.models import (
+    SUMMARY_RETENTION_MAX_CHARS,
+    EvidenceType,
+    SecurityFlag,
+)
 
 # --- §2 pinned literal constants ---------------------------------------------
 # Every constant below has a dedicated test asserting its LITERAL value in
@@ -72,9 +76,25 @@ DEFAULT_MAX_REDIRECTS = 3
 DEFAULT_MAX_ITEMS_PER_SOURCE = 50
 #: Discovery request default/ceiling for total adapter requests in one run.
 DEFAULT_MAX_REQUESTS_PER_RUN = 200
-#: Max length of ``DiscoveryResult.summary_normalized`` -- aligns with
-#: ``intelligence.library.NORMALIZED_SUMMARY_MAX_CHARS``.
-SUMMARY_MAX_CHARS = 280
+#: Max length of ``DiscoveryResult.summary_normalized``. Re-exports
+#: ``intelligence.models.SUMMARY_RETENTION_MAX_CHARS`` under this package's
+#: existing name so every caller here keeps working unchanged -- there is
+#: exactly ONE source of truth (``intelligence.models``), never two
+#: constants that could drift apart.
+#:
+#: The real pairing this bounds is ``DiscoveryResult.summary_normalized`` <->
+#: ``SourceItem.summary_normalized`` (the same text crossing
+#: ``bridge.to_source_item``), NOT ``intelligence.library.
+#: NORMALIZED_SUMMARY_MAX_CHARS`` (280, unchanged) as an earlier version of
+#: this comment claimed. That "alignment" was mis-motivated: there is no
+#: data flow between this field and the library constant's field --
+#: ``build_normalized_summary()`` derives its 280-char text from a topic's
+#: own canonical title and ranking explanation, never from connector-sourced
+#: body text. The decoupling is deliberate; see
+#: ``intelligence.models.SUMMARY_RETENTION_MAX_CHARS``'s docstring and
+#: ADR 0005's append-only amendment (Fable ruling, 2026-07-28) for the full
+#: correction.
+SUMMARY_MAX_CHARS = SUMMARY_RETENTION_MAX_CHARS
 #: Max length of ``DiscoveryResult.title``.
 TITLE_MAX_CHARS = 300
 #: Max length of ``DiscoveryResult.canonical_reference`` (Gate D round-1

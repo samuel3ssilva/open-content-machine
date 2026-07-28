@@ -10,7 +10,7 @@ import json
 import pytest
 
 from content_machine.connectors.failures import FailureKind
-from content_machine.connectors.models import DiscoveryRequest
+from content_machine.connectors.models import SUMMARY_MAX_CHARS, DiscoveryRequest
 from content_machine.connectors.runner import ConnectorAdapterError
 from content_machine.connectors.sanitize import SecurityFlag
 from content_machine.connectors.synthetic import fixtures
@@ -204,7 +204,7 @@ def test_oversized_content_is_truncated_and_flagged() -> None:
     outcome = OversizedContentSyntheticAdapter("src_a", scenario="oversized").discover(_REQUEST)
     result = outcome.results[0]
     assert SecurityFlag.oversized_truncated in result.security_flags
-    assert len(result.summary_normalized) <= 280
+    assert len(result.summary_normalized) <= SUMMARY_MAX_CHARS
 
 
 def test_malformed_encoding_survives_sanitization_without_raising() -> None:
