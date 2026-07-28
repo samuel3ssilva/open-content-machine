@@ -47,11 +47,22 @@ These are non-negotiable for every agent and every change:
    invented people and `example.com`-style domains.
 3. **No PII in code, logs, fixtures, or error messages.** Errors reference
    row numbers and column names, never field values.
-4. **No network calls in core.** `content_machine/providers/` is the only
-   module allowed to perform network I/O, and only via the `ModelProvider`
-   abstraction with vendor SDKs imported lazily inside their own module. The
-   default and only provider exercised this sprint is the offline
-   `MockProvider`.
+4. **Network I/O is confined to exactly two modules.** Everywhere else in
+   the package — including all of `intelligence/` and every other file in
+   `connectors/` — must remain network-free, and static AST scans enforce
+   that. The two exceptions are:
+   - `content_machine/providers/` — the model boundary, only via the
+     `ModelProvider` abstraction with vendor SDKs imported lazily inside
+     their own module. The default and only provider exercised this sprint
+     is the offline `MockProvider`.
+   - `content_machine/connectors/network.py` — the retrieval boundary
+     (Gate E0). The only module in `connectors/` permitted to open a
+     socket, via a filename-scoped exemption in
+     `tests/test_connectors_no_network.py` that is otherwise unchanged.
+     It exposes one public entry point and enforces HTTPS-only, a
+     per-source hostname allowlist, SSRF and DNS-rebinding defenses,
+     timeouts, a streaming byte cap, a MIME allowlist, and rate limiting.
+     See [`SECURITY.md`](SECURITY.md) for the full control list.
 5. Data may only reach a model boundary through `privacy.strip_for_model()`
    with its field allowlist — never names, emails, or profile URLs. See
    [`docs/privacy.md`](docs/privacy.md) and ADR 0002/0003.

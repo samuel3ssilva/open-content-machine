@@ -22,6 +22,11 @@ Profile.csv
 !.env.example
 *.pem
 *.key
+# Non-standard TLS-material extensions used by test fixtures generated at
+# run time (see tests/test_connectors_network.py) -- closes the gap that let
+# a real PEM key slip in under a non-.key/.pem extension (Gate E0 incident).
+*.pkey
+*.crt
 credentials*.json
 secrets*
 

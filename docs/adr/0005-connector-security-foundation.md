@@ -367,21 +367,34 @@ the documentation-honesty corrections to this ADR (§4's bounds language,
 
 **Still deferred, stated explicitly so no reviewer is misled:**
 
-- **B2's durable fix** — propagating `security_flags` onto `SourceItem`
-  itself and surfacing them in the published brief for a human reviewer —
-  remains deferred to the gate that ships the first real adapter, where
-  extending the intelligence model is in scope under Fable review. This
-  round's fix is a fail-closed substitute, not that fix.
-- **SSRF/timeout/redirect/byte ENFORCEMENT is still declarative fields only,
-  not executing code.** `VerificationRequest.max_redirects`/`max_bytes`/
-  `timeout_seconds` and `redirect_chain_flags`' hop-count check are real,
-  tested logic over DATA a caller supplies — but Gate D still has no actual
-  network/fetch code anywhere, so nothing today makes an HTTP request, hits
-  a timeout, or follows a real redirect. Wiring these fields to an actual
-  fetch (with a real timeout, a real redirect-following policy, and a real
-  byte-count enforcement against a live response) is deferred to the first
-  real adapter's gate, alongside its own Fable security review of the
-  fetch path itself.
+- **B2's durable fix — DONE, no longer deferred (Gate E0, E0.1/E0.3).** This
+  section previously said propagating `security_flags` onto `SourceItem`
+  itself and surfacing them in the published brief for a human reviewer
+  remained deferred to the gate that shipped the first real adapter. That
+  gate is Gate E0: `SecurityFlag` now lives on `SourceItem` (and
+  transitively on `TopicCluster`/`TieredTopic`) and is surfaced in the
+  published weekly brief, alongside `may_supply_independence` propagation
+  from the curated source registry. The round-1 fail-closed substitute
+  (`UnreviewedSecurityFlagsError`) is unchanged and still in force — this is
+  the additional, durable fix layered on top of it, not a replacement for
+  it.
+- **SSRF/timeout/redirect/byte ENFORCEMENT — real fetch code now exists,
+  still unwired to any adapter (Gate E0, E0.4).** This section previously
+  said `VerificationRequest.max_redirects`/`max_bytes`/`timeout_seconds` and
+  `redirect_chain_flags`' hop-count check were tested logic over data only,
+  with no actual network/fetch code anywhere in the codebase. As of E0.4,
+  `connectors/network.py` (`NetworkFetcher`) is real, executing fetch code —
+  HTTPS-only, a per-source hostname allowlist, blocked private/loopback/
+  link-local/IP-literal addresses, DNS-rebinding-resistant address pinning
+  with certificate verification still against the original hostname,
+  manually-handled and bounded redirects re-validated per hop, separate
+  connect/read timeouts, a mid-stream byte cap, a MIME allowlist, per-source
+  rate limiting, and a live `authorize_retrieval` permission check — see
+  `docs/threat-model.md` T15 for the full list and `SECURITY.md` for the
+  public-facing summary. What remains genuinely deferred is wiring this
+  fetch boundary to any actual source adapter; no adapter in this repository
+  calls it yet, and doing so is its own future gate with its own Fable
+  review of that specific integration.
 - **No real adapter exists yet, and Gmail is sequenced last.** The synthetic
   adapters remain the only implementations of `ConnectorAdapter`. When real
   adapters are built, lower-sensitivity, simpler sources (RSS/vendor
