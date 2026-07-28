@@ -29,20 +29,44 @@ pipeline through an authored, human-provenance bridge (``bridge.py``, a later
 commit). No claim of perfect (or even reliable) semantic detection is made or
 implied anywhere in this module.
 
-**RC-1-R (Fable ruling, 2026-07-28) -- open evasion of the detective layer,
-accepted.** ``sanitize_text`` now checks instruction-shaped patterns against
-both an empty-string-substituted and a space-substituted normalization of
-markup, closing the specific tag-between-words bypass RC-1-R was opened to
-fix (e.g. "previous<br/>instructions"). This closes ONE bypass of a
-heuristic marker; it does not close the class. A single input COMBINING both
-known techniques -- a word deliberately split by a tag (defeated only by the
-empty-string normalization) AND a different word pair joined across a tag
-(defeated only by the space-substituted normalization) in the SAME string --
-is a known, accepted residual that neither normalization alone, nor the two
-together, catches; see the pinned regression test in
-``tests/test_connectors_sanitize.py`` for the exact shape. RC-1-R must never
-be described as closing the class of markup-adjacency evasions of
-``instruction_shaped_text``, only this one measured bypass. As always, the
+**RC-1-R2 (Fable ruling, 2026-07-28, superseding RC-1-R) -- open evasion of
+the detective layer, accepted, described as a CLASS.** The underlying defect
+is general, not markup-specific: every empty-string deletion in
+``sanitize_text`` merges whatever flanks the deleted span, and a deleted
+character placed BETWEEN two words of an instruction phrase can defeat the
+word-boundary-anchored ``_INSTRUCTION_PATTERNS`` regardless of which
+character class was deleted. RC-1-R (2026-07-28, same day, superseded)
+closed only the markup member of this class. Fable's follow-up adversarial
+probe found the same defeat via the replacement character, zero-width/bidi
+characters, and bare C0/DEL control characters. The members differ in how
+they were contained before RC-1-R2, not in whether they were real:
+
+- Replacement character, zero-width/bidi characters: each already raised
+  ``malformed_encoding`` on deletion -- a member of
+  ``bridge.BLOCKING_SECURITY_FLAGS`` -- so these were already fail-closed at
+  the bridge choke point even before any detection fix, though
+  ``instruction_shaped_text`` itself did not yet fire on them.
+- C0/DEL control characters: raised NO flag at all on deletion -- neither
+  blocking nor advisory -- the one true gap in the taxonomy, now closed by
+  this same commit's addition of ``malformed_encoding`` to that deletion
+  (see ``sanitize_text``'s step 2 docstring note).
+- Markup tags: raise only ``active_markup_neutralized``, which is NOT in
+  ``BLOCKING_SECURITY_FLAGS`` -- the sole defense against this member is
+  detection (``instruction_shaped_text`` firing), which is what RC-1-R
+  added and RC-1-R2 generalizes.
+
+``sanitize_text`` now maintains a second, space-substituted, detection-only
+string in parallel with the retained one, from the same deletion sites
+across all of steps 1-4, and checks instruction-shaped patterns against
+both (see that function's docstring for the exact mechanics). This closes
+the MEASURED bypasses above; it does not close the class in general, and
+must never be described as doing so. A single input combining a
+character-deleted-inside-a-word split (defeated only by the retained,
+empty-string string) with a different, separator-deleted-between-words join
+(defeated only by the space-substituted variant) in the SAME string remains
+a known, accepted residual that neither normalization alone, nor their OR,
+catches; see the pinned regression test in
+``tests/test_connectors_sanitize.py`` for the exact shape. As always, the
 detective marker is not the control: the actual, preventive defense against
 retrieved content acting as instructions is architectural -- the no-model-path
 design (sanitized content never reaches a model boundary in this gate) and
@@ -218,53 +242,73 @@ class SanitizedText(BaseModel):
 def sanitize_text(raw: str, *, max_chars: int) -> SanitizedText:
     """Neutralize untrusted text and cap its length.
 
-    Order of operations (each idempotent on its own output):
+    Order of operations (each idempotent on its own output). Every step below
+    that deletes a character is applied to TWO strings in parallel, ``working``
+    (retained, unchanged from pre-RC-1-R2 behavior) and ``variant``
+    (detection-only, local, never stored/returned/logged/redacted/truncated):
+    ``working`` substitutes the empty string as it always has; ``variant``
+    substitutes a single space at the exact same site. This is RC-1-R2
+    (Fable ruling 2026-07-28), which SUPERSEDES RC-1-R below: RC-1-R
+    introduced this retained/variant split for markup only, deriving the
+    variant after steps 1-3 had already run on ``working``. Fable's follow-up
+    adversarial probe found the same class of bypass -- an empty-string
+    deletion merging the two words on either side of it -- via the
+    replacement character, zero-width/bidi characters, and bare C0/DEL
+    control characters, none of which RC-1-R's markup-only variant covered.
+    RC-1-R2 generalizes the variant to cover every deletion site in steps
+    1-4, from the start, superseding RC-1-R's narrower placement rather than
+    violating it.
 
     1. Detect and drop the Unicode replacement character (a signal of
-       malformed upstream decoding), flagging ``malformed_encoding``.
-    2. Strip C0/DEL control characters.
+       malformed upstream decoding) in ``working``, flagging
+       ``malformed_encoding``; substitute a space at the same site in
+       ``variant``.
+    2. Strip C0/DEL control characters from ``working``; substitute a space
+       at the same site in ``variant``. RC-1-R2 item 4: this step now ALSO
+       flags ``malformed_encoding`` (checked against ``working`` before the
+       substitution) -- previously this deletion raised no flag at all, the
+       one gap in an otherwise-consistent "flag every deleted-character
+       class" taxonomy (steps 1 and 3 already flagged their own deletions).
     3. Detect and drop zero-width/bidi-control/invisible characters (Gate D
-       round-1 correction, C2), also flagging ``malformed_encoding``. This
-       MUST happen before the instruction-shaped check (step 6): a
-       zero-width space embedded mid-word (``"Ign" + ZWSP + "ore all
-       previous instructions"``) would otherwise defeat that heuristic, and
-       a bidi override left in place would make the rendered text a human
-       reviewer sees differ from the logical text this function returns.
-    4. Neutralize markup: strip well-formed ``<...>`` tags, then strip any
-       stray/unmatched angle brackets left over (mirrors
+       round-1 correction, C2) from ``working``, also flagging
+       ``malformed_encoding``; substitute a space at the same site in
+       ``variant``. This MUST happen before the instruction-shaped check
+       (step 6): a zero-width space embedded mid-word (``"Ign" + ZWSP +
+       "ore all previous instructions"``) would otherwise defeat that
+       heuristic on ``working``, and a bidi override left in place would
+       make the rendered text a human reviewer sees differ from the logical
+       text this function returns.
+    4. Neutralize markup in ``working``: strip well-formed ``<...>`` tags,
+       then strip any stray/unmatched angle brackets left over (mirrors
        ``intelligence.library.build_normalized_summary``'s belt-and-suspenders
        approach rather than inventing a second style), flagging
-       ``active_markup_neutralized`` when anything was removed. Immediately
-       before this empty-string substitution runs, a SEPARATE,
-       detection-only variant is derived from the same post-step-3
-       ``working`` value by substituting a SPACE for markup instead (RC-1-R,
-       Fable ruling 2026-07-28): empty-string substitution can merge two
-       words that a tag was deliberately placed between (e.g.
-       "previous<br/>instructions" -> "previousinstructions"), defeating the
-       word-boundary-anchored patterns step 6 checks. This variant is
-       computed from `working` post-steps-1-3 rather than from the raw
-       input specifically so the bidi/zero-width defense (step 3) is not
-       silently bypassed on this detection-only path. The variant is never
-       stored, returned, logged, redacted, or truncated -- it exists only to
-       produce one boolean for step 6, then is discarded.
-    5. Collapse whitespace.
+       ``active_markup_neutralized`` when anything was removed -- the ONE
+       flagging site for that flag, unchanged since Gate D. Substitute a
+       space at the same sites in ``variant`` (RC-1-R's original motivating
+       case: a tag between two words, e.g. "previous<br/>instructions" ->
+       "previousinstructions" in ``working``, which defeats the
+       word-boundary-anchored patterns step 6 checks unless ``variant``
+       also catches it).
+    5. Collapse whitespace -- applied identically to both ``working`` and
+       ``variant``.
     6. Detect instruction-shaped phrases and flag them -- the matched text is
        left in place, unmodified: it is data, not something to strip. Checked
-       against BOTH the retained (collapsed) string from step 4 AND the
-       space-substituted variant from step 4 (RC-1-R): checking only the
-       retained string misses the tag-between-words bypass above; checking
-       only the space-substituted variant would, per Fable's ruling, reopen a
-       different bypass -- a word deliberately split by a tag (e.g.
-       "ig<b>nore</b>"), which the retained string's empty-string
-       substitution correctly reassembles and therefore still catches.
-       Neither normalization alone suffices. Note this is an OR over two
-       heuristic checks, not a new detection technique: `_INSTRUCTION_PATTERNS`
-       itself is unchanged (Fable explicitly rejected widening the patterns
-       themselves to tolerate intra-phrase junk).
+       against BOTH ``working`` and ``variant`` (an OR, one
+       ``flags.append``): checking only ``working`` misses every
+       empty-string-merge bypass above; checking only ``variant`` would, per
+       Fable's ruling, reopen a DIFFERENT bypass -- a single word
+       deliberately split by a deleted character (e.g. "ig<b>nore</b>", or
+       "ig" + ZWSP + "nore"), which ``working``'s own empty-string
+       substitutions correctly reassemble and therefore still catch.
+       Neither normalization alone suffices; both must be checked.
+       `_INSTRUCTION_PATTERNS` itself is unchanged -- Fable explicitly
+       rejected widening the patterns themselves to tolerate intra-phrase
+       junk, in both the RC-1-R and RC-1-R2 rulings.
     7. Redact credential-shaped, email-shaped, and filesystem-path-shaped
-       substrings from the result, flagging each kind found.
-    8. Truncate to ``max_chars``, flagging ``oversized_truncated`` if the
-       text was longer.
+       substrings from ``working`` (the retained string only), flagging each
+       kind found.
+    8. Truncate ``working`` to ``max_chars``, flagging ``oversized_truncated``
+       if the text was longer.
 
     (Gate D round-2 correction, D3: this list previously named step 6
     "redact" and step 7 "detect instruction-shaped text" -- the reverse of
@@ -281,57 +325,103 @@ def sanitize_text(raw: str, *, max_chars: int) -> SanitizedText:
         if flag not in flags:
             flags.append(flag)
 
+    # RC-1-R2 (Fable ruling, 2026-07-28, superseding RC-1-R): the underlying
+    # class is that EVERY empty-string deletion in this function merges
+    # whatever character-run flanks the deleted span, which can glue two
+    # words of an instruction phrase together and defeat the word-boundary-
+    # anchored patterns in _INSTRUCTION_PATTERNS. RC-1-R closed only the
+    # markup member of that class (a tag between two words). Fable's
+    # follow-up adversarial probe found the same defeat via a zero-width
+    # space, a bidi override, the replacement character, and -- with no
+    # flag raised at all -- a bare C0/DEL control character (vertical tab,
+    # bell, DEL) between two words.
+    #
+    # `variant` is maintained in PARALLEL with the retained `working` string,
+    # through the exact same steps in the exact same order, substituting a
+    # single SPACE at every site `working` substitutes the empty string.
+    # `variant` is local only -- never stored, returned, logged, redacted,
+    # or truncated. It exists solely to produce one boolean at step 6, then
+    # is discarded. `working` itself, and every flag derived from searches
+    # against it, is completely unchanged from pre-RC-1-R2 behavior (see
+    # step 2's note below for the one narrow addition: a flag that was
+    # already true of `working`'s own contents, just never previously
+    # checked for).
     working = raw
+    variant = raw
+
+    # Step 1: replacement character (a signal of malformed upstream decoding).
     if _REPLACEMENT_CHAR in working:
         _flag_once(SecurityFlag.malformed_encoding)
         working = working.replace(_REPLACEMENT_CHAR, "")
+    variant = variant.replace(_REPLACEMENT_CHAR, " ")
+
     working = unicodedata.normalize("NFC", working)
+    variant = unicodedata.normalize("NFC", variant)
+
+    # Step 2: strip C0/DEL control characters.
+    #
+    # RC-1-R2 item 4: this deletion previously raised NO flag at all -- the
+    # one member of the empty-string-deletion class with zero downstream
+    # signal, not even a non-blocking one (contrast step 1's
+    # malformed_encoding and step 3's malformed_encoding: both already
+    # flagged their own deletions). C0/DEL characters are the same
+    # "must not exist in well-formed text" class as those two, so the
+    # blocking taxonomy was inconsistent, not intentionally lenient here.
+    # Checked against `working` before the substitution below removes them;
+    # `variant` has not diverged from `working` in any way that touches
+    # this pattern's matches (step 1 only ever touched the replacement
+    # character, disjoint from the C0/DEL range), so checking `working`
+    # alone is equivalent to checking either string at this point.
+    if _CONTROL_CHAR_RE.search(working):
+        _flag_once(SecurityFlag.malformed_encoding)
     working = _CONTROL_CHAR_RE.sub("", working)
+    variant = _CONTROL_CHAR_RE.sub(" ", variant)
+
+    # Step 3: zero-width/bidi-control/invisible characters (Gate D round-1
+    # correction, C2). This MUST happen before the instruction-shaped check
+    # (step 6): a zero-width space embedded mid-word (``"Ign" + ZWSP + "ore
+    # all previous instructions"``) would otherwise defeat that heuristic on
+    # the retained path, and a bidi override left in place would make the
+    # rendered text a human reviewer sees differ from the logical text this
+    # function returns.
     if _BIDI_AND_INVISIBLE_RE.search(working):
         _flag_once(SecurityFlag.malformed_encoding)
         working = _BIDI_AND_INVISIBLE_RE.sub("", working)
+    variant = _BIDI_AND_INVISIBLE_RE.sub(" ", variant)
 
-    # RC-1-R (Fable ruling, 2026-07-28): a detection-only variant that
-    # substitutes a SPACE for markup, rather than the empty string the
-    # retained pipeline uses below. It exists solely to catch the case the
-    # empty-string substitution misses: a tag placed BETWEEN two words of an
-    # instruction phrase (e.g. "previous<br/>instructions") is invisible to
-    # the empty-string path, because deleting the tag glues the two words
-    # back together with nothing between them, defeating the
-    # word-boundary-anchored patterns in _INSTRUCTION_PATTERNS. Derived from
-    # `working` HERE -- i.e. after steps 1-3 (replacement-character drop,
-    # NFC normalization, control-character strip, bidi/zero-width strip)
-    # have already run, but before the retained empty-string markup strip
-    # below. This placement is load-bearing: deriving the variant from the
-    # raw input instead would silently reopen the zero-width/bidi defense
-    # (C2) on this detection path, since a zero-width space or bidi override
-    # would then reach the instruction check unfiltered via the variant.
-    # This variant is local only -- never stored, returned, logged,
-    # redacted, or truncated; it exists to produce one boolean, below, and
-    # is then discarded.
-    _instruction_variant = _MARKUP_TAG_RE.sub(" ", working)
-    _instruction_variant = _instruction_variant.replace("<", " ").replace(">", " ")
-    _instruction_variant = _WHITESPACE_RE.sub(" ", _instruction_variant).strip()
-
+    # Step 4: neutralize markup. Strip well-formed ``<...>`` tags, then strip
+    # any stray/unmatched angle brackets left over (mirrors
+    # ``intelligence.library.build_normalized_summary``'s belt-and-suspenders
+    # approach rather than inventing a second style), flagging
+    # ``active_markup_neutralized`` when anything was removed. This is the
+    # ONE flagging site for that flag, and the retained substitution below
+    # is byte-for-byte what RC-1-R (and Gate D before it) shipped.
     without_tags = _MARKUP_TAG_RE.sub("", working)
     without_brackets = without_tags.replace("<", "").replace(">", "")
     if without_brackets != working:
         flags.append(SecurityFlag.active_markup_neutralized)
     working = without_brackets
 
-    working = _WHITESPACE_RE.sub(" ", working).strip()
+    variant = _MARKUP_TAG_RE.sub(" ", variant)
+    variant = variant.replace("<", " ").replace(">", " ")
 
-    # RC-1-R: OR the retained (collapsed) string against the space-substituted
-    # variant computed above. Checking ONLY `working` would miss the
-    # tag-between-words bypass; checking ONLY a space-substituted variant
-    # would (per Fable's ruling) reopen a DIFFERENT bypass -- a word
-    # deliberately split by a tag (e.g. "ig<b>nore</b>") that the empty-string
-    # path's retained `working` correctly reassembles into "ignore" and
-    # therefore still catches. Neither normalization alone is sufficient;
-    # both must be checked.
-    if _has_instruction_shaped_text(working) or _has_instruction_shaped_text(
-        _instruction_variant
-    ):
+    # Step 5: collapse whitespace -- applied to BOTH strings identically.
+    working = _WHITESPACE_RE.sub(" ", working).strip()
+    variant = _WHITESPACE_RE.sub(" ", variant).strip()
+
+    # Step 6: detect instruction-shaped phrases and flag them -- the matched
+    # text is left in place, unmodified: it is data, not something to strip.
+    # Checked against BOTH `working` and `variant` (an OR, one
+    # `flags.append`): checking only `working` misses every empty-string-
+    # merge bypass in the class above; checking only `variant` would, per
+    # Fable's ruling, reopen a DIFFERENT bypass -- a single word deliberately
+    # split by a deleted character (e.g. "ig<b>nore</b>", or "ig" + ZWSP +
+    # "nore"), which `working`'s own empty-string substitutions correctly
+    # reassemble and therefore still catch. Neither normalization alone
+    # suffices; both must be checked. `_INSTRUCTION_PATTERNS` itself is
+    # unchanged -- Fable explicitly rejected widening the patterns to
+    # tolerate intra-phrase junk.
+    if _has_instruction_shaped_text(working) or _has_instruction_shaped_text(variant):
         flags.append(SecurityFlag.instruction_shaped_text)
 
     if _CREDENTIAL_PREFIX_RE.search(working) or _CREDENTIAL_ASSIGNMENT_RE.search(working):

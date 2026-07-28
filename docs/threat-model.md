@@ -91,25 +91,49 @@ trust-boundary change. Method: lightweight STRIDE over the data-flow in
   M1–M7 pipeline through the authored, human-provenance bridge (TB-4).
   `SecurityFlag` markers are heuristic and traceable for a human reviewer —
   they are a marker, not a guarantee.
-- **RC-1-R (Fable ruling, 2026-07-28) — open evasion of the detective layer,
-  accepted:** `sanitize_text` closed the measured tag-between-words bypass of
-  `instruction_shaped_text` (e.g. `previous<br/>instructions`, where the
-  retained empty-string markup strip previously merged the two words and
-  defeated the word-boundary-anchored patterns) by also checking a separate,
-  detection-only, space-substituted normalization. This closes ONE bypass; it
-  does not close the class. A single input COMBINING both known
-  techniques — a word deliberately split by a tag (e.g. `ig<b>nore</b>`,
-  caught only by the retained empty-string normalization) AND a different
-  word pair joined across a tag (e.g. `previous<br/>instructions`, caught
-  only by the space-substituted variant) in the SAME string — is a known,
-  accepted residual that neither normalization alone, nor their OR, catches;
-  pinned explicitly in `tests/test_connectors_sanitize.py`. RC-1-R must never
-  be described as closing the class of markup-adjacency evasions of
-  `instruction_shaped_text`, only this one measured bypass. The preventive
-  controls remain unchanged and are what actually matter here: the
-  no-model-path architecture (sanitized content never reaches a model
-  boundary in this gate) and the fail-closed, human-provenance bridge (TB-4)
-  that is the only way connector output ever reaches the M1–M7 pipeline.
+- **RC-1-R2 (Fable ruling, 2026-07-28, superseding RC-1-R) — open evasion of
+  the detective layer, accepted, described as a CLASS:** the underlying
+  defect is general, not markup-specific — every empty-string deletion in
+  `sanitize_text` merges whatever flanks the deleted span, and a deleted
+  character placed BETWEEN two words of an instruction phrase can defeat the
+  word-boundary-anchored patterns regardless of which character class was
+  deleted. RC-1-R (same day, superseded) closed only the markup member
+  (`previous<br/>instructions`). Fable's follow-up adversarial probe found
+  the same defeat via the replacement character, zero-width/bidi characters,
+  and bare C0/DEL control characters. The members differ in how they were
+  contained, not in whether they were real:
+  - Replacement character, zero-width/bidi characters: each already raised
+    `malformed_encoding` on deletion — a **blocking** flag (see T14's
+    control and `bridge.BLOCKING_SECURITY_FLAGS`) — so these were already
+    fail-closed at the bridge choke point (TB-4) even before any detection
+    fix, though `instruction_shaped_text` itself did not yet fire on them.
+  - C0/DEL control characters: raised **no flag at all** on deletion —
+    neither blocking nor advisory — the one true gap in the taxonomy, now
+    closed in the same change by also flagging `malformed_encoding` on that
+    deletion.
+  - Markup tags: raise only `active_markup_neutralized`, which is **not**
+    blocking — the sole defense against this member is detection
+    (`instruction_shaped_text` firing), which is what RC-1-R added and
+    RC-1-R2 generalizes to every deletion site.
+
+  `sanitize_text` now maintains a second, space-substituted, detection-only
+  string in parallel with the retained one, from the same deletion sites
+  across every step that deletes a character, and checks
+  `instruction_shaped_text` against both. This closes the MEASURED bypasses
+  above; it does not close the class in general. A single input combining a
+  character-deleted-inside-a-word split (defeated only by the retained,
+  empty-string string) with a different, separator-deleted-between-words
+  join (defeated only by the space-substituted variant) in the SAME
+  string — e.g. `ig<b>nore</b> all previous<br/>instructions` — remains a
+  known, accepted residual that neither normalization alone, nor their OR,
+  catches; pinned explicitly in `tests/test_connectors_sanitize.py`. Neither
+  RC-1-R nor RC-1-R2 may be described as closing the class of
+  empty-string-deletion-adjacency evasions of `instruction_shaped_text`,
+  only these measured bypasses. The preventive controls remain unchanged and
+  are what actually matter here: the no-model-path architecture (sanitized
+  content never reaches a model boundary in this gate) and the fail-closed,
+  human-provenance bridge (TB-4) that is the only way connector output ever
+  reaches the M1–M7 pipeline.
 
 ## Non-threats (out of scope, by design)
 

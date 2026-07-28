@@ -7,35 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed (RC-1-R, blocking precondition of Gate E1, per Fable ruling 2026-07-28)
+### Fixed (RC-1-R2, blocking precondition of Gate E1, per Fable ruling 2026-07-28, supersedes RC-1-R below)
 
-- `connectors/sanitize.py` — `sanitize_text` no longer misses an
-  `instruction_shaped_text` phrase that has a markup tag placed BETWEEN two
-  of its words (e.g. `previous<br/>instructions`, `<span>previous</span>instructions`).
-  The retained markup strip still substitutes the empty string for a tag,
-  unchanged, and `active_markup_neutralized` still flags from the same
-  single `without_brackets != working` comparison as before (golden fixture
-  hashes did not move). Detection now ALSO checks a separate, local,
-  detection-only variant that substitutes a SPACE for markup instead,
-  derived from the text after replacement-character/NFC/control-character/
-  bidi-and-invisible-character handling has already run (so the existing
-  zero-width/bidi defense is not reopened on this new detection path); the
-  variant is never stored, returned, logged, redacted, or truncated.
-  `_INSTRUCTION_PATTERNS` itself is unchanged — Fable explicitly rejected
-  widening the patterns to tolerate intra-phrase junk.
+- `connectors/sanitize.py` — RC-1-R (same day, same file, superseded by this
+  entry) fixed one member of a bigger class: `sanitize_text` no longer
+  misses an `instruction_shaped_text` phrase that has a markup tag placed
+  BETWEEN two of its words (e.g. `previous<br/>instructions`,
+  `<span>previous</span>instructions`). Fable's follow-up adversarial probe
+  found the same "empty-string deletion merges the two words it separated"
+  defeat via other deletion sites `sanitize_text` already had: the Unicode
+  replacement character, zero-width/bidi-control characters, and — with **no
+  flag raised at all**, the one true gap — bare C0/DEL control characters
+  (vertical tab, bell, DEL).
+  - The retained (empty-string) string and its existing flagging sites are
+    unchanged: `active_markup_neutralized` still flags from the same single
+    `without_brackets != working` comparison, and `malformed_encoding` still
+    flags from the same replacement-character and bidi/zero-width checks as
+    before (golden fixture hashes did not move; verified explicitly, see PR
+    notes). `_INSTRUCTION_PATTERNS` itself remains untouched — Fable
+    explicitly rejected widening the patterns to tolerate intra-phrase junk,
+    in both rulings.
+  - **New:** a second, local, detection-only string is now maintained in
+    parallel with the retained one, substituting a single SPACE at every
+    site the retained string substitutes the empty string — across all of
+    replacement-character handling, control-character stripping,
+    zero-width/bidi stripping, and markup neutralization (RC-1-R's narrower
+    "derive after steps 1-3, markup only" variant is superseded by this
+    parallel-from-the-start construction). `instruction_shaped_text` is now
+    checked against both strings (an OR). The variant is never stored,
+    returned, logged, redacted, or truncated.
+  - **New:** C0/DEL control-character stripping now also flags
+    `malformed_encoding` (it previously flagged nothing), closing the one
+    taxonomy gap Fable's probe found — the other two deletion sites already
+    flagged their own deletions before this change.
   - **Accepted residual, not fixed by this change:** a single input
-    combining BOTH known evasion techniques at once — a word deliberately
-    split by a tag (e.g. `ig<b>nore</b>`, caught only by the retained
-    empty-string normalization) and a different word pair joined across a
-    tag (e.g. `previous<br/>instructions`, caught only by the new
-    space-substituted variant) — is still not flagged. This is a known,
-    pinned ceiling of the regex heuristic, not an oversight; see the
-    dedicated test and the module/threat-model documentation for detail.
-  - This closes one measured bypass of a heuristic, human-facing marker. It
-    does not close the class of markup-adjacency evasions, and it changes
-    nothing about the actual (architectural) controls: sanitized connector
-    output still never reaches a model boundary in this gate, and can only
-    reach the pipeline through the fail-closed, human-provenance bridge.
+    combining a character-deleted-INSIDE-a-word split (e.g. `ig<b>nore</b>`,
+    or an equivalent zero-width-space/control-character split, caught only
+    by the retained empty-string string) with a different,
+    character-deleted-BETWEEN-words join (e.g. `previous<br/>instructions`,
+    caught only by the space-substituted variant) in the SAME string is
+    still not flagged. This is a known, pinned ceiling of the regex
+    heuristic, not an oversight; see the dedicated test and the
+    module/threat-model documentation for detail.
+  - This closes the MEASURED bypasses above; it does not close the class of
+    empty-string-deletion-adjacency evasions of `instruction_shaped_text` in
+    general, and it changes nothing about the actual (architectural)
+    controls: sanitized connector output still never reaches a model
+    boundary in this gate, and can only reach the pipeline through the
+    fail-closed, human-provenance bridge.
 
 ### Fixed (pre-E1 connector fetch-semantics fixes, per Fable ruling 2026-07-27)
 
