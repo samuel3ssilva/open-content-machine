@@ -443,6 +443,107 @@ def test_exactly_one_outbound_request_is_not_a_trigger(tmp_path: Path) -> None:
     assert KillReason.multiple_outbound_requests not in report.record.evaluation.kill_reasons
 
 
+# --- wiring-integrity: a mismatched/unused request counter must be
+# detected, never assumed correct --------------------------------------------
+
+
+def test_correctly_wired_counter_is_not_flagged(tmp_path: Path) -> None:
+    """The ordinary, correctly-wired case: `fetcher` IS the instance the
+    adapter's own constructor received. No wiring-integrity kill reason."""
+    report, fetcher = _run(tmp_path, _ok_fetch_result(_rss_bytes(_item_xml())))
+    assert fetcher.call_count == 1
+    assert KillReason.request_counter_not_wired not in report.record.evaluation.kill_reasons
+    assert report.record.evaluation.halted is False
+
+
+def test_mismatched_fetcher_wrapper_is_detected(tmp_path: Path) -> None:
+    """The gap the coordinator flagged: the adapter is wired with ONE
+    RequestCountingFetcher (which really does see the fetch call), but a
+    DIFFERENT, fresh RequestCountingFetcher is passed to
+    run_shadow_discovery -- exactly the mistake that would otherwise make
+    `fetcher.call_count == 0` and silently defeat the
+    "more than one outbound request" check regardless of what the adapter
+    actually did.
+    """
+    body = _rss_bytes(_item_xml())
+    used_fetcher = RequestCountingFetcher(_ScriptedFetcher(_ok_fetch_result(body)))
+    adapter = _adapter(used_fetcher)
+    assert used_fetcher.call_count == 0  # not yet invoked
+
+    unused_fetcher = RequestCountingFetcher(_ScriptedFetcher(_ok_fetch_result(body)))
+
+    report = run_shadow_discovery(
+        adapter,
+        unused_fetcher,  # deliberately the WRONG wrapper
+        permission_registry=PermissionRegistry([_permission()]),
+        source_registry=SourceRegistry([_registry_entry()]),
+        request=_batch_request(),
+        occurred_at=_RETRIEVED_AT,
+        output_dir=tmp_path,
+    )
+
+    # The adapter really did fetch -- via `used_fetcher`, which this test
+    # never handed to run_shadow_discovery.
+    assert used_fetcher.call_count == 1
+    assert len(adapter.audit_events) == 1
+
+    evaluation = report.record.evaluation
+    assert evaluation.request_count == 0
+    assert KillReason.request_counter_not_wired in evaluation.kill_reasons
+    assert evaluation.halted is True
+    # And no fabricated byte-cap number for a run this harness cannot trust.
+    assert report.record.byte_measurement.measured is False
+    assert report.record.byte_measurement.observed_byte_count is None
+    assert report.record.byte_measurement.recommended_cap_bytes is None
+    assert report.record.byte_measurement.note == "no measurement available"
+
+
+def test_mismatched_counter_also_caught_when_the_run_itself_fails(tmp_path: Path) -> None:
+    """The wiring-integrity check must not depend on the run having
+    succeeded -- a failed fetch still produces exactly one adapter audit
+    event (module docstring's "Audit" section), so the mismatch is still
+    provable even when the adapter's discover() ultimately raises."""
+    used_fetcher = RequestCountingFetcher(
+        _ScriptedFetcher(
+            FetchResult(
+                ok=False, reason_code=FetchReasonCode.fetch_failed, source_id=_SOURCE_ID
+            )
+        )
+    )
+    adapter = _adapter(used_fetcher)
+    unused_fetcher = RequestCountingFetcher(_ScriptedFetcher(_ok_fetch_result(b"")))
+
+    report = run_shadow_discovery(
+        adapter,
+        unused_fetcher,
+        permission_registry=PermissionRegistry([_permission()]),
+        source_registry=SourceRegistry([_registry_entry()]),
+        request=_batch_request(),
+        occurred_at=_RETRIEVED_AT,
+        output_dir=tmp_path,
+    )
+
+    assert used_fetcher.call_count == 1
+    evaluation = report.record.evaluation
+    assert KillReason.request_counter_not_wired in evaluation.kill_reasons
+
+
+def test_no_fetch_attempt_at_all_is_not_mistaken_for_a_wiring_bug(tmp_path: Path) -> None:
+    """A source that is skipped before discover() is ever called (e.g. not
+    registered) legitimately has request_count == 0 -- that is NOT a wiring
+    bug, and must not be flagged as one (it is already correctly caught by
+    `permission_denied_or_expired` via `skipped_not_approved`)."""
+    report, fetcher = _run(
+        tmp_path,
+        _ok_fetch_result(_rss_bytes(_item_xml())),
+        source_registry=SourceRegistry([]),
+    )
+    assert fetcher.call_count == 0
+    evaluation = report.record.evaluation
+    assert KillReason.request_counter_not_wired not in evaluation.kill_reasons
+    assert KillReason.permission_denied_or_expired in evaluation.kill_reasons
+
+
 # --- C4: byte cap tightens from real, successful data only -----------------
 
 

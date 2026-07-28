@@ -76,6 +76,11 @@ and feeding that into a cap calculation would produce a nonsense cap.
 :class:`ByteCapMeasurement.recommended_cap_bytes` is ``None`` for any run
 that did not succeed cleanly -- the harness reports "no measurement
 available" as a literal, non-numeric fact, never a fabricated number.
+**Fable's ruling caps a cap recommendation at no more than 5x the observed
+byte count; this module's own :data:`_CAP_SAFETY_MARGIN` is 2x -- an
+implementer choice made WITHIN that ceiling, more conservative than the
+ceiling requires, not the ceiling itself.** A future reader must not read
+``2x`` as Fable's number.
 
 **Kill criteria, evaluated mechanically after the run (see
 :class:`KillReason` and :func:`_evaluate_run`).** Every criterion below is
@@ -114,7 +119,60 @@ discipline" below.
   actually enforced): ``SourceCoverage.skipped_not_approved``
   (:mod:`~content_machine.connectors.runner`) for the former, and the
   adapter's own audit-event ``reason_code == "permission_denied"`` for the
-  latter.
+  latter;
+- :data:`KillReason.request_counter_not_wired` -- see "Wiring-integrity
+  check" below. A DIFFERENT invariant from "more than one outbound request":
+  that one detects an adapter that made too many requests through the
+  counter it was actually given; this one detects that the counter this
+  function was HANDED is not the one the adapter actually used at all, which
+  would otherwise make the "more than one outbound request" check trivially,
+  silently pass on ``request_count == 0`` regardless of what really
+  happened.
+
+**Wiring-integrity check (mismatched/unused request counter must be
+detected, not assumed correct).** ``fetcher.call_count`` is read exactly
+once, after the run, and nothing about that read alone proves ``fetcher``
+is the SAME :class:`RequestCountingFetcher` instance the adapter's own
+internal fetcher calls actually went through -- a caller who constructs a
+second, fresh wrapper and passes THAT one here by mistake would silently
+get ``call_count == 0`` forever, and "more than one outbound request" can
+never fire no matter how many requests the adapter really made. Detecting
+this without touching ``arxiv_adapter.py`` (out of scope) requires a signal
+that a fetch attempt definitely happened, sourced from evidence THIS module
+already has: ``batch_result.coverage``'s ``SourceCoverage.attempted`` field
+is set to ``True`` by ``run_discovery`` itself (:mod:`~content_machine.connectors.runner`)
+if and only if ``adapter.discover()`` was actually called (both the success
+and the per-source-isolation exception branches set it, immediately after
+that call -- see ``run_discovery``'s own source), independent of anything
+the adapter itself claims. Separately, ``adapter_audit_events`` being
+non-empty is corroborating evidence of the same fact for
+``ArxivRssAdapter`` specifically: its ``discover()`` calls
+``self._fetcher.fetch(...)`` as the unconditional FIRST action on every
+code path, before any audit event can be recorded (see that class's own
+"Audit" docstring section: "Every discover() call appends exactly one
+ConnectorAuditEvent"). :func:`_evaluate_run` therefore treats "the run
+reached the fetch stage" as ``coverage_row.attempted or
+bool(adapter_audit_events)`` -- if that is true but ``request_count == 0``,
+the passed counter cannot be the one the adapter used, and
+:data:`KillReason.request_counter_not_wired` fires. This makes ``halted``
+true (so no clean run is reported) and, via the SAME gating
+:func:`_measure_bytes` already applies to every other kill reason, also
+guarantees no byte-cap measurement is produced for that run. **Stated
+honestly, not overclaimed:** this soundness argument leans on
+``ArxivRssAdapter``'s own documented "always audits, even on the failure
+path, fetch-call-first" contract for the corroborating (non-coverage)
+half -- a hypothetical FUTURE adapter satisfying the structural
+:class:`_AuditingAdapter` Protocol but NOT upholding that contract could, in
+principle, defeat the ``adapter_audit_events`` half of this check; the
+``coverage_row.attempted`` half does not depend on any adapter's internal
+behavior at all (it is ``run_discovery``'s OWN bookkeeping) and holds for
+any :class:`~content_machine.connectors.runner.ConnectorAdapter`
+whatsoever. No reflection into adapter internals (e.g. reading a private
+``adapter._fetcher`` attribute) was used: that would coincidentally work
+for ``ArxivRssAdapter`` today but silently break, or worse silently pass,
+the instant that attribute's name changed or a different adapter shape was
+used -- exactly the kind of brittle, adapter-shape-coupled check this
+module otherwise avoids everywhere else.
 
 **Override frequency is a monitored quantity.** Fable: reviewer overrides of
 a blocking flag are the alarm-fatigue leading indicator. Every
@@ -395,6 +453,14 @@ class KillReason(StrEnum):
     multiple_outbound_requests = "multiple_outbound_requests"
     blocking_security_flag = "blocking_security_flag"
     permission_denied_or_expired = "permission_denied_or_expired"
+    #: The passed `RequestCountingFetcher` recorded zero calls despite the
+    #: run demonstrably reaching the fetch stage -- it is not the instance
+    #: the adapter actually used. See the module docstring's
+    #: "Wiring-integrity check" section. Distinct from
+    #: `multiple_outbound_requests`: that one detects too many requests
+    #: through a counter that WAS wired correctly; this one detects that the
+    #: counter was never wired to begin with.
+    request_counter_not_wired = "request_counter_not_wired"
 
 
 #: FetchReasonCode members that represent a fetch-boundary SECURITY
@@ -488,7 +554,22 @@ def _evaluate_run(
     if coverage_row is not None and coverage_row.skipped_not_approved:
         reasons.add(KillReason.permission_denied_or_expired)
 
-    if request_count > 1:
+    # Wiring-integrity check (see the module docstring's dedicated section):
+    # a fetch attempt demonstrably happened -- either run_discovery's OWN
+    # bookkeeping says this source was attempted, or the adapter's own
+    # audit trail is non-empty (which, for ArxivRssAdapter specifically,
+    # only happens after its unconditional, first-action fetch() call) --
+    # yet the counter we were handed saw zero calls. That contradiction
+    # means `fetcher` is not the instance the adapter actually used, never
+    # merely "the adapter made zero requests" (a source that made zero
+    # requests could never have been attempted or produced an audit event
+    # in the first place).
+    reached_fetch_stage = bool(adapter_audit_events) or (
+        coverage_row is not None and coverage_row.attempted
+    )
+    if reached_fetch_stage and request_count == 0:
+        reasons.add(KillReason.request_counter_not_wired)
+    elif request_count > 1:
         reasons.add(KillReason.multiple_outbound_requests)
 
     if any(set(result.security_flags) & BLOCKING_SECURITY_FLAGS for result in batch_result.results):
@@ -647,8 +728,13 @@ def run_shadow_discovery(
     that was wired into ``adapter``'s own constructor (see
     :func:`build_shadow_run_arxiv_adapter` for the recommended wiring) --
     this function reads ``fetcher.call_count`` to evaluate the
-    "more than one outbound request" kill criterion; passing a fresh,
-    unused wrapper here would silently defeat that check.
+    "more than one outbound request" kill criterion. Passing a fresh, unused
+    wrapper here is NOT a silent failure mode: :func:`_evaluate_run`'s
+    wiring-integrity check (see the module docstring) detects the
+    contradiction -- a run that demonstrably reached the fetch stage
+    (``coverage_row.attempted`` or a non-empty ``adapter_audit_events``) yet
+    reports ``request_count == 0`` -- and fails closed with
+    :data:`KillReason.request_counter_not_wired`, never a clean report.
 
     ``output_dir`` is caller-resolved (typically via
     :func:`resolve_shadow_run_output_dir`) -- this function never guesses a
