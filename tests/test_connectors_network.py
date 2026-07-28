@@ -548,6 +548,85 @@ def test_dns_rebinding_pin_defeats_a_second_different_answer() -> None:
         assert call_count == 1, "resolve_host must be called exactly once per hop"
 
 
+def test_connection_dials_the_vetted_ip_not_a_fresh_hostname_resolution() -> None:
+    """Fable F3.1: resolution happens exactly once per hop and the
+    connection must be PINNED to that one vetted address -- dialing the
+    literal IP, never re-resolving the hostname at connect time.
+
+    This test exists because the sibling
+    ``test_dns_rebinding_pin_defeats_a_second_different_answer`` does NOT
+    falsify a ``connect()`` that silently re-resolves ``self.host`` instead
+    of dialing ``self._pinned_ip``. That sibling test only counts calls to
+    the injected ``resolve_host`` -- and ``resolve_host`` is invoked exactly
+    once inside ``fetch()`` (to produce ``vetted_ip``) regardless of whether
+    ``_PinnedHTTPSConnection.connect`` subsequently honors that value or
+    ignores it and dials ``self.host`` (which triggers its own, separate,
+    OS-level hostname lookup via ``socket.create_connection``). Because that
+    sibling test's hostname happens to resolve to the same loopback server
+    the test expects, a regressed ``connect()`` that re-resolves the
+    hostname would still land in the right place and the test would stay
+    green -- proving only "the injectable resolver was called once", not
+    "the socket dialed the address that resolver returned" (the actual
+    control per Fable F3.1: resolve once and pin, so no second DNS answer
+    can be substituted between the address check and the connect).
+
+    To falsify that exact mutation, this test makes the vetted IP and the
+    hostname's real resolution point at DIFFERENT places: ``resolve_host``
+    is rigged to return, as its SOLE candidate, ``::1`` -- the IPv6
+    loopback address, whose interface is always up but on which nothing
+    listens (the test server below binds ``127.0.0.1`` only, IPv4) --
+    while the hostname ``localhost`` still resolves normally (via the
+    real OS resolver) to the loopback test server on ``127.0.0.1``. Because
+    the ``::1`` interface is genuinely up, the kernel refuses the
+    connection immediately (no listener on that port) rather than the
+    connection silently hanging -- deterministic and fast, unlike an
+    unassigned IPv4 loopback alias (e.g. ``127.0.0.7``) which this test
+    was confirmed to leave blackholed (timing out) rather than refused on
+    at least one development platform. A correctly pinned fetcher must
+    dial the bogus vetted IP and fail immediately with connection-refused
+    (``connect_failed``); nothing about this test's control flow can ever
+    reach the real server. A fetcher whose ``connect()`` regressed to
+    dialing ``self.host`` instead of ``self._pinned_ip`` would silently
+    re-resolve "localhost", land on the real test server, and wrongly
+    report ``ok=True`` -- which is exactly the failure mode this test is
+    designed to catch.
+    """
+
+    def resolver_returns_a_sole_unreachable_loopback_ip(host: str, port: int) -> list[str]:
+        return ["::1"]
+
+    with _LoopbackTLSServer(_plain_ok_handler) as server:
+        fetcher = _fetcher(
+            port=server.port,
+            resolve_host=resolver_returns_a_sole_unreachable_loopback_ip,
+            # Narrow, test-only override: admits ONLY the bogus vetted IP
+            # this test rigged resolve_host to return -- never the real
+            # server's 127.0.0.1 -- so nothing in this test's own plumbing
+            # can accidentally route the "correctly pinned" path to the
+            # live server.
+            address_is_blocked=lambda ip_text: ip_text != "::1",
+            # Short and explicit: loopback connection-refused is immediate
+            # on every platform this suite runs on, but pin a small timeout
+            # anyway so this test can never hang if that assumption ever
+            # stops holding somewhere.
+            connect_timeout=2.0,
+        )
+        result = fetcher.fetch(
+            source_id="src_test",
+            mode=SourceMode.discovery,
+            url=f"https://localhost:{server.port}/feed",
+        )
+        assert result.ok is False, (
+            "connect() must have dialed the vetted IP (::1, where nothing "
+            "listens), not re-resolved 'localhost' to the real server -- "
+            "ok=True here means the pin was bypassed"
+        )
+        assert result.reason_code == "connect_failed", (
+            f"expected connect_failed (connection refused on the vetted, "
+            f"unreachable IP), got {result.reason_code!r}"
+        )
+
+
 def test_streaming_byte_cap_aborts_mid_stream_proven_by_servers_own_counter() -> None:
     """Proof standard (spec §5): "an exception was raised" is not proof --
     the test server's OWN sent-byte counter must be strictly less than the
