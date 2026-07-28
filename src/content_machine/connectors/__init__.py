@@ -86,6 +86,17 @@ from content_machine.connectors.permissions import (
     SourceMode,
     SourcePermission,
 )
+from content_machine.connectors.private_config import (
+    ExpiredPrivateConfigError,
+    InvalidPrivateConfigError,
+    MissingPrivateConfigError,
+    PrivateConfigError,
+    PrivateSourceConfig,
+    PrivateSourceEndpoint,
+    UnreadablePrivateConfigError,
+    load_private_source_config,
+    source_allowed_hosts_from_config,
+)
 from content_machine.connectors.registry import (
     DuplicateSourceIdError,
     PublisherClassification,
@@ -109,12 +120,8 @@ from content_machine.connectors.runner import (
     format_coverage_report,
     run_discovery,
 )
-from content_machine.connectors.sanitize import (
-    SanitizedText,
-    SecurityFlag,
-    sanitize_error,
-    sanitize_text,
-)
+from content_machine.connectors.sanitize import SanitizedText, sanitize_error, sanitize_text
+from content_machine.intelligence.models import SecurityFlag
 
 __all__ = [
     "ALLOWED_CONTENT_TYPES",
@@ -141,14 +148,20 @@ __all__ = [
     "DiscoveryResult",
     "DisposalRecord",
     "DuplicateSourceIdError",
+    "ExpiredPrivateConfigError",
     "ExtractionResult",
     "FailureKind",
     "FieldEnforcementDecision",
     "FieldEnforcementReasonCode",
+    "InvalidPrivateConfigError",
+    "MissingPrivateConfigError",
     "MissingReviewerNoteError",
     "PermissionRef",
     "PermissionRegistry",
     "PermissionStatus",
+    "PrivateConfigError",
+    "PrivateSourceConfig",
+    "PrivateSourceEndpoint",
     "ProvenanceMetadata",
     "PublisherClassification",
     "RetentionClass",
@@ -166,14 +179,17 @@ __all__ = [
     "TemporaryContentHandle",
     "TriageCandidate",
     "UnknownSourceError",
+    "UnreadablePrivateConfigError",
     "UnreviewedSecurityFlagsError",
     "VerificationOutcome",
     "VerificationRequest",
     "VerificationUpgrade",
     "format_coverage_report",
+    "load_private_source_config",
     "run_discovery",
     "sanitize_error",
     "sanitize_text",
+    "source_allowed_hosts_from_config",
     "to_source_item",
     "to_source_item_with_audit",
     "triage",

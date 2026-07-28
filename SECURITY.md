@@ -16,11 +16,36 @@ data in reports.
 2. **No credentials in the repository.** Secrets come from `.env` (git-ignored);
    `.env.example` documents the shape with empty values.
 3. **No network calls by default.** The demo and tests run fully offline with
-   `MockProvider`. Only `content_machine/providers/` may perform network I/O
-   — and in the current release the Anthropic/OpenAI provider stubs contain
-   no network code path at all; they raise `NotImplementedError` even when a
-   key is configured. The only exercised provider is the offline
-   `MockProvider`.
+   `MockProvider`. Network I/O is confined to exactly two modules in the
+   whole codebase:
+   - `content_machine/providers/` — the model boundary. In the current
+     release the Anthropic/OpenAI provider stubs contain no network code
+     path at all; they raise `NotImplementedError` even when a key is
+     configured. The only exercised provider is the offline `MockProvider`.
+   - `content_machine/connectors/network.py` — the retrieval boundary
+     (Gate E0, E0.4), added to fetch connector source content. It is the
+     ONLY module in `connectors/` permitted to open a socket (enforced by a
+     filename-scoped exemption in a static AST scan,
+     `tests/test_connectors_no_network.py`, that is otherwise unchanged for
+     every other module) and exposes exactly one public entry point,
+     `NetworkFetcher`. Every fetch enforces, unconditionally: HTTPS only;
+     rejection of credential-bearing URLs; a **per-source** hostname
+     allowlist (never a single global pool, so one source can never be used
+     to reach another source's allowed host); blocking of loopback,
+     private, link-local, unspecified, and multicast addresses, and of any
+     URL whose hostname is itself an IP literal; an allowed-ports set;
+     manually-handled, bounded redirects with every hop re-validated against
+     the same per-source allowlist and address checks; DNS-rebinding
+     defense by resolving a hostname once per hop and pinning the
+     connection to that single vetted IP address (while still verifying the
+     TLS certificate against the original hostname, not the pinned IP);
+     separate connect/read timeouts; a streaming byte cap that aborts
+     mid-download rather than after buffering a full oversized body; a MIME
+     allowlist; per-source rate limiting; and a live,
+     immediately-before-retrieval permission check
+     (`PermissionRegistry.authorize_retrieval`) so a permission revoked or
+     expired after an earlier discovery/planning step is still caught. No
+     adapter in this repository is wired to call it yet.
 4. **PII never crosses the model boundary.** Names, emails, and profile URLs are
    removed before any provider call (see `docs/privacy.md`, ADR 0003).
 5. **No secrets or personal values in logs or error messages.** Errors reference

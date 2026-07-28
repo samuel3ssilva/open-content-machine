@@ -412,6 +412,10 @@ def build_tiered_topic(
         score=breakdown.score,
         claim=claim,
         tier_assignment=tier_assignment,
+        # Gate E0 (E0.1, R7): copied verbatim from the cluster at exactly the
+        # point this function joins a cluster with its ranked position --
+        # "where clusters join ranked topics", never through ranking.py.
+        security_flags=cluster.security_flags,
     )
 
 

@@ -1,14 +1,22 @@
 """Tests for content_machine.connectors.permissions (Gate D §4): fail-closed
 authorization, one distinct reason code per invariant, and REJECT-not-strip
-enforcement of permitted_fields."""
+enforcement of permitted_fields.
+
+Also covers Gate E0 (E0.2, R8): the NEW ``expires_at`` field on
+``SourcePermission`` and the NEW, separately-clocked live pre-retrieval gate
+``PermissionRegistry.authorize_retrieval`` -- see that method's docstring and
+Fable ruling F5 ("the clock is an identity too") for why its public
+signature accepts no date/clock parameter at all."""
 
 from __future__ import annotations
 
+import inspect
 from datetime import UTC, date, datetime
 
 import pytest
 from pydantic import ValidationError
 
+from content_machine.connectors import permissions as permissions_module
 from content_machine.connectors.models import (
     DiscoveryResult,
     PermissionRef,
@@ -36,6 +44,7 @@ def _permission(
         {"title", "canonical_reference", "content_type", "publication_date", "summary_normalized"}
     ),
     review_due: date | None = None,
+    expires_at: date | None = None,
 ) -> SourcePermission:
     return SourcePermission(
         source_id=source_id,
@@ -43,6 +52,7 @@ def _permission(
         permitted_fields=permitted_fields,
         retention_policy_id="policy_default",
         review_due=review_due,
+        expires_at=expires_at,
         authorization_owner="founder",
         status=status,
     )
@@ -277,3 +287,201 @@ def test_source_permission_is_frozen() -> None:
     permission = _permission()
     with pytest.raises(ValidationError):
         permission.status = PermissionStatus.revoked  # type: ignore[misc]
+
+
+# --- Gate E0 (E0.2, R6/F4): expires_at is a NEW field, additive ------------
+
+
+def test_source_permission_accepts_expires_at_and_defaults_to_none() -> None:
+    permission = _permission()
+    assert permission.expires_at is None
+    with_expiry = _permission(expires_at=date(2026, 8, 1))
+    assert with_expiry.expires_at == date(2026, 8, 1)
+
+
+# --- Gate E0 (E0.2, F5): authorize_retrieval owns its clock, no caller ------
+# ------------------------------- can supply a date --------------------------
+
+
+def test_authorize_retrieval_signature_accepts_no_date_or_clock_parameter() -> None:
+    """The executable form of Fable ruling F5 ("the clock is an identity
+    too"): authorize_retrieval's public signature must expose NO parameter
+    that could let a caller supply a stale enforcement date and dodge
+    expires_at -- the time-based analogue of the B1 identity-spoofing bug
+    Gate D closed. Assert directly on the signature rather than merely
+    calling it with no date (which would not catch an optional `_clock=`
+    or `as_of=None` keyword still being present)."""
+    signature = inspect.signature(PermissionRegistry.authorize_retrieval)
+    param_names = {name.lower() for name in signature.parameters}
+    forbidden_substrings = ("date", "clock", "as_of", "now")
+    for name in param_names:
+        if name == "self":
+            continue
+        for forbidden in forbidden_substrings:
+            assert forbidden not in name, (
+                f"authorize_retrieval must accept no date/clock parameter; "
+                f"found parameter {name!r} containing {forbidden!r}"
+            )
+    # Exactly source_id and mode (plus self) -- nothing else.
+    assert param_names == {"self", "source_id", "mode"}
+
+
+def test_authorize_retrieval_unknown_source_rejected_as_not_registered() -> None:
+    registry = PermissionRegistry([])
+    decision = registry.authorize_retrieval("src_unknown", SourceMode.discovery)
+    assert decision.allowed is False
+    assert decision.reason_code == AuthorizationReasonCode.not_registered
+
+
+@pytest.mark.parametrize(
+    ("status", "expected_reason"),
+    [
+        (PermissionStatus.proposed, AuthorizationReasonCode.status_proposed),
+        (PermissionStatus.suspended, AuthorizationReasonCode.status_suspended),
+        (PermissionStatus.revoked, AuthorizationReasonCode.status_revoked),
+    ],
+)
+def test_authorize_retrieval_non_approved_status_rejected_with_distinct_reason_code(
+    status: PermissionStatus, expected_reason: AuthorizationReasonCode
+) -> None:
+    registry = PermissionRegistry([_permission(status=status)])
+    decision = registry.authorize_retrieval("src_vendor_alpha", SourceMode.discovery)
+    assert decision.allowed is False
+    assert decision.reason_code == expected_reason
+
+
+def test_authorize_retrieval_mode_mismatch_rejected() -> None:
+    registry = PermissionRegistry([_permission(approved_mode=SourceMode.discovery)])
+    decision = registry.authorize_retrieval("src_vendor_alpha", SourceMode.verification)
+    assert decision.allowed is False
+    assert decision.reason_code == AuthorizationReasonCode.mode_mismatch
+
+
+def test_authorize_retrieval_approved_matching_mode_with_no_expiry_is_allowed() -> None:
+    registry = PermissionRegistry([_permission(approved_mode=SourceMode.discovery)])
+    decision = registry.authorize_retrieval("src_vendor_alpha", SourceMode.discovery)
+    assert decision.allowed is True
+    assert decision.reason_code == AuthorizationReasonCode.approved
+
+
+def test_authorize_retrieval_all_reason_codes_are_distinct() -> None:
+    """One-code-per-invariant, never collapsed -- including the NEW
+    status_expired code alongside every code authorize() already has."""
+    codes = {
+        AuthorizationReasonCode.not_registered,
+        AuthorizationReasonCode.status_proposed,
+        AuthorizationReasonCode.status_suspended,
+        AuthorizationReasonCode.status_revoked,
+        AuthorizationReasonCode.mode_mismatch,
+        AuthorizationReasonCode.status_expired,
+        AuthorizationReasonCode.approved,
+    }
+    assert len(codes) == 7
+
+
+# --- expires_at: fail-closed, with a pinned today-boundary choice ----------
+
+
+def test_authorize_retrieval_expires_at_none_places_no_constraint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(permissions_module, "_today_utc", lambda: date(2026, 7, 27))
+    registry = PermissionRegistry([_permission(expires_at=None)])
+    decision = registry.authorize_retrieval("src_vendor_alpha", SourceMode.discovery)
+    assert decision.allowed is True
+    assert decision.reason_code == AuthorizationReasonCode.approved
+
+
+def test_authorize_retrieval_expires_at_in_the_future_is_allowed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(permissions_module, "_today_utc", lambda: date(2026, 7, 27))
+    registry = PermissionRegistry([_permission(expires_at=date(2026, 7, 28))])
+    decision = registry.authorize_retrieval("src_vendor_alpha", SourceMode.discovery)
+    assert decision.allowed is True
+    assert decision.reason_code == AuthorizationReasonCode.approved
+
+
+def test_authorize_retrieval_expires_at_in_the_past_is_blocked_as_status_expired(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(permissions_module, "_today_utc", lambda: date(2026, 7, 27))
+    registry = PermissionRegistry([_permission(expires_at=date(2026, 7, 26))])
+    decision = registry.authorize_retrieval("src_vendor_alpha", SourceMode.discovery)
+    assert decision.allowed is False
+    assert decision.reason_code == AuthorizationReasonCode.status_expired
+
+
+def test_authorize_retrieval_expires_at_equal_to_today_is_allowed_boundary_pinned(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pinned boundary choice: expires_at is read as "valid through the end
+    of this calendar date" -- expires_at == today still ALLOWS retrieval; it
+    only blocks starting the day after. See authorize_retrieval's docstring
+    for the full rationale."""
+    monkeypatch.setattr(permissions_module, "_today_utc", lambda: date(2026, 7, 27))
+    registry = PermissionRegistry([_permission(expires_at=date(2026, 7, 27))])
+    decision = registry.authorize_retrieval("src_vendor_alpha", SourceMode.discovery)
+    assert decision.allowed is True
+    assert decision.reason_code == AuthorizationReasonCode.approved
+
+
+def test_authorize_retrieval_day_after_expiry_is_blocked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One day past the pinned boundary: expires_at == yesterday relative to
+    today must block -- confirms the boundary is exactly at end-of-day, not
+    off by one in the other direction."""
+    monkeypatch.setattr(permissions_module, "_today_utc", lambda: date(2026, 7, 28))
+    registry = PermissionRegistry([_permission(expires_at=date(2026, 7, 27))])
+    decision = registry.authorize_retrieval("src_vendor_alpha", SourceMode.discovery)
+    assert decision.allowed is False
+    assert decision.reason_code == AuthorizationReasonCode.status_expired
+
+
+def test_authorize_retrieval_ignores_review_due_entirely() -> None:
+    """review_due governs only authorize()'s soft, caller-clocked warning --
+    authorize_retrieval does not look at review_due at all, so an overdue
+    review_due with no expires_at never blocks retrieval and
+    review_overdue stays at its default False (authorize_retrieval never
+    sets it)."""
+    registry = PermissionRegistry(
+        [_permission(review_due=date(2020, 1, 1), expires_at=None)]
+    )
+    decision = registry.authorize_retrieval("src_vendor_alpha", SourceMode.discovery)
+    assert decision.allowed is True
+    assert decision.review_overdue is False
+
+
+def test_authorize_overdue_review_due_with_no_expires_at_still_allowed_by_authorize() -> None:
+    """Pins that review_due's EXISTING semantics on authorize() are
+    completely unchanged by this ticket: an overdue review_due with no
+    expires_at is still ALLOWED with review_overdue=True."""
+    registry = PermissionRegistry(
+        [_permission(review_due=date(2026, 1, 1), expires_at=None)]
+    )
+    decision = registry.authorize("src_vendor_alpha", SourceMode.discovery, as_of=date(2026, 7, 20))
+    assert decision.allowed is True
+    assert decision.review_overdue is True
+
+
+def test_authorize_retrieval_is_live_not_cached_across_a_rebuilt_registry() -> None:
+    """Proves the gate is LIVE: a permission approved in one registry
+    snapshot but revoked in a REBUILT registry (same source_id) is blocked
+    by authorize_retrieval called against the rebuilt registry -- exactly
+    the "planning time" vs. "moment of bridging/retrieval" gap this gate
+    exists to close."""
+    planning_time_registry = PermissionRegistry(
+        [_permission(status=PermissionStatus.approved)]
+    )
+    planning_decision = planning_time_registry.authorize_retrieval(
+        "src_vendor_alpha", SourceMode.discovery
+    )
+    assert planning_decision.allowed is True
+
+    rebuilt_registry = PermissionRegistry(
+        [_permission(status=PermissionStatus.revoked)]
+    )
+    live_decision = rebuilt_registry.authorize_retrieval("src_vendor_alpha", SourceMode.discovery)
+    assert live_decision.allowed is False
+    assert live_decision.reason_code == AuthorizationReasonCode.status_revoked

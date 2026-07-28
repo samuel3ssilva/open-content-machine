@@ -11,7 +11,7 @@ from typing import get_args
 
 from content_machine.intelligence.cluster import cluster_items
 from content_machine.intelligence.loader import load_signals
-from content_machine.intelligence.models import EvidenceType, SourceItem
+from content_machine.intelligence.models import EvidenceType, SecurityFlag, SourceItem
 from content_machine.intelligence.normalize import (
     normalize_canonical_reference,
     normalize_text,
@@ -975,3 +975,157 @@ def test_official_api_behavior_change_is_authoritative_like_spec_change() -> Non
     assert cluster.evidence_level == 3
     assert cluster.evidence_anchor_id == "evid_3_first_party_authoritative"
     assert cluster.has_first_party_authoritative is True
+
+
+# --- Gate E0, E0.1: security_flags propagate onto the cluster (union) ------
+
+
+def test_e0_1_cluster_security_flags_is_the_union_over_at_least_two_members() -> None:
+    """S2 (Gate E0 review requirement): the cluster hop MUST be exercised
+    with >=2 members where only ONE is flagged -- a single-member cluster
+    would be tautological (the cluster's flags would trivially equal that
+    one item's own flags, proving nothing about the UNION behavior)."""
+    shared_title = "E0.1 Security Flag Union Two Member Test Event"
+    flagged = _make_item(
+        item_id="e0-1-flagged",
+        publisher_id="e0-1-vendor",
+        subject_entity_ids=["e0-1-subject"],
+        title=shared_title,
+        summary_normalized="e0.1 vendor announced a change flagged during sanitization",
+        stable_reference="https://example.com/e0-1-vendor/announcement",
+        evidence_type="announcement",
+        security_flags=(SecurityFlag.instruction_shaped_text,),
+    )
+    clean = _make_item(
+        item_id="e0-1-clean",
+        publisher_id="e0-1-independent-analyst",
+        subject_entity_ids=["e0-1-subject"],
+        title=shared_title,
+        summary_normalized="an independent analyst reviewed the e0.1 test event in detail",
+        stable_reference="https://example.org/e0-1-independent-analyst/review",
+        evidence_type="independent_analysis",
+        security_flags=(),
+    )
+    clusters = cluster_items([flagged, clean])
+    assert len(clusters) == 1
+    cluster = clusters[0]
+    assert len(cluster.member_ids) == 2
+    assert cluster.security_flags == (SecurityFlag.instruction_shaped_text,)
+
+
+def test_e0_1_cluster_security_flags_empty_when_no_member_flagged() -> None:
+    items = [
+        _make_item(item_id="e0-1-a", stable_reference="https://example.com/e0-1/a"),
+        _make_item(item_id="e0-1-b", stable_reference="https://example.com/e0-1/b"),
+    ]
+    # These two items share nothing (different subjects/titles) so they
+    # form two separate single-item clusters -- either way, security_flags
+    # must be empty on both.
+    for cluster in cluster_items(items):
+        assert cluster.security_flags == ()
+
+
+# --- Gate E0, E0.3: may_supply_independence tri-state narrowing (R3/F2) ----
+
+
+def test_e0_3_registry_denied_independence_narrows_a_would_be_independent_member() -> None:
+    """R3's required test, verbatim: a field False on an item that PASSES
+    today's (pre-E0.3) _is_independent test must narrow the cluster -- the
+    item must no longer count as independent evidence once the registry
+    denies it, even though publisher-relation and evidence_type both still
+    qualify."""
+    shared_title = "E0.3 Registry Denied Independence Test Event"
+    first_party = _make_item(
+        item_id="e0-3-first-party",
+        publisher_id="e0-3-vendor",
+        subject_entity_ids=["e0-3-vendor"],
+        title=shared_title,
+        summary_normalized="e0.3 vendor announced a new capability for its platform",
+        stable_reference="https://example.com/e0-3-vendor/announcement",
+        evidence_type="announcement",
+    )
+    would_be_independent = _make_item(
+        item_id="e0-3-denied-analyst",
+        publisher_id="e0-3-analyst",
+        subject_entity_ids=["e0-3-vendor"],
+        title=shared_title,
+        summary_normalized="an analyst reviewed e0.3 vendor's new capability in detail",
+        stable_reference="https://example.org/e0-3-analyst/review",
+        evidence_type="independent_analysis",
+        may_supply_independence=False,
+    )
+    clusters = cluster_items([first_party, would_be_independent])
+    assert len(clusters) == 1
+    cluster = clusters[0]
+    assert len(cluster.member_ids) == 2
+    assert cluster.member_roles["e0-3-denied-analyst"] == "independent"
+    # Narrowed: the registry-denied analyst no longer counts as independent.
+    assert cluster.has_independent_evidence is False
+    assert cluster.independent_publisher_count == 0
+    assert cluster.independence_denied_by_registry is True
+
+
+def test_e0_3_registry_permitted_independence_behaves_exactly_like_pre_e0_3() -> None:
+    """The complementary case: may_supply_independence=True changes nothing
+    relative to the pre-E0.3 test -- a provable no-op in the permissive
+    direction, per R3's "a boolean default of True would make E0.3 a
+    provable no-op" note (applied here to an explicit True, not the
+    default)."""
+    shared_title = "E0.3 Registry Permitted Independence Test Event"
+    first_party = _make_item(
+        item_id="e0-3-permitted-first-party",
+        publisher_id="e0-3-permitted-vendor",
+        subject_entity_ids=["e0-3-permitted-vendor"],
+        title=shared_title,
+        summary_normalized="e0.3 permitted vendor announced a new capability",
+        stable_reference="https://example.com/e0-3-permitted-vendor/announcement",
+        evidence_type="announcement",
+    )
+    permitted_independent = _make_item(
+        item_id="e0-3-permitted-analyst",
+        publisher_id="e0-3-permitted-analyst",
+        subject_entity_ids=["e0-3-permitted-vendor"],
+        title=shared_title,
+        summary_normalized="an analyst reviewed e0.3 permitted vendor's capability in detail",
+        stable_reference="https://example.org/e0-3-permitted-analyst/review",
+        evidence_type="independent_analysis",
+        may_supply_independence=True,
+    )
+    clusters = cluster_items([first_party, permitted_independent])
+    cluster = clusters[0]
+    assert cluster.has_independent_evidence is True
+    assert cluster.independent_publisher_count == 1
+    assert cluster.independence_denied_by_registry is False
+
+
+def test_e0_3_none_falls_back_to_pre_e0_3_test_no_regression() -> None:
+    """R3: ``None`` (the default, the loader/human-authored path) must fall
+    back to EXACTLY the pre-E0.3 test -- no regression on existing fixtures.
+    Identical to the permitted-True case in outcome, using the field's
+    actual default rather than an explicit True."""
+    shared_title = "E0.3 No Registry Opinion Test Event"
+    first_party = _make_item(
+        item_id="e0-3-none-first-party",
+        publisher_id="e0-3-none-vendor",
+        subject_entity_ids=["e0-3-none-vendor"],
+        title=shared_title,
+        summary_normalized="e0.3 none vendor announced a new capability",
+        stable_reference="https://example.com/e0-3-none-vendor/announcement",
+        evidence_type="announcement",
+    )
+    no_opinion_independent = _make_item(
+        item_id="e0-3-none-analyst",
+        publisher_id="e0-3-none-analyst",
+        subject_entity_ids=["e0-3-none-vendor"],
+        title=shared_title,
+        summary_normalized="an analyst reviewed e0.3 none vendor's capability in detail",
+        stable_reference="https://example.org/e0-3-none-analyst/review",
+        evidence_type="independent_analysis",
+        # may_supply_independence intentionally omitted -- must default None.
+    )
+    assert no_opinion_independent.may_supply_independence is None
+    clusters = cluster_items([first_party, no_opinion_independent])
+    cluster = clusters[0]
+    assert cluster.has_independent_evidence is True
+    assert cluster.independent_publisher_count == 1
+    assert cluster.independence_denied_by_registry is False

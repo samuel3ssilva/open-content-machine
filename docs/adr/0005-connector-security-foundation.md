@@ -129,21 +129,30 @@ and `community`.
 section's overclaim is, in Fable's words, "the same overclaim species I
 blocked in round 1").** The paragraph above describes
 `may_supply_independence` as though it were an operative control that closes
-the ad-hoc-independence hole. It is not: `may_supply_independence` has **zero
-call sites in `src/`** — only its own definition and its own tests reference
-it. Independence is decided, today, solely by `intelligence.cluster.py`'s
-subject-membership test (`_is_independent`, comparing an item's
-`subject_entity_ids` against a topic's subjects) — a check that has no idea
-`SourceRegistryEntry` or `PublisherClassification` exist. `may_supply_independence`
-is therefore a **curated but not-yet-consumed classification**: the registry
-correctly captures, per source, whether a human has judged it capable of
-supplying independent evidence, and `unclassified` correctly fails exactly as
-closed as `vendor_first_party` in that curation — but nothing today reads the
-property to gate anything a real item does. Wiring `may_supply_independence`
-into the actual independence decision is deferred to the first-real-adapter
-gate (see this ADR's deferred list), the same gate that must also decide HOW
-it composes with `cluster.py`'s existing subject-membership test, under
-Fable review.
+the ad-hoc-independence hole. **At the time this ADR was written it was not**,
+and the rest of this paragraph records that state for history.
+
+**RESOLVED IN GATE E0 (E0.3, rulings R3/F2) — no longer deferred.** The
+property is now consumed. `bridge.to_source_item` bakes the registry's answer
+onto the item (`bridge.py:469`), and `intelligence.cluster._is_independent`
+reads that field as an additional AND-conjunct (`cluster.py:276`,
+`item.may_supply_independence is not False`). The field is **tri-state**:
+`None` means no registry opinion and falls back to the pre-existing
+subject-membership test, so no existing fixture regressed; `True` behaves as
+before; `False` DENIES independence. Because it is a pure conjunct it can only
+ever REMOVE independence, never grant it, and the bridge never emits `None` —
+every connector-sourced item carries an explicit registry answer.
+
+The historical description follows. Independence was decided, at the time,
+solely by `intelligence.cluster.py`'s subject-membership test
+(`_is_independent`, comparing an item's `subject_entity_ids` against a topic's
+subjects) — a check that had no idea `SourceRegistryEntry` or
+`PublisherClassification` exist. `may_supply_independence` was therefore a
+**curated but not-yet-consumed classification**: the registry correctly
+captured, per source, whether a human had judged it capable of supplying
+independent evidence, and `unclassified` correctly failed exactly as closed as
+`vendor_first_party` in that curation — but nothing then read the property to
+gate anything a real item did.
 
 **On the tempting mechanical predicate.** A natural-looking shortcut for that
 future wiring is `vendor_first_party AND publisher_id not in subject_entity_ids`
@@ -164,7 +173,7 @@ Without this registry, "is this publisher independent?" would have to be
 answered ad hoc, per item, by whichever future adapter or reviewer author
 encounters it — the same class of silent, unauditable judgment call Gate A's
 evidence rubric was built to eliminate; the registry's curation is real and
-correct, only its consumption is what remains deferred.
+correct — and its consumption landed in Gate E0 (E0.3), as recorded above.
 
 ### 6. Permission model: proposed/approved/suspended/revoked × mode × permitted_fields; violations REJECTED + audited, never silently stripped
 
@@ -367,21 +376,34 @@ the documentation-honesty corrections to this ADR (§4's bounds language,
 
 **Still deferred, stated explicitly so no reviewer is misled:**
 
-- **B2's durable fix** — propagating `security_flags` onto `SourceItem`
-  itself and surfacing them in the published brief for a human reviewer —
-  remains deferred to the gate that ships the first real adapter, where
-  extending the intelligence model is in scope under Fable review. This
-  round's fix is a fail-closed substitute, not that fix.
-- **SSRF/timeout/redirect/byte ENFORCEMENT is still declarative fields only,
-  not executing code.** `VerificationRequest.max_redirects`/`max_bytes`/
-  `timeout_seconds` and `redirect_chain_flags`' hop-count check are real,
-  tested logic over DATA a caller supplies — but Gate D still has no actual
-  network/fetch code anywhere, so nothing today makes an HTTP request, hits
-  a timeout, or follows a real redirect. Wiring these fields to an actual
-  fetch (with a real timeout, a real redirect-following policy, and a real
-  byte-count enforcement against a live response) is deferred to the first
-  real adapter's gate, alongside its own Fable security review of the
-  fetch path itself.
+- **B2's durable fix — DONE, no longer deferred (Gate E0, E0.1/E0.3).** This
+  section previously said propagating `security_flags` onto `SourceItem`
+  itself and surfacing them in the published brief for a human reviewer
+  remained deferred to the gate that shipped the first real adapter. That
+  gate is Gate E0: `SecurityFlag` now lives on `SourceItem` (and
+  transitively on `TopicCluster`/`TieredTopic`) and is surfaced in the
+  published weekly brief, alongside `may_supply_independence` propagation
+  from the curated source registry. The round-1 fail-closed substitute
+  (`UnreviewedSecurityFlagsError`) is unchanged and still in force — this is
+  the additional, durable fix layered on top of it, not a replacement for
+  it.
+- **SSRF/timeout/redirect/byte ENFORCEMENT — real fetch code now exists,
+  still unwired to any adapter (Gate E0, E0.4).** This section previously
+  said `VerificationRequest.max_redirects`/`max_bytes`/`timeout_seconds` and
+  `redirect_chain_flags`' hop-count check were tested logic over data only,
+  with no actual network/fetch code anywhere in the codebase. As of E0.4,
+  `connectors/network.py` (`NetworkFetcher`) is real, executing fetch code —
+  HTTPS-only, a per-source hostname allowlist, blocked private/loopback/
+  link-local/IP-literal addresses, DNS-rebinding-resistant address pinning
+  with certificate verification still against the original hostname,
+  manually-handled and bounded redirects re-validated per hop, separate
+  connect/read timeouts, a mid-stream byte cap, a MIME allowlist, per-source
+  rate limiting, and a live `authorize_retrieval` permission check — see
+  `docs/threat-model.md` T15 for the full list and `SECURITY.md` for the
+  public-facing summary. What remains genuinely deferred is wiring this
+  fetch boundary to any actual source adapter; no adapter in this repository
+  calls it yet, and doing so is its own future gate with its own Fable
+  review of that specific integration.
 - **No real adapter exists yet, and Gmail is sequenced last.** The synthetic
   adapters remain the only implementations of `ConnectorAdapter`. When real
   adapters are built, lower-sensitivity, simpler sources (RSS/vendor

@@ -17,6 +17,7 @@ from content_machine.intelligence.models import (
     RankingBreakdown,
     RankingInputs,
     RelevanceProfile,
+    SecurityFlag,
     SourceItem,
     TopicCluster,
 )
@@ -741,3 +742,37 @@ def test_no_network_calls_during_tiers_pipeline(monkeypatch: pytest.MonkeyPatch)
 
     tiered = _assign_tiers_for(load_signals(VALID_FIXTURE).items)
     assert len(tiered) == TOP_N
+
+
+# --- Gate E0, E0.1: security_flags propagate cluster -> TieredTopic (R7) ----
+
+
+def test_e0_1_tiered_topic_carries_the_clusters_security_flags() -> None:
+    """R7: flags are attached "where clusters join ranked topics" --
+    exactly ``build_tiered_topic``, which receives the ``TopicCluster``
+    directly -- never through ``RankingInputs``/``RankingBreakdown`` (which
+    ``ranking.py`` alone produces and must stay untouched)."""
+    anchor = _make_item()
+    inputs = _make_inputs()
+    cluster = _make_cluster(
+        security_flags=(SecurityFlag.credential_shaped_text, SecurityFlag.oversized_truncated)
+    )
+    breakdown = score_topic(inputs, _profile())
+
+    topic = build_tiered_topic(1, cluster, inputs, breakdown, anchor)
+
+    assert topic.security_flags == (
+        SecurityFlag.credential_shaped_text,
+        SecurityFlag.oversized_truncated,
+    )
+
+
+def test_e0_1_tiered_topic_security_flags_empty_when_cluster_clean() -> None:
+    anchor = _make_item()
+    inputs = _make_inputs()
+    cluster = _make_cluster()  # security_flags defaults to ()
+    breakdown = score_topic(inputs, _profile())
+
+    topic = build_tiered_topic(1, cluster, inputs, breakdown, anchor)
+
+    assert topic.security_flags == ()

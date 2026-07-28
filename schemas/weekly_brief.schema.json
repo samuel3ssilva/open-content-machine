@@ -292,6 +292,32 @@
       "title": "RadarItem",
       "type": "object"
     },
+    "SecurityFlagSummary": {
+      "additionalProperties": false,
+      "description": "Gate E0 (E0.1), product ruling P1: the run-level security-flag\nreporting that must NEVER be per-topic.\n\n``hygiene_note`` covers every ``SecurityFlag`` other than the two\nADVERSARIAL ones (see ``intelligence.models.HYGIENE_SECURITY_FLAGS``) --\nmarkup neutralization, truncation, malformed encoding, unsupported MIME,\nredirect-chain length, batch-level duplicate/conflicting-date detection\n-- as a SINGLE count line over every item considered this run, never\nnamed per-topic (these fire on nearly every real HTML item and would\nbecome wallpaper).\n\n``tier3_and_discarded_adversarial_count``/``_note`` cover the narrower\ncase of an ADVERSARIAL flag (instruction_shaped_text/\ncredential_shaped_text) landing on a Tier 3 (Radar) or discarded topic:\nadversarial flags are named per-topic only for Tier 1/2 (see\n``Tier1LeanItem``/``Tier2Item``/``Tier1AppendixRecord``); for Tier 3 and\ndiscarded topics they are surfaced ONLY as a count here, never naming\nwhich topic, per product ruling P1 (\"Tier 3 / discarded: appendix count\nonly\").",
+      "properties": {
+        "hygiene_note": {
+          "title": "Hygiene Note",
+          "type": "string"
+        },
+        "tier3_and_discarded_adversarial_count": {
+          "minimum": 0,
+          "title": "Tier3 And Discarded Adversarial Count",
+          "type": "integer"
+        },
+        "tier3_and_discarded_adversarial_note": {
+          "title": "Tier3 And Discarded Adversarial Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "hygiene_note",
+        "tier3_and_discarded_adversarial_count",
+        "tier3_and_discarded_adversarial_note"
+      ],
+      "title": "SecurityFlagSummary",
+      "type": "object"
+    },
     "StudyQueue": {
       "additionalProperties": false,
       "description": "One deep-study topic (optional) plus up to two light-study topics.",
@@ -382,7 +408,7 @@
     },
     "Tier1AppendixRecord": {
       "additionalProperties": false,
-      "description": "The full twelve-field record for one Tier 1 topic -- every fact the\nlean Tier 1 presentation omits. Exactly twelve named fields (see\n``tests/test_intelligence_brief.py`` for the field-count assertion):\n``topic_id``, ``rank``, ``canonical_title``, ``score``, ``claim_class``,\n``claim_class_reason``, ``confidence``, ``confidence_reason``,\n``admission_reasons``, ``exclusion_reasons``, ``warnings``, and\n``dimension_breakdown`` (one summary line per ``RankingBreakdown``\ndimension, so the full per-dimension detail is reachable without\nre-running the rubric). ``tier1_admitted`` is deliberately not a\nthirteenth field: every appendix record is for an admitted Tier 1 topic\nby construction.",
+      "description": "The full record for one Tier 1 topic -- every fact the lean Tier 1\npresentation omits. Thirteen named fields (see\n``tests/test_intelligence_brief.py`` for the field-count assertion; was\ntwelve before Gate E0 added ``adversarial_security_flags`` below):\n``topic_id``, ``rank``, ``canonical_title``, ``score``, ``claim_class``,\n``claim_class_reason``, ``confidence``, ``confidence_reason``,\n``admission_reasons``, ``exclusion_reasons``, ``warnings``,\n``dimension_breakdown`` (one summary line per ``RankingBreakdown``\ndimension, so the full per-dimension detail is reachable without\nre-running the rubric), and ``adversarial_security_flags`` (Gate E0,\nE0.1, product ruling P1 -- a field distinct from ``warnings`` on\npurpose). ``tier1_admitted`` is deliberately not a fourteenth field:\nevery appendix record is for an admitted Tier 1 topic by construction.",
       "properties": {
         "topic_id": {
           "title": "Topic Id",
@@ -452,6 +478,13 @@
             "type": "string"
           },
           "title": "Dimension Breakdown",
+          "type": "array"
+        },
+        "adversarial_security_flags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Adversarial Security Flags",
           "type": "array"
         }
       },
@@ -533,6 +566,13 @@
         "ranking_explanation": {
           "title": "Ranking Explanation",
           "type": "string"
+        },
+        "adversarial_security_flags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Adversarial Security Flags",
+          "type": "array"
         }
       },
       "required": [
@@ -598,6 +638,13 @@
           ],
           "title": "Recommended Action",
           "type": "string"
+        },
+        "adversarial_security_flags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Adversarial Security Flags",
+          "type": "array"
         }
       },
       "required": [
@@ -733,6 +780,9 @@
       "title": "Appendix",
       "type": "array"
     },
+    "security_flag_summary": {
+      "$ref": "#/$defs/SecurityFlagSummary"
+    },
     "review_status": {
       "default": "awaiting_founder_review",
       "title": "Review Status",
@@ -762,7 +812,8 @@
     "discarded",
     "library_movements",
     "ranking_explanation_pointer",
-    "appendix"
+    "appendix",
+    "security_flag_summary"
   ],
   "title": "WeeklyBrief",
   "type": "object"

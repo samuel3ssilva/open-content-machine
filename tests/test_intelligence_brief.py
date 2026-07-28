@@ -15,6 +15,7 @@ import pytest
 
 from content_machine.intelligence import brief as brief_module
 from content_machine.intelligence.brief import (
+    BRIEF_VERSION,
     WeeklyBrief,
     build_weekly_brief,
     render_json,
@@ -26,6 +27,7 @@ from content_machine.intelligence.models import (
     RankingBreakdown,
     RankingInputs,
     RelevanceProfile,
+    SecurityFlag,
     SourceItem,
     TopicCluster,
 )
@@ -432,7 +434,9 @@ def test_dimension_rationales_still_live_in_the_appendix() -> None:
         assert "raw=" in joined and "effective=" in joined
 
 
-def test_appendix_has_the_twelve_full_fields() -> None:
+def test_appendix_has_the_thirteen_full_fields() -> None:
+    """Gate E0 (E0.1): adversarial_security_flags is a NEW, thirteenth field
+    (product ruling P1) -- was twelve before this gate."""
     from content_machine.intelligence.brief import Tier1AppendixRecord
 
     expected_fields = {
@@ -448,9 +452,10 @@ def test_appendix_has_the_twelve_full_fields() -> None:
         "exclusion_reasons",
         "warnings",
         "dimension_breakdown",
+        "adversarial_security_flags",
     }
     assert set(Tier1AppendixRecord.model_fields) == expected_fields
-    assert len(expected_fields) == 12
+    assert len(expected_fields) == 13
 
 
 def test_appendix_dimension_breakdown_has_all_six_dimensions() -> None:
@@ -1095,3 +1100,320 @@ def test_fixtures_are_synthetic_example_domains_only() -> None:
     for item in items_by_id.values():
         if item.stable_reference.startswith("http"):
             assert any(domain in item.stable_reference for domain in reserved_domains)
+
+
+# =============================================================================
+# Gate E0: security_flags propagation (E0.1), may_supply_independence (E0.3),
+# and product rulings P1/P3/P4/P5.
+# =============================================================================
+
+
+def _security_flag_topic(
+    topic_id: str,
+    *,
+    first_seen: date,
+    security_flags: tuple[SecurityFlag, ...] = (),
+    independence_denied_by_registry: bool = False,
+    qualifies: bool = True,
+) -> tuple[SourceItem, TopicCluster, RankingInputs]:
+    """A local, single-member synthetic-topic builder for Gate E0 tests,
+    deliberately kept separate from ``_synthetic_topic`` above (which has no
+    security_flags/independence_denied_by_registry kwargs) so these new
+    tests can never affect that helper's existing callers."""
+    if qualifies:
+        evidence_type = "independent_implementation"
+        evidence_level = 4
+        evidence_anchor_id = "evid_4_independent_rigorous_alone"
+        has_independent_evidence = True
+        has_direct = True
+    else:
+        evidence_type = "rumor"
+        evidence_level = 1
+        evidence_anchor_id = "evid_1_rumor"
+        has_independent_evidence = False
+        has_direct = False
+
+    anchor = _make_item(
+        item_id=f"{topic_id}-anchor",
+        subject_entity_ids=[f"{topic_id}-subject"],
+        evidence_type=evidence_type,
+        topic_tags=["agents"],
+        publication_date=first_seen,
+        detection_date=first_seen,
+        stable_reference=f"https://example.com/{topic_id}",
+        title=f"Security Flag Topic {topic_id}",
+        security_flags=security_flags,
+    )
+    cluster = _make_cluster(
+        topic_id=topic_id,
+        cluster_fingerprint=f"fp_{topic_id}",
+        canonical_title=f"Security Flag Topic {topic_id}",
+        anchor_item_id=anchor.item_id,
+        member_ids=[anchor.item_id],
+        member_roles={anchor.item_id: "primary"},
+        independent_publisher_count=1 if has_independent_evidence else 0,
+        has_independent_evidence=has_independent_evidence,
+        has_direct_artifact_or_independent_source=has_direct,
+        evidence_level=evidence_level,
+        evidence_anchor_id=evidence_anchor_id,
+        marketing_risk=False,
+        first_seen=first_seen,
+        last_seen=first_seen,
+        cluster_size=1,
+        topic_tags=["agents"],
+        evidence_types=[evidence_type],
+        security_flags=security_flags,
+        independence_denied_by_registry=independence_denied_by_registry,
+    )
+    inputs = _make_inputs(
+        topic_id=topic_id,
+        topic_tags=["agents"],
+        change_class="material_change",
+        action_required="new_option_available",
+        evidence_level=evidence_level,
+        evidence_anchor_id=evidence_anchor_id,
+        has_independent_evidence=has_independent_evidence,
+        has_direct_artifact_or_independent_source=has_direct,
+        marketing_risk=False,
+        experiment_affordance="not_testable",
+        first_seen=first_seen,
+    )
+    return anchor, cluster, inputs
+
+
+def _security_flag_brief(specs: list[dict[str, object]]) -> WeeklyBrief:
+    profile = _profile()
+    clusters_by_topic_id: dict[str, TopicCluster] = {}
+    items_by_id: dict[str, SourceItem] = {}
+    ranked: list[tuple[RankingInputs, RankingBreakdown]] = []
+    for i, spec in enumerate(specs, start=1):
+        topic_id = f"t_secrank{i}"
+        anchor, cluster, inputs = _security_flag_topic(
+            topic_id, first_seen=date(2026, 3, i), **spec
+        )
+        clusters_by_topic_id[topic_id] = cluster
+        items_by_id[anchor.item_id] = anchor
+        ranked.append((inputs, score_topic(inputs, profile)))
+    tiered = assign_tiers(ranked, clusters_by_topic_id, items_by_id)
+    return build_weekly_brief(tiered, ranked, clusters_by_topic_id, items_by_id, WEEK_LABEL)
+
+
+# --- product ruling P1: two display classes ---------------------------------
+
+
+def test_p1_adversarial_flag_is_named_per_topic_on_tier1_and_its_appendix_record() -> None:
+    brief = _security_flag_brief(
+        [
+            {"security_flags": (SecurityFlag.instruction_shaped_text,)},
+            {"security_flags": (SecurityFlag.active_markup_neutralized,)},
+        ]
+    )
+    assert len(brief.tier1) == 2
+    by_rank = {t.rank: t for t in brief.tier1}
+    assert by_rank[1].adversarial_security_flags == ("instruction_shaped_text",)
+    # A HYGIENE flag (active_markup_neutralized) must NEVER be named per-topic,
+    # even on an otherwise-adversarial-eligible Tier 1 entry.
+    assert by_rank[2].adversarial_security_flags == ()
+
+    appendix_by_rank = {r.rank: r for r in brief.appendix}
+    assert appendix_by_rank[1].adversarial_security_flags == ("instruction_shaped_text",)
+    assert appendix_by_rank[2].adversarial_security_flags == ()
+    # Distinct field from `warnings` (P1: "Do NOT reuse TierAssignment.warnings").
+    assert "instruction_shaped_text" not in appendix_by_rank[1].warnings
+
+
+def test_p1_adversarial_flag_named_per_topic_on_tier2_too() -> None:
+    brief = _security_flag_brief(
+        [
+            {"qualifies": True},
+            {"qualifies": True},
+            {"qualifies": False, "security_flags": (SecurityFlag.credential_shaped_text,)},
+        ]
+    )
+    tier2_by_rank = {t.rank: t for t in brief.tier2}
+    assert 3 in tier2_by_rank  # rank 3 failed admission -> falls through to Tier 2
+    assert tier2_by_rank[3].adversarial_security_flags == ("credential_shaped_text",)
+
+
+def test_p1_hygiene_flags_are_a_single_run_level_count_never_per_topic() -> None:
+    brief = _security_flag_brief(
+        [
+            {"security_flags": (SecurityFlag.instruction_shaped_text,)},
+            {"security_flags": (SecurityFlag.active_markup_neutralized,)},
+        ]
+    )
+    # Exactly 1 of the 2 items carries a hygiene flag.
+    assert "1 of 2" in brief.security_flag_summary.hygiene_note
+    markdown = render_markdown(brief)
+    # The hygiene flag's NAME is never rendered anywhere -- only the count.
+    assert "active_markup_neutralized" not in markdown
+    # The adversarial flag IS named, in the Tier 1 section.
+    assert "instruction_shaped_text" in markdown
+
+
+def test_p1_tier3_and_discarded_adversarial_flags_are_appendix_count_only() -> None:
+    """Tier 3 (Radar)/discarded topics get a COUNT only -- never a per-topic
+    name -- even for an adversarial flag (P1: "Tier 3 / discarded: appendix
+    count only")."""
+    specs: list[dict[str, object]] = [{"qualifies": True} for _ in range(7)]
+    specs.append({"qualifies": True, "security_flags": (SecurityFlag.instruction_shaped_text,)})
+    brief = _security_flag_brief(specs)
+
+    assert len(brief.tier3) == 1
+    radar_item = brief.tier3[0]
+    assert not hasattr(radar_item, "adversarial_security_flags")
+    assert "instruction_shaped_text" not in radar_item.signal_paragraph
+
+    assert brief.security_flag_summary.tier3_and_discarded_adversarial_count == 1
+    markdown = render_markdown(brief)
+    # Named nowhere in the Radar section itself -- only counted in the
+    # Appendix's security flag summary.
+    radar_section = _extract_markdown_section(markdown, "## Radar")
+    assert "instruction_shaped_text" not in radar_section
+
+
+# --- product ruling P3: distinct exclusion category for registry denial ----
+
+
+def _p3_scenario(*, independence_denied_by_registry: bool) -> WeeklyBrief:
+    """A single rank-1 topic that fails Tier-1 admission on independence
+    ALONE (relevance/evidence/marketing all pass) -- so the no-backfill
+    short reason isolates exactly the exclusion category this test
+    targets. ``evidence_type='official_doc'`` is deliberately excluded from
+    D1's evidence-type set (tiers.py), so the D1 exception can never rescue
+    this topic either."""
+    first_seen = date(2026, 4, 1)
+    anchor = _make_item(
+        item_id="t_p3-anchor",
+        subject_entity_ids=["t_p3-subject"],
+        evidence_type="official_doc",
+        topic_tags=["agents"],
+        publication_date=first_seen,
+        detection_date=first_seen,
+        stable_reference="https://example.com/t_p3",
+        title="P3 Registry Independence Topic",
+        change_class="breaking_change",
+        action_required="migration_required",
+    )
+    cluster = _make_cluster(
+        topic_id="t_p3",
+        cluster_fingerprint="fp_t_p3",
+        canonical_title="P3 Registry Independence Topic",
+        anchor_item_id=anchor.item_id,
+        member_ids=[anchor.item_id],
+        member_roles={anchor.item_id: "primary"},
+        independent_publisher_count=0,
+        has_independent_evidence=False,
+        has_first_party_authoritative=True,
+        has_direct_artifact_or_independent_source=True,
+        evidence_level=3,
+        evidence_anchor_id="evid_3_first_party_authoritative",
+        marketing_risk=False,
+        first_seen=first_seen,
+        last_seen=first_seen,
+        cluster_size=1,
+        topic_tags=["agents"],
+        evidence_types=["official_doc"],
+        independence_denied_by_registry=independence_denied_by_registry,
+    )
+    inputs = _make_inputs(
+        topic_id="t_p3",
+        topic_tags=["agents"],
+        change_class="breaking_change",
+        action_required="migration_required",
+        evidence_level=3,
+        evidence_anchor_id="evid_3_first_party_authoritative",
+        has_independent_evidence=False,
+        has_first_party_authoritative=True,
+        has_direct_artifact_or_independent_source=True,
+        marketing_risk=False,
+        experiment_affordance="not_testable",
+        first_seen=first_seen,
+    )
+    profile = _profile()
+    breakdown = score_topic(inputs, profile)
+    # Sanity: independence must be the ONLY failing base condition, or this
+    # test would not isolate the category it targets.
+    assert breakdown.tier1_eligible is False
+    failing = [r for r in breakdown.eligibility_reasons if r.endswith(": fail")]
+    assert len(failing) == 1
+    assert failing[0].startswith("has_independent_evidence")
+
+    clusters_by_topic_id = {"t_p3": cluster}
+    items_by_id = {anchor.item_id: anchor}
+    ranked = [(inputs, breakdown)]
+    tiered = assign_tiers(ranked, clusters_by_topic_id, items_by_id)
+    return build_weekly_brief(tiered, ranked, clusters_by_topic_id, items_by_id, WEEK_LABEL)
+
+
+def test_p3_registry_denied_independence_gets_a_distinct_exclusion_category() -> None:
+    brief = _p3_scenario(independence_denied_by_registry=True)
+    assert brief.tier1 == []
+    assert len(brief.tier2) == 1
+    assert brief.tier1_short_reason is not None
+    assert "registry-authoris" in brief.tier1_short_reason
+    assert "authorise an independent/community source" in brief.tier1_short_reason
+    # The generic (pre-E0.3) wording must NOT appear -- this is the whole
+    # point of P3's distinct category (opposite actions: authorise the
+    # existing source vs. find a new one).
+    assert "lack of independent corroboration" not in brief.tier1_short_reason
+
+    discarded_reason_source = brief.discarded[0].reason if brief.discarded else None
+    assert discarded_reason_source is None  # only 1 topic exists; nothing is discarded here
+
+
+def test_p3_ordinary_independence_failure_keeps_the_generic_category() -> None:
+    """The complementary case: when the registry did NOT deny independence
+    (no corroborating source has simply been found yet), the ORIGINAL,
+    generic category is unchanged -- proving P3 only ADDS a category, it
+    never removes or renames the existing one."""
+    brief = _p3_scenario(independence_denied_by_registry=False)
+    assert brief.tier1_short_reason is not None
+    assert "lack of independent corroboration" in brief.tier1_short_reason
+    assert "registry-authoris" not in brief.tier1_short_reason
+
+
+# --- product ruling P4: BRIEF_VERSION bump -----------------------------------
+
+
+def test_p4_brief_version_was_bumped_for_the_new_security_field() -> None:
+    assert BRIEF_VERSION != "gate-b-m5-1"
+    brief = _brief_from_real_fixture()
+    assert brief.brief_version == BRIEF_VERSION
+
+
+# --- product ruling P5: empty Tier 1 tldr names the cause, not just effect -
+
+
+def test_p5_empty_tier1_tldr_names_the_governed_source_count_and_expected_framing() -> None:
+    brief = _brief_for([False, False, False])
+    assert brief.tier1 == []
+    assert len(brief.tldr) == 1
+    line = brief.tldr[0]
+    # The old, effect-only copy is preserved verbatim (existing test pins
+    # this substring) ...
+    assert "No topics were admitted to Tier 1" in line
+    # ... but P5 requires the CAUSE to be named too: this is the expected,
+    # correct result, and the governed-source count explains why.
+    assert "expected" in line.lower()
+    assert "registry-governed" in line
+    assert "Of 3 source item(s) considered" in line
+
+
+def test_p5_governed_source_counts_reflect_real_may_supply_independence_values() -> None:
+    """The counts in the P5 tldr line are not just decorative prose -- they
+    must actually reflect ``SourceItem.may_supply_independence`` across
+    ``items_by_id``."""
+    from content_machine.intelligence.brief import _build_tldr
+
+    items_by_id = {
+        "a": _make_item(item_id="a", may_supply_independence=True),
+        "b": _make_item(item_id="b", may_supply_independence=False),
+        "c": _make_item(item_id="c", may_supply_independence=None),
+    }
+    tldr = _build_tldr([], items_by_id)
+    assert len(tldr) == 1
+    line = tldr[0]
+    assert "Of 3 source item(s) considered" in line
+    assert "2 are registry-governed" in line
+    assert "only 1 of those are authorised" in line

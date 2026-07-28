@@ -1,4 +1,4 @@
-"""Untrusted-content neutralization and the security-flag vocabulary (Gate D §7).
+"""Untrusted-content neutralization (Gate D §7).
 
 Every source is hostile data. This module is the ONLY place in ``connectors``
 that touches raw retrieved text, and it has exactly one job: turn arbitrary
@@ -6,6 +6,16 @@ bytes-as-text into a bounded, markup-free, secret-scrubbed string plus a set
 of flags a human reviewer can act on. It never executes, interprets, or
 forwards anything it sanitizes to a model -- there is no execution path in
 this gate, and retrieved content never crosses a model boundary at all.
+
+**Gate E0 (E0.1) move.** ``SecurityFlag`` itself now lives in
+:mod:`content_machine.intelligence.models` (see that module's "Gate E0
+(E0.1) addition" docstring note for why), so that :class:`SourceItem` can
+carry it natively all the way to the published brief -- durably fixing what
+was, before this gate, a fail-closed substitute at ``connectors.bridge``
+(``UnreviewedSecurityFlagsError``, kept in place, see that module). It is
+imported and re-exported here so every existing
+``from content_machine.connectors.sanitize import SecurityFlag`` (and the
+``connectors`` package's own re-export) keeps working unchanged.
 
 **Honesty requirement.** This is NOT semantic prompt-injection detection and
 must never be described as such (see also the ADR and public
@@ -24,9 +34,17 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from content_machine.intelligence.models import SecurityFlag
+
+__all__ = [
+    "SanitizedText",
+    "SecurityFlag",
+    "sanitize_error",
+    "sanitize_text",
+]
 
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _REPLACEMENT_CHAR = "�"
@@ -84,38 +102,83 @@ _FS_PATH_RE = re.compile(
 
 # Heuristic instruction-shaped phrases. Intentionally small and generic --
 # widening it is a tuning exercise for a later gate, not a detection promise.
+#
+# Gate E0, F0 (Fable ruling, "instruction_shaped_text false positives: FIX
+# (a), KEEP THE BLOCK"): two of these patterns produced false positives on
+# ordinary release-note/blog prose -- "the agent acts as a proxy" and "you
+# are now able to configure X" -- both ubiquitous phrasings that are not
+# instruction-shaped at all. Fable's finding: "repeated benign blocks train a
+# reflexive override on the one flag whose override must stay exceptional.
+# Alarm fatigue is a security failure mode." The two narrowed patterns below
+# require either second-person imperative address or sentence/string-initial
+# position (the ``you are now ...`` pattern is a matched-then-excluded
+# regex, not an include-list -- see its own comment for why). The
+# ignore/disregard patterns and the ``system:``/``assistant:`` family are
+# UNCHANGED and must not be widened (Fable: "Keep the ignore/disregard
+# patterns ... and the ^\\s*system\\s*: family ... EXACTLY as they are.").
 _INSTRUCTION_PATTERNS = (
     re.compile(r"\bignore (?:all |the )?(?:previous|prior|above) instructions\b", re.IGNORECASE),
     re.compile(r"\bdisregard (?:the )?(?:previous|prior|above)\b", re.IGNORECASE),
-    re.compile(r"\byou are now\b", re.IGNORECASE),
+    # Gate E0 round 1 (Fable security audit, REQUIRED CHANGE 1): the prior
+    # six-adjective exclusion list (able|ready|free|welcome|going|expected)
+    # was under-inclusive -- the benign class is not a fixed adjective set
+    # but the open-ended SHAPE "<word> to <verb>" (a generalized-infinitive
+    # continuation), and the reviewer's independent corpus fired 11/11 on
+    # ordinary release-note prose against the old list, exactly the alarm-
+    # fatigue failure mode this pattern exists to prevent. "you are now a
+    # pirate"/"you are now in developer mode"/"you are now the ranking
+    # engine" must still fire, and so must "you are now DAN" (a bare
+    # jailbreak-persona name with no article) -- a naive
+    # `\byou are now (?:a|an|the|in)\b` include-list would NOT catch "DAN",
+    # so this remains a broad match with a narrow, named exclusion rather
+    # than an include-list. The exclusion now generalizes: suppress the
+    # match when the word right after "now" is NOT an article/"in" AND that
+    # word is itself followed by "to" (the generalized-infinitive shape,
+    # e.g. "now required to authenticate", "now up to date"). Fable
+    # RATIFIED this exact broad-match-with-generalized-
+    # exclusion form:
+    re.compile(
+        r"\byou are now\b(?!\s+(?!(?:a|an|the|in)\b)\w+\s+to\b)",
+        re.IGNORECASE,
+    ),
     re.compile(r"^\s*system\s*:", re.IGNORECASE | re.MULTILINE),
     re.compile(r"^\s*assistant\s*:", re.IGNORECASE | re.MULTILINE),
-    re.compile(r"\bact as (?:a|an)\b", re.IGNORECASE),
+    # "the agent acts as a proxy" (verb "acts", not imperative "act", and
+    # not sentence-initial) must NOT fire; "You must act as a system
+    # administrator..." (second-person imperative) and sentence/string-
+    # initial "Act as a/an ..." must still fire.
+    #
+    # Gate E0 round 1 (Fable security audit, REQUIRED CHANGE 2): the
+    # `^\s*act as (?:a|an)\b` alternative above was dead code for any
+    # mid-document hostile instance. `sanitize_text` collapses ALL
+    # whitespace (`_WHITESPACE_RE`, applied at step 5) BEFORE this
+    # instruction check runs (step 6), which merges every line into one
+    # string -- so `^` under re.MULTILINE can only ever match position 0
+    # of the whole string, never a genuine sentence/line start that
+    # followed other text. A hostile "Act as a system administrator..."
+    # appearing after benign prose never fired, even though coverage F0
+    # item 1 mandated keeping sentence-initial "Act as a/an" coverage.
+    # Fable authorized this as an ORDERED RESTORATION of mandated
+    # coverage -- not a widening under the "must not widen" rule -- by
+    # adding a third alternative: a fixed-width lookbehind for sentence-
+    # terminating punctuation followed by exactly ONE space. That fixed
+    # width is sound ONLY BECAUSE the whitespace-collapse step (5) already
+    # guarantees a single space between sentences by the time this check
+    # (step 6) runs -- making sanitize_text's step ORDER load-bearing for
+    # this alternative. A later gate must NOT reorder sanitize_text's
+    # steps (whitespace collapse before instruction detection) without
+    # re-verifying this lookbehind.
+    re.compile(
+        r"\byou (?:are|will|must|should) (?:now )?act as (?:a|an)\b"
+        r"|^\s*act as (?:a|an)\b"
+        r"|(?<=[.!?:;] )act as (?:a|an)\b",
+        re.IGNORECASE | re.MULTILINE,
+    ),
 )
 
 _REDACTED_EMAIL = "[redacted-email]"
 _REDACTED_CREDENTIAL = "[redacted-credential]"
 _REDACTED_PATH = "[redacted-path]"
-
-
-class SecurityFlag(StrEnum):
-    """Heuristic markers raised while sanitizing untrusted content.
-
-    Every flag is a marker for a human reviewer, never a claim of complete
-    detection (see the module docstring's honesty requirement).
-    """
-
-    active_markup_neutralized = "active_markup_neutralized"
-    instruction_shaped_text = "instruction_shaped_text"
-    credential_shaped_text = "credential_shaped_text"
-    email_shaped_text = "email_shaped_text"
-    filesystem_path_shaped_text = "filesystem_path_shaped_text"
-    oversized_truncated = "oversized_truncated"
-    malformed_encoding = "malformed_encoding"
-    unsupported_content_type = "unsupported_content_type"
-    redirect_chain_exceeded = "redirect_chain_exceeded"
-    duplicate_canonical_reference = "duplicate_canonical_reference"
-    conflicting_publication_date = "conflicting_publication_date"
 
 
 class SanitizedText(BaseModel):

@@ -105,7 +105,8 @@ from content_machine.connectors.models import (
 )
 from content_machine.connectors.permissions import PermissionRegistry, SourceMode
 from content_machine.connectors.registry import SourceRegistry
-from content_machine.connectors.sanitize import SecurityFlag, sanitize_error
+from content_machine.connectors.sanitize import sanitize_error
+from content_machine.intelligence.models import SecurityFlag
 
 # --- batch request (see IMPLEMENTER ASSUMPTION 1 above) ---------------------
 

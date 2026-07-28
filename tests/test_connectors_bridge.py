@@ -17,6 +17,7 @@ recording it."""
 
 from __future__ import annotations
 
+import inspect
 from datetime import UTC, date, datetime
 
 import pytest
@@ -28,8 +29,10 @@ from content_machine.connectors.bridge import (
     AuthoredAssessment,
     EmptySubjectEntityIdsError,
     EmptyTopicTagsError,
+    MissingPermissionRegistryError,
     MissingReviewerNoteError,
     RegistryEntryMismatchError,
+    StalePermissionAtBridgeError,
     UnreviewedSecurityFlagsError,
     derive_item_id,
     to_source_item,
@@ -42,6 +45,12 @@ from content_machine.connectors.models import (
     ProvenanceMetadata,
     SummaryProvenance,
 )
+from content_machine.connectors.permissions import (
+    PermissionRegistry,
+    PermissionStatus,
+    SourceMode,
+    SourcePermission,
+)
 from content_machine.connectors.registry import PublisherClassification, SourceRegistryEntry
 from content_machine.connectors.sanitize import SecurityFlag
 from content_machine.intelligence.normalize import normalize_canonical_reference
@@ -49,14 +58,18 @@ from content_machine.intelligence.normalize import normalize_canonical_reference
 _NOW = datetime(2026, 7, 20, 12, 0, tzinfo=UTC)
 
 
-def _registry_entry(source_id: str = "src_vendor_alpha") -> SourceRegistryEntry:
+def _registry_entry(
+    source_id: str = "src_vendor_alpha",
+    *,
+    publisher_classification: PublisherClassification = PublisherClassification.vendor_first_party,
+) -> SourceRegistryEntry:
     return SourceRegistryEntry(
         source_id=source_id,
         source_group="grp_vendor_alpha",
         publisher_id="vendor-alpha",
         source_category="vendor_blog",
         source_type="feed",
-        publisher_classification=PublisherClassification.vendor_first_party,
+        publisher_classification=publisher_classification,
         endpoint_label="VendorAlpha blog",
     )
 
@@ -105,6 +118,31 @@ def _assessment(**overrides: object) -> AuthoredAssessment:
     return AuthoredAssessment.model_validate(base)
 
 
+def _permission_registry(
+    *, source_id: str = "src_vendor_alpha", status: PermissionStatus = PermissionStatus.approved
+) -> PermissionRegistry:
+    return PermissionRegistry(
+        [
+            SourcePermission(
+                source_id=source_id,
+                approved_mode=SourceMode.discovery,
+                permitted_fields=frozenset(
+                    {
+                        "title",
+                        "canonical_reference",
+                        "content_type",
+                        "publication_date",
+                        "summary_normalized",
+                    }
+                ),
+                retention_policy_id="policy_default",
+                authorization_owner="founder",
+                status=status,
+            )
+        ]
+    )
+
+
 # --- B2 (Gate D round-1 correction): fail closed on unreviewed SecurityFlags
 
 
@@ -123,7 +161,8 @@ def test_flagged_item_is_rejected_by_default() -> None:
     result = _discovery_result(security_flags=(SecurityFlag.instruction_shaped_text,))
     with pytest.raises(UnreviewedSecurityFlagsError):
         to_source_item(
-            result, _assessment(), _registry_entry(), detection_date=date(2026, 7, 18)
+            result, _assessment(), _registry_entry(), detection_date=date(2026, 7, 18),
+            permission_registry=_permission_registry(),
         )
 
 
@@ -136,6 +175,7 @@ def test_flagged_item_is_admitted_with_the_exact_matching_override() -> None:
         detection_date=date(2026, 7, 18),
         human_reviewed_flags=frozenset({SecurityFlag.instruction_shaped_text}),
         reviewer_note="Reviewed: phrase is quoted marketing copy, not an injection attempt.",
+        permission_registry=_permission_registry(),
     )
     assert item.evidence_type == "announcement"
 
@@ -151,6 +191,7 @@ def test_override_naming_the_wrong_flag_still_rejects() -> None:
             _registry_entry(),
             detection_date=date(2026, 7, 18),
             human_reviewed_flags=frozenset({SecurityFlag.malformed_encoding}),
+            permission_registry=_permission_registry(),
         )
 
 
@@ -165,6 +206,7 @@ def test_override_naming_only_one_of_two_blocking_flags_still_rejects() -> None:
             _registry_entry(),
             detection_date=date(2026, 7, 18),
             human_reviewed_flags=frozenset({SecurityFlag.instruction_shaped_text}),
+            permission_registry=_permission_registry(),
         )
     # naming BOTH admits it
     item = to_source_item(
@@ -176,6 +218,7 @@ def test_override_naming_only_one_of_two_blocking_flags_still_rejects() -> None:
             {SecurityFlag.instruction_shaped_text, SecurityFlag.malformed_encoding}
         ),
         reviewer_note="Reviewed both flags: benign, no injection or deceptive encoding found.",
+        permission_registry=_permission_registry(),
     )
     assert item.evidence_type == "announcement"
 
@@ -194,7 +237,8 @@ def test_non_blocking_flags_never_require_an_override() -> None:
         )
     )
     item = to_source_item(
-        result, _assessment(), _registry_entry(), detection_date=date(2026, 7, 18)
+        result, _assessment(), _registry_entry(), detection_date=date(2026, 7, 18),
+        permission_registry=_permission_registry(),
     )
     assert item.evidence_type == "announcement"
 
@@ -208,6 +252,7 @@ def test_empty_human_reviewed_flags_never_admits_a_flagged_item() -> None:
             _registry_entry(),
             detection_date=date(2026, 7, 18),
             human_reviewed_flags=frozenset(),
+            permission_registry=_permission_registry(),
         )
 
 
@@ -225,6 +270,7 @@ def test_override_without_a_note_raises() -> None:
             _registry_entry(),
             detection_date=date(2026, 7, 18),
             human_reviewed_flags=frozenset({SecurityFlag.instruction_shaped_text}),
+            permission_registry=_permission_registry(),
         )
 
 
@@ -238,6 +284,7 @@ def test_override_with_whitespace_only_note_raises() -> None:
             detection_date=date(2026, 7, 18),
             human_reviewed_flags=frozenset({SecurityFlag.instruction_shaped_text}),
             reviewer_note="   ",
+            permission_registry=_permission_registry(),
         )
 
 
@@ -255,6 +302,7 @@ def test_override_with_wrong_flag_and_no_note_raises_unreviewed_not_missing_note
             _registry_entry(),
             detection_date=date(2026, 7, 18),
             human_reviewed_flags=frozenset({SecurityFlag.malformed_encoding}),
+            permission_registry=_permission_registry(),
         )
 
 
@@ -268,6 +316,7 @@ def test_override_with_note_admits_and_yields_audit_event() -> None:
         occurred_at=_NOW,
         human_reviewed_flags=frozenset({SecurityFlag.instruction_shaped_text}),
         reviewer_note="Reviewed: quoted marketing copy, not an injection attempt.",
+        permission_registry=_permission_registry(),
     )
     assert item.evidence_type == "announcement"
     assert event is not None
@@ -291,6 +340,7 @@ def test_override_without_note_via_with_audit_still_raises() -> None:
             detection_date=date(2026, 7, 18),
             occurred_at=_NOW,
             human_reviewed_flags=frozenset({SecurityFlag.instruction_shaped_text}),
+            permission_registry=_permission_registry(),
         )
 
 
@@ -304,6 +354,7 @@ def test_non_override_path_emits_no_security_event() -> None:
         _registry_entry(),
         detection_date=date(2026, 7, 18),
         occurred_at=_NOW,
+        permission_registry=_permission_registry(),
     )
     assert item.evidence_type == "announcement"
     assert event is None
@@ -314,7 +365,8 @@ def test_non_override_path_emits_no_security_event() -> None:
 
 def test_human_authored_provenance_is_accepted() -> None:
     item = to_source_item(
-        _discovery_result(), _assessment(), _registry_entry(), detection_date=date(2026, 7, 18)
+        _discovery_result(), _assessment(), _registry_entry(), detection_date=date(2026, 7, 18),
+        permission_registry=_permission_registry(),
     )
     assert item.evidence_type == "announcement"
 
@@ -329,6 +381,7 @@ def test_non_human_provenance_is_rejected(provenance: AssessmentProvenance) -> N
             _assessment(provenance=provenance),
             _registry_entry(),
             detection_date=date(2026, 7, 18),
+            permission_registry=_permission_registry(),
         )
 
 
@@ -342,6 +395,7 @@ def test_empty_topic_tags_is_rejected() -> None:
             _assessment(topic_tags=()),
             _registry_entry(),
             detection_date=date(2026, 7, 18),
+            permission_registry=_permission_registry(),
         )
 
 
@@ -352,6 +406,7 @@ def test_empty_subject_entity_ids_is_rejected() -> None:
             _assessment(subject_entity_ids=()),
             _registry_entry(),
             detection_date=date(2026, 7, 18),
+            permission_registry=_permission_registry(),
         )
 
 
@@ -375,7 +430,8 @@ def test_authored_assessment_defaults_are_empty_tuples_not_silently_accepted() -
     assert minimal.subject_entity_ids == ()
     with pytest.raises(EmptyTopicTagsError):
         to_source_item(
-            _discovery_result(), minimal, _registry_entry(), detection_date=date(2026, 7, 18)
+            _discovery_result(), minimal, _registry_entry(), detection_date=date(2026, 7, 18),
+            permission_registry=_permission_registry(),
         )
 
 
@@ -389,6 +445,7 @@ def test_registry_entry_source_id_mismatch_is_rejected() -> None:
             _assessment(),
             _registry_entry(source_id="src_vendor_other"),
             detection_date=date(2026, 7, 18),
+            permission_registry=_permission_registry(),
         )
 
 
@@ -398,7 +455,8 @@ def test_registry_entry_source_id_mismatch_is_rejected() -> None:
 def test_publisher_fields_come_from_registry_entry_not_discovery_payload() -> None:
     entry = _registry_entry()
     item = to_source_item(
-        _discovery_result(), _assessment(), entry, detection_date=date(2026, 7, 18)
+        _discovery_result(), _assessment(), entry, detection_date=date(2026, 7, 18),
+        permission_registry=_permission_registry(),
     )
     assert item.publisher_id == entry.publisher_id
     assert item.source_category == entry.source_category
@@ -427,10 +485,12 @@ def test_item_id_is_stable_across_re_discovery_with_different_query_string() -> 
         canonical_reference="https://example.com/vendor-alpha/post-1?utm_source=newsletter"
     )
     item_first = to_source_item(
-        first, _assessment(), _registry_entry(), detection_date=date(2026, 7, 18)
+        first, _assessment(), _registry_entry(), detection_date=date(2026, 7, 18),
+        permission_registry=_permission_registry(),
     )
     item_second = to_source_item(
-        second, _assessment(), _registry_entry(), detection_date=date(2026, 7, 25)
+        second, _assessment(), _registry_entry(), detection_date=date(2026, 7, 25),
+        permission_registry=_permission_registry(),
     )
     assert item_first.item_id == item_second.item_id
 
@@ -444,10 +504,12 @@ def test_item_id_never_derived_from_retrieved_at() -> None:
         {**early.model_dump(), "retrieved_at": datetime(2026, 8, 1, 0, 0, tzinfo=UTC)}
     )
     item_early = to_source_item(
-        early, _assessment(), _registry_entry(), detection_date=date(2026, 7, 18)
+        early, _assessment(), _registry_entry(), detection_date=date(2026, 7, 18),
+        permission_registry=_permission_registry(),
     )
     item_late = to_source_item(
-        late, _assessment(), _registry_entry(), detection_date=date(2026, 7, 18)
+        late, _assessment(), _registry_entry(), detection_date=date(2026, 7, 18),
+        permission_registry=_permission_registry(),
     )
     assert item_early.item_id == item_late.item_id
 
@@ -457,9 +519,134 @@ def test_item_id_never_derived_from_retrieved_at() -> None:
 
 def test_detection_date_is_exactly_the_caller_supplied_value() -> None:
     item = to_source_item(
-        _discovery_result(), _assessment(), _registry_entry(), detection_date=date(2020, 1, 1)
+        _discovery_result(), _assessment(), _registry_entry(), detection_date=date(2020, 1, 1),
+        permission_registry=_permission_registry(),
     )
     assert item.detection_date == date(2020, 1, 1)
+
+
+# --- Gate E0, E0.1: security_flags propagate onto SourceItem (durable fix) -
+
+
+def test_e0_1_non_blocking_security_flags_survive_onto_the_source_item() -> None:
+    """E0.1's durable fix: flags that don't require an override still land
+    on ``SourceItem.security_flags`` -- flag NAMES only, never the hostile
+    text, and never through any hop that could drop them."""
+    result = _discovery_result(
+        security_flags=(
+            SecurityFlag.credential_shaped_text,
+            SecurityFlag.oversized_truncated,
+        )
+    )
+    item = to_source_item(
+        result, _assessment(), _registry_entry(), detection_date=date(2026, 7, 18),
+        permission_registry=_permission_registry(),
+    )
+    assert item.security_flags == (
+        SecurityFlag.credential_shaped_text,
+        SecurityFlag.oversized_truncated,
+    )
+
+
+def test_e0_1_reviewed_and_overridden_blocking_flags_still_survive_onto_the_item() -> None:
+    """A blocking flag that clears the human-reviewed-flags override must
+    STILL survive onto the item -- the override lets it cross the bridge at
+    all, but does not erase the flag itself; a downstream reviewer must
+    still be able to see it in the brief."""
+    result = _discovery_result(security_flags=(SecurityFlag.instruction_shaped_text,))
+    item = to_source_item(
+        result,
+        _assessment(),
+        _registry_entry(),
+        detection_date=date(2026, 7, 18),
+        human_reviewed_flags=frozenset({SecurityFlag.instruction_shaped_text}),
+        reviewer_note="Reviewed: benign, no injection found in context.",
+        permission_registry=_permission_registry(),
+    )
+    assert item.security_flags == (SecurityFlag.instruction_shaped_text,)
+
+
+def test_e0_1_no_flags_yields_empty_security_flags_on_the_item() -> None:
+    result = _discovery_result(security_flags=())
+    item = to_source_item(
+        result, _assessment(), _registry_entry(), detection_date=date(2026, 7, 18),
+        permission_registry=_permission_registry(),
+    )
+    assert item.security_flags == ()
+
+
+# --- Gate E0, E0.3: may_supply_independence is ALWAYS an explicit bool -----
+# (R3/F2: bridge must NEVER emit None -- every connector-sourced item is
+# governed by the curated source registry.)
+
+
+def test_e0_3_bridge_populates_may_supply_independence_true_for_independent_source() -> None:
+    item = to_source_item(
+        _discovery_result(),
+        _assessment(),
+        _registry_entry(publisher_classification=PublisherClassification.independent),
+        detection_date=date(2026, 7, 18),
+        permission_registry=_permission_registry(),
+    )
+    assert item.may_supply_independence is True
+
+
+def test_e0_3_bridge_populates_may_supply_independence_true_for_community_source() -> None:
+    item = to_source_item(
+        _discovery_result(),
+        _assessment(),
+        _registry_entry(publisher_classification=PublisherClassification.community),
+        detection_date=date(2026, 7, 18),
+        permission_registry=_permission_registry(),
+    )
+    assert item.may_supply_independence is True
+
+
+def test_e0_3_bridge_populates_may_supply_independence_false_for_vendor_first_party() -> None:
+    item = to_source_item(
+        _discovery_result(),
+        _assessment(),
+        _registry_entry(publisher_classification=PublisherClassification.vendor_first_party),
+        detection_date=date(2026, 7, 18),
+        permission_registry=_permission_registry(),
+    )
+    assert item.may_supply_independence is False
+
+
+def test_e0_3_bridge_populates_may_supply_independence_false_for_unclassified() -> None:
+    """Fail-closed: unclassified is treated exactly as conservatively as a
+    known vendor source, never more favorably (SourceRegistryEntry's own
+    docstring) -- the bridge must never emit True, and must never emit
+    None, for an unclassified source."""
+    item = to_source_item(
+        _discovery_result(),
+        _assessment(),
+        _registry_entry(publisher_classification=PublisherClassification.unclassified),
+        detection_date=date(2026, 7, 18),
+        permission_registry=_permission_registry(),
+    )
+    assert item.may_supply_independence is False
+
+
+@pytest.mark.parametrize(
+    "classification",
+    list(PublisherClassification),
+)
+def test_e0_3_bridge_never_emits_none_for_any_publisher_classification(
+    classification: PublisherClassification,
+) -> None:
+    """R3/F2's required test: the bridge always emits True/False, never
+    None, for EVERY registry classification -- exhaustive over the enum
+    rather than the four cases spelled out individually above."""
+    item = to_source_item(
+        _discovery_result(),
+        _assessment(),
+        _registry_entry(publisher_classification=classification),
+        detection_date=date(2026, 7, 18),
+        permission_registry=_permission_registry(),
+    )
+    assert item.may_supply_independence is not None
+    assert isinstance(item.may_supply_independence, bool)
 
 
 def test_bridge_module_never_reads_the_wall_clock() -> None:
@@ -480,3 +667,126 @@ def test_bridge_module_never_reads_the_wall_clock() -> None:
             assert node.func.attr not in forbidden_attrs, (
                 f"forbidden wall-clock call: {node.func.attr}()"
             )
+
+
+# --- ADR 0005 entry condition 2: live permission re-verification at bridging
+# --- time (Gate E0 close-out) -----------------------------------------------
+
+
+def test_permission_registry_signature_has_no_default() -> None:
+    """Fable RC-1 (Part 2a correction): permission_registry must be a
+    REQUIRED keyword-only parameter -- there must be no way to call
+    to_source_item without supplying a live PermissionRegistry, since an
+    optional default previously left the ADR 0005 entry-condition-2 re-check
+    off by default at trust boundary TB-4. Assert directly on the signature
+    (mirroring test_authorize_retrieval_signature_accepts_no_date_or_clock_parameter's
+    style) rather than merely calling it with the argument present, which
+    would not catch a reintroduced `= None` default."""
+    signature = inspect.signature(to_source_item)
+    assert "permission_registry" in signature.parameters
+    permission_registry_param = signature.parameters["permission_registry"]
+    assert permission_registry_param.default is inspect.Parameter.empty, (
+        "permission_registry must have NO default -- an optional default is exactly the "
+        "off-by-default control Fable's audit rejected"
+    )
+    assert permission_registry_param.kind is inspect.Parameter.KEYWORD_ONLY
+
+
+def test_permission_registry_none_is_rejected_at_runtime() -> None:
+    """Runtime guard proof: even though permission_registry is typed
+    non-Optional, mypy is bypassable (an untyped call site, a suppressed
+    error), so to_source_item must ALSO reject an explicit None at runtime
+    rather than silently proceeding as if the live re-check had been
+    skipped."""
+    with pytest.raises(MissingPermissionRegistryError):
+        to_source_item(
+            _discovery_result(),
+            _assessment(),
+            _registry_entry(),
+            detection_date=date(2026, 7, 18),
+            permission_registry=None,  # type: ignore[arg-type]
+        )
+
+
+def test_live_approved_permission_registry_admits_the_item() -> None:
+    item = to_source_item(
+        _discovery_result(),
+        _assessment(),
+        _registry_entry(),
+        detection_date=date(2026, 7, 18),
+        permission_registry=_permission_registry(status=PermissionStatus.approved),
+    )
+    assert item is not None
+
+
+@pytest.mark.parametrize(
+    "status",
+    [PermissionStatus.proposed, PermissionStatus.suspended, PermissionStatus.revoked],
+)
+def test_live_non_approved_permission_registry_raises_stale_permission_error(
+    status: PermissionStatus,
+) -> None:
+    with pytest.raises(StalePermissionAtBridgeError):
+        to_source_item(
+            _discovery_result(),
+            _assessment(),
+            _registry_entry(),
+            detection_date=date(2026, 7, 18),
+            permission_registry=_permission_registry(status=status),
+        )
+
+
+def test_live_unregistered_source_in_permission_registry_raises_stale_permission_error() -> None:
+    with pytest.raises(StalePermissionAtBridgeError):
+        to_source_item(
+            _discovery_result(),
+            _assessment(),
+            _registry_entry(),
+            detection_date=date(2026, 7, 18),
+            permission_registry=_permission_registry(source_id="src_someone_else"),
+        )
+
+
+def test_live_re_verification_is_live_not_the_discovery_time_snapshot() -> None:
+    """The point of this check: result.permission_ref.status_at_discovery
+    says "approved" (baked in at discovery time by _discovery_result's
+    fixture default), but the freshly rebuilt PermissionRegistry passed at
+    bridging time says revoked -- the live re-check must catch this
+    divergence rather than trusting the stale snapshot."""
+    result = _discovery_result()
+    assert result.permission_ref.status_at_discovery == "approved"
+    with pytest.raises(StalePermissionAtBridgeError):
+        to_source_item(
+            result,
+            _assessment(),
+            _registry_entry(),
+            detection_date=date(2026, 7, 18),
+            permission_registry=_permission_registry(status=PermissionStatus.revoked),
+        )
+
+
+def test_live_re_verification_does_not_weaken_the_security_flag_control() -> None:
+    """A caller cannot use a permitted permission_registry to bypass the
+    pre-existing UnreviewedSecurityFlagsError control -- both checks must
+    independently hold."""
+    result = _discovery_result(security_flags=(SecurityFlag.instruction_shaped_text,))
+    with pytest.raises(UnreviewedSecurityFlagsError):
+        to_source_item(
+            result,
+            _assessment(),
+            _registry_entry(),
+            detection_date=date(2026, 7, 18),
+            permission_registry=_permission_registry(status=PermissionStatus.approved),
+        )
+
+
+def test_to_source_item_with_audit_forwards_permission_registry() -> None:
+    with pytest.raises(StalePermissionAtBridgeError):
+        to_source_item_with_audit(
+            _discovery_result(),
+            _assessment(),
+            _registry_entry(),
+            detection_date=date(2026, 7, 18),
+            occurred_at=_NOW,
+            permission_registry=_permission_registry(status=PermissionStatus.revoked),
+        )

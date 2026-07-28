@@ -17,6 +17,41 @@ future gates may legitimately want them -- but :func:`to_source_item` raises
 admission-POLICY change and belongs to Fable plus a future gate, never to an
 implementer quietly relaxing a check here.
 
+**Live re-verification at bridging time (ADR 0005 entry condition 2, Gate
+E0 close-out; MANDATORY as of the Part 2a Fable correction, RC-1).**
+``to_source_item``'s ``permission_registry`` parameter is a REQUIRED
+keyword-only argument -- there is no way to call this function without one --
+that re-checks ``result.source_id`` against a LIVE
+:class:`~content_machine.connectors.permissions.PermissionRegistry` at the
+moment of bridging -- not just the point-in-time snapshot
+``result.permission_ref.status_at_discovery`` recorded at discovery time --
+and fails closed with :class:`StalePermissionAtBridgeError` if the source is
+unregistered or no longer ``approved``. See that exception's docstring for
+why this closes a real gap (a permission suspended/revoked between
+discovery and bridging previously went unnoticed here), and for why this
+control was made mandatory rather than opt-in: an earlier revision made this
+parameter optional (default ``None``) so that supplying it was what
+"activated" the check; Fable's security audit demonstrated that a caller
+that simply omitted the argument bridged an item from a source whose
+permission had been revoked, with no error and no flag -- an ADR 0005
+entry-condition-2 control that is off by default at a trust boundary is not
+a control. ``to_source_item`` had zero production callers at the time of
+that correction, so requiring the argument broke no real caller, only tests
+(updated alongside this fix). A runtime guard also rejects ``None`` even
+though the parameter is no longer typed ``Optional``, since mypy is
+bypassable and the control must fail closed regardless of whether static
+typing was honored by the caller.
+
+The live re-check is **STATUS-only**: it verifies ``status ==
+PermissionStatus.approved`` and does not additionally check
+``expires_at``. Retrieval-time expiry enforcement is a separate, later gate
+(Part 2b's pre-retrieval permission check); an item already retrieved while
+its permission was valid may still legitimately bridge after that permission
+has since expired -- expiry governs whether NEW retrieval may occur, not
+whether an already-retrieved item may cross this bridge. See
+:class:`StalePermissionAtBridgeError` for the same point stated on the
+exception itself.
+
 **Fail closed on empty authored fields.** ``topic_tags``/``subject_entity_ids``
 Pydantic-default to an empty tuple, and an unfilled default is actively
 harmful here, not merely incomplete: empty ``topic_tags`` zero the 40% of the
@@ -26,20 +61,25 @@ every publisher look independent of every subject (``cluster.py``'s
 independence check is a subject-membership test). Both are rejected before
 construction, never silently accepted as "no tags"/"no subjects".
 
-**Fail closed on un-reviewed SecurityFlags (Gate D round-1 correction, B2).**
-Every ``SecurityFlag`` on the incoming ``DiscoveryResult`` was previously
-destroyed at this bridge -- ``SourceItem`` carries no ``security_flags``
-field, so a hostile item flagged ``instruction_shaped_text`` crossed into
-the pipeline with the injection text intact and the marker gone. This
-bridge now REJECTS (:class:`UnreviewedSecurityFlagsError`) any result
-carrying a member of :data:`BLOCKING_SECURITY_FLAGS` that a caller has not
-named via ``human_reviewed_flags``. This is a temporary, fail-closed
-substitute for the durable fix -- propagating ``security_flags`` onto
-``SourceItem`` itself and surfacing them in the published brief -- which is
-explicitly DEFERRED to the gate that ships the first real adapter, where
-extending the intelligence model is in scope under Fable review; the
-Founder's constraint against touching ``intelligence/`` in this gate rules
-that fix out here.
+**Fail closed on un-reviewed SecurityFlags (Gate D round-1 correction, B2;
+durable fix landed Gate E0, E0.1).** Every ``SecurityFlag`` on the incoming
+``DiscoveryResult`` used to be destroyed at this bridge -- ``SourceItem``
+carried no ``security_flags`` field, so a hostile item flagged
+``instruction_shaped_text`` crossed into the pipeline with the injection
+text intact and the marker gone. Gate D's round-1 fix REJECTED
+(:class:`UnreviewedSecurityFlagsError`) any result carrying a member of
+:data:`BLOCKING_SECURITY_FLAGS` that a caller had not named via
+``human_reviewed_flags`` -- a temporary, fail-closed substitute for the
+durable fix. **That fail-closed block STAYS in place, unchanged, per the
+Gate E0 Fable ruling** ("visibility is detective, the block is preventive;
+both must hold"): :func:`to_source_item` still REJECTS an unreviewed
+blocking flag exactly as before. Gate E0 (E0.1) ADDS the durable fix
+alongside it, additively: every admitted item now also carries its full
+``result.security_flags`` natively on ``SourceItem.security_flags`` (flag
+NAMES only, never the hostile text), which propagates onward to
+``TopicCluster``, the ranked/tiered topic, and the published brief -- see
+``intelligence.models.SecurityFlag``'s docstring and ``intelligence.brief``
+for the two product-mandated display classes (adversarial vs. hygiene).
 
 **Deterministic identity.** ``item_id`` is derived from the NORMALIZED
 canonical reference (:func:`content_machine.intelligence.normalize.normalize_canonical_reference`,
@@ -65,13 +105,14 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field
 
 from content_machine.connectors.models import AuditEventKind, ConnectorAuditEvent, DiscoveryResult
+from content_machine.connectors.permissions import PermissionRegistry, PermissionStatus
 from content_machine.connectors.registry import SourceRegistryEntry
-from content_machine.connectors.sanitize import SecurityFlag
 from content_machine.intelligence.models import (
     ActionRequired,
     ChangeClass,
     EvidenceType,
     ExperimentAffordance,
+    SecurityFlag,
     SourceItem,
 )
 from content_machine.intelligence.normalize import normalize_canonical_reference
@@ -175,13 +216,74 @@ class UnreviewedSecurityFlagsError(PermissionError):
 
     Two fixes were offered: (a) add ``security_flags`` to ``SourceItem``, or
     (b) fail closed here instead. The Founder's constraint against touching
-    ``intelligence/`` in this gate makes (a) out of scope, so (b) is what is
-    implemented: this is a **temporary, fail-closed substitute** for
-    propagating the flag downstream, not the durable fix. The durable fix --
-    adding ``security_flags`` to ``SourceItem`` and surfacing them in the
-    brief for a human reviewer -- is DEFERRED to the gate that ships the
-    first real adapter, where extending the intelligence model is in scope
-    under Fable review (see ADR 0005's round-1 findings section).
+    ``intelligence/`` in Gate D made (a) out of scope there, so (b) is what
+    Gate D implemented: a **fail-closed substitute** for propagating the
+    flag downstream, not the durable fix.
+
+    **Gate E0 (E0.1): the durable fix has now landed, ADDITIVELY.** Per the
+    Fable ruling on the Gate E0 design ("visibility is detective, the block
+    is preventive; both must hold ... reconsidering the block requires ...
+    a NEW explicit Fable ruling"), this exception and
+    :data:`BLOCKING_SECURITY_FLAGS` remain exactly as Gate D left them --
+    still fail-closed, still required. ``SourceItem`` now ALSO carries
+    ``security_flags`` natively (see
+    :class:`~content_machine.intelligence.models.SourceItem`), so a flag
+    survives to the brief for every admitted item, reviewed-and-overridden
+    or not; that propagation does not relax this check in any way.
+    """
+
+
+class MissingPermissionRegistryError(TypeError):
+    """Raised by :func:`to_source_item` when ``permission_registry`` is
+    ``None`` at runtime, despite the parameter being required and typed
+    non-``Optional``.
+
+    **Part 2a Fable correction, RC-1.** ``permission_registry`` is a
+    required keyword-only argument specifically so the ADR 0005
+    entry-condition-2 live re-verification below cannot be skipped by
+    omission. Static typing already forbids passing ``None`` here, but mypy
+    is bypassable (an untyped call site, a suppressed/ignored type error, a
+    dynamically-constructed call) -- this explicit runtime guard makes the
+    control fail closed unconditionally, rather than trusting the type
+    checker alone to have been honored.
+    """
+
+
+class StalePermissionAtBridgeError(PermissionError):
+    """Raised by :func:`to_source_item` when a LIVE re-check of
+    ``result.source_id`` against the required ``permission_registry`` finds
+    the permission unregistered or not ``status == approved`` at the moment
+    of bridging.
+
+    **ADR 0005 entry condition 2 (Gate E0 close-out; MANDATORY as of Part
+    2a, RC-1).** Fable's round-2 review of Gate D proved a gap:
+    ``to_source_item`` trusted whatever ``DiscoveryResult`` it was handed
+    and never re-verified against a live ``PermissionRegistry`` that the
+    source was STILL ``approved`` at the moment of bridging, as opposed to
+    at discovery time (which ``run_discovery`` does check). Between a
+    discovery run and a bridging call, a permission could be suspended or
+    revoked with nothing at the bridge noticing --
+    ``DiscoveryResult.permission_ref.status_at_discovery`` is only a
+    point-in-time snapshot string, never a live handle (see ``PermissionRef``'s
+    own docstring), so trusting it alone would let a since-revoked source's
+    item cross the bridge anyway.
+
+    ``permission_registry`` is a REQUIRED keyword-only argument: there is no
+    way to call ``to_source_item`` without supplying one, and
+    :class:`MissingPermissionRegistryError` fires if ``None`` reaches the
+    runtime guard anyway. This re-check is fully fail-closed: unregistered
+    or non-``approved`` both raise this error, and it runs independently of,
+    and does not replace or weaken, the existing
+    ``UnreviewedSecurityFlagsError``/``MissingReviewerNoteError``/
+    ``AssessmentProvenanceNotPermitted``/``EmptyTopicTagsError``/
+    ``EmptySubjectEntityIdsError`` controls below.
+
+    **Scope: STATUS-only, not expiry.** This re-check verifies ``status ==
+    PermissionStatus.approved``; it does not check ``expires_at``.
+    ``expires_at`` governs whether NEW retrieval may occur (a later gate's
+    concern, enforced at retrieval time), not whether an item already
+    retrieved while its permission was valid may bridge into the pipeline --
+    that scoping is a deliberate, Fable-reviewed choice, not an oversight.
     """
 
 
@@ -219,6 +321,7 @@ def to_source_item(
     registry_entry: SourceRegistryEntry,
     *,
     detection_date: date,
+    permission_registry: PermissionRegistry,
     human_reviewed_flags: frozenset[SecurityFlag] | None = None,
     reviewer_note: str | None = None,
 ) -> SourceItem:
@@ -237,9 +340,31 @@ def to_source_item(
     default) or an empty set never admits a flagged item -- naming the wrong
     flag (one not actually present, or missing one that IS present) also
     still rejects, since every blocking flag on the result must be covered.
-    See :class:`UnreviewedSecurityFlagsError` for why this is fail-closed
-    rather than propagating the flag itself, which is the durable fix
-    deferred to a future gate.
+    See :class:`UnreviewedSecurityFlagsError` for why this is fail-closed;
+    Gate E0 (E0.1) additionally propagates ``result.security_flags`` onto
+    the returned ``SourceItem`` natively for every admitted item (reviewed-
+    and-overridden or not) -- this durable propagation does not relax the
+    fail-closed check above in any way.
+
+    ``registry_entry`` also supplies ``may_supply_independence`` (Gate E0,
+    E0.3, R3/F2): the returned ``SourceItem`` ALWAYS carries the registry's
+    explicit ``True``/``False`` answer, never ``None`` -- only the loader/
+    human-authored path (which never crosses this bridge) can leave that
+    field unset.
+
+    ``permission_registry`` (Gate E0, ADR 0005 entry condition 2; REQUIRED as
+    of the Part 2a Fable correction, RC-1) is a live re-verification of
+    ``result.source_id``'s permission status AT THE MOMENT OF BRIDGING,
+    independent of whatever ``result.permission_ref.status_at_discovery``
+    snapshotted at discovery time. There is no way to call this function
+    without supplying it; an unregistered or non-``approved`` source raises
+    :class:`StalePermissionAtBridgeError`, fail-closed, BEFORE any of the
+    checks below run, and a runtime guard raises
+    :class:`MissingPermissionRegistryError` if ``None`` reaches this
+    function anyway (mypy is bypassable; the control must fail closed
+    regardless) -- see :class:`StalePermissionAtBridgeError` for the full
+    rationale, including why the re-check is STATUS-only and does not
+    additionally check ``expires_at``.
 
     ``reviewer_note`` (Gate D round-2 correction, C2) is REQUIRED, non-empty
     (after stripping), whenever ``human_reviewed_flags`` is passed as a
@@ -260,6 +385,22 @@ def to_source_item(
     if registry_entry.source_id != result.source_id:
         raise RegistryEntryMismatchError(
             "registry_entry.source_id does not match result.source_id"
+        )
+
+    if permission_registry is None:
+        raise MissingPermissionRegistryError(
+            "permission_registry is required (ADR 0005 entry condition 2, Part 2a RC-1): "
+            "the live re-verification at trust boundary TB-4 must not be skippable by "
+            "omitting the argument -- see MissingPermissionRegistryError"
+        )
+
+    live_permission = permission_registry.get(result.source_id)
+    if live_permission is None or live_permission.status != PermissionStatus.approved:
+        raise StalePermissionAtBridgeError(
+            "permission_registry re-check at bridging time found source_id not "
+            "registered or not approved (independent of "
+            "result.permission_ref.status_at_discovery's point-in-time snapshot) -- "
+            "see StalePermissionAtBridgeError (ADR 0005 entry condition 2)"
         )
 
     unreviewed_blocking_flags = (set(result.security_flags) & BLOCKING_SECURITY_FLAGS) - set(
@@ -319,6 +460,13 @@ def to_source_item(
         topic_tags=list(assessment.topic_tags),
         contains_benefit_or_performance_claim=assessment.contains_benefit_or_performance_claim,
         claim_directly_verifiable_in_artifact=assessment.claim_directly_verifiable_in_artifact,
+        # Gate E0 (E0.1): the durable propagation -- flag NAMES only, never
+        # the hostile text (that text lives only in already-sanitized
+        # result.title/summary_normalized fields, unchanged by this).
+        security_flags=result.security_flags,
+        # Gate E0 (E0.3, R3/F2): ALWAYS an explicit bool from the registry,
+        # never None -- every connector-sourced item is governed.
+        may_supply_independence=registry_entry.may_supply_independence,
     )
 
 
@@ -329,11 +477,16 @@ def to_source_item_with_audit(
     *,
     detection_date: date,
     occurred_at: datetime,
+    permission_registry: PermissionRegistry,
     human_reviewed_flags: frozenset[SecurityFlag] | None = None,
     reviewer_note: str | None = None,
 ) -> tuple[SourceItem, ConnectorAuditEvent | None]:
     """Companion to :func:`to_source_item` (Gate D round-2 correction, C2)
     that also returns the audit trail of a human-reviewed-flags override.
+    ``permission_registry`` (Gate E0, ADR 0005 entry condition 2; REQUIRED
+    as of the Part 2a Fable correction, RC-1) is passed straight through to
+    :func:`to_source_item`'s own live re-verification -- see that
+    parameter's docstring there, including :class:`MissingPermissionRegistryError`.
 
     **Design choice, stated explicitly.** ``to_source_item``'s return type
     (``SourceItem`` alone) is a contract every existing caller and test in
@@ -363,6 +516,7 @@ def to_source_item_with_audit(
         detection_date=detection_date,
         human_reviewed_flags=human_reviewed_flags,
         reviewer_note=reviewer_note,
+        permission_registry=permission_registry,
     )
     if not human_reviewed_flags:
         return item, None

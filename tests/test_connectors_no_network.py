@@ -88,6 +88,23 @@ def _all_python_files(directory: Path) -> list[Path]:
     return sorted(directory.rglob("*.py"))
 
 
+#: Gate E0 (E0.4; Fable rulings R1/F1). The ONE, filename-scoped exemption
+#: from the static import-denylist scan below: `connectors/network.py` is
+#: now the second module in the whole codebase permitted to perform network
+#: I/O (see that module's own docstring, and SECURITY.md/CLAUDE.md/
+#: docs/threat-model.md, all amended in this same commit to say so). This is
+#: an explicit path check against this ONE file only -- it does NOT touch
+#: `_FORBIDDEN_TOP_LEVEL` or `_FORBIDDEN_DOTTED_PREFIXES` above, which stay
+#: exactly as strict as before for every other module in the package
+#: (enforced by `test_extended_denylist_still_applies_to_every_connectors_module_except_network`
+#: below, per F1's "carve-out must not leak" requirement).
+_NETWORK_MODULE_PATH = _CONNECTORS_DIR / "network.py"
+
+
+def _is_the_one_exempt_network_module(path: Path) -> bool:
+    return path.resolve() == _NETWORK_MODULE_PATH.resolve()
+
+
 def _module_is_forbidden(module: str) -> bool:
     if module.split(".")[0] in _FORBIDDEN_TOP_LEVEL:
         return True
@@ -98,6 +115,11 @@ def _module_is_forbidden(module: str) -> bool:
 
 
 def _assert_module_imports_nothing_forbidden(path: Path) -> None:
+    # R1/F1 filename-scoped carve-out -- see _is_the_one_exempt_network_module
+    # above. Every other file, including every other file in this same
+    # `connectors/` directory, is still scanned exactly as before.
+    if _is_the_one_exempt_network_module(path):
+        return
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     for node in ast.walk(tree):
         # Explicit TYPE_CHECKING carve-out: a type-only import guarded by
@@ -126,6 +148,109 @@ def _assert_module_imports_nothing_forbidden(path: Path) -> None:
             assert not _module_is_forbidden(
                 module
             ), f"forbidden import-from in {path}: {module!r}"
+
+
+# --- 2a. complementary scan (Gate E0, F1): an EXTENDED denylist against
+# every connectors/ module EXCEPT network.py itself --------------------------
+#
+# The carve-out added above for network.py is deliberately narrow (a single
+# path check), but narrow carve-outs can still leak if nothing separately
+# proves the REST of the package stayed clean. This test is that proof: it
+# runs a STRICTER scan (existing two sets PLUS `subprocess`, PLUS the two
+# dynamic-import forms the original scan structurally cannot see --
+# `importlib.import_module("...")` and `__import__("...")`, both plain
+# `ast.Call` nodes rather than `ast.Import`/`ast.ImportFrom`) against every
+# file in `connectors/` OTHER than `network.py`. `network.py` is exempt from
+# THIS test (it legitimately imports socket/ssl/http.client and is scanned,
+# just as strictly as before, by the ORIGINAL test above); everything else
+# in the package must additionally never reach for `subprocess` or a
+# dynamic-import call at all.
+
+_EXTENDED_FORBIDDEN_TOP_LEVEL = _FORBIDDEN_TOP_LEVEL | {"subprocess"}
+_EXTENDED_FORBIDDEN_DOTTED_PREFIXES = _FORBIDDEN_DOTTED_PREFIXES  # unchanged
+
+
+def _module_is_forbidden_extended(module: str) -> bool:
+    if module.split(".")[0] in _EXTENDED_FORBIDDEN_TOP_LEVEL:
+        return True
+    return any(
+        module == prefix or module.startswith(prefix + ".")
+        for prefix in _EXTENDED_FORBIDDEN_DOTTED_PREFIXES
+    )
+
+
+def _is_dynamic_import_call(node: ast.AST) -> str | None:
+    """Return a description of the call if `node` is
+    `importlib.import_module(...)` or `__import__(...)`, else None."""
+    if not isinstance(node, ast.Call):
+        return None
+    func = node.func
+    if isinstance(func, ast.Name) and func.id == "__import__":
+        return "__import__(...)"
+    if (
+        isinstance(func, ast.Attribute)
+        and func.attr == "import_module"
+        and isinstance(func.value, ast.Name)
+        and func.value.id == "importlib"
+    ):
+        return "importlib.import_module(...)"
+    return None
+
+
+def _assert_module_imports_nothing_forbidden_extended(path: Path) -> None:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.If)
+            and isinstance(node.test, ast.Name)
+            and node.test.id == "TYPE_CHECKING"
+        ):
+            continue
+        if (
+            isinstance(node, ast.If)
+            and isinstance(node.test, ast.Attribute)
+            and node.test.attr == "TYPE_CHECKING"
+        ):
+            continue
+
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                assert not _module_is_forbidden_extended(
+                    alias.name
+                ), f"forbidden import in {path}: {alias.name!r}"
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            assert not _module_is_forbidden_extended(
+                module
+            ), f"forbidden import-from in {path}: {module!r}"
+        else:
+            dynamic = _is_dynamic_import_call(node)
+            assert dynamic is None, f"forbidden dynamic import in {path}: {dynamic}"
+
+
+def test_extended_denylist_still_applies_to_every_connectors_module_except_network() -> None:
+    files = [
+        p for p in _all_python_files(_CONNECTORS_DIR) if not _is_the_one_exempt_network_module(p)
+    ]
+    assert len(files) >= 9  # sanity: commit 1 + commit 2 modules, minus network.py
+    for path in files:
+        _assert_module_imports_nothing_forbidden_extended(path)
+
+
+def test_extended_scan_itself_catches_a_dynamic_import_module_call() -> None:
+    """Regression guard for the extended scan itself: importlib.import_module
+    and __import__ are ast.Call nodes, invisible to the ORIGINAL scan (which
+    only walks ast.Import/ast.ImportFrom) -- prove the extended scan's own
+    _is_dynamic_import_call helper recognizes both forms."""
+    source = (
+        "import importlib\n"
+        "def f():\n"
+        "    importlib.import_module('socket')\n"
+        "    __import__('socket')\n"
+    )
+    tree = ast.parse(source)
+    found = [d for node in ast.walk(tree) if (d := _is_dynamic_import_call(node)) is not None]
+    assert found == ["importlib.import_module(...)", "__import__(...)"]
 
 
 # --- 2. static AST scan, full connectors/ + intelligence/ trees -----------
@@ -333,6 +458,7 @@ def test_no_network_calls_during_full_synthetic_pipeline(
         assessment,
         registry_entry,
         detection_date=date(2026, 7, 18),
+        permission_registry=permission_registry,
     )
 
     items_by_id = {item.item_id: item}

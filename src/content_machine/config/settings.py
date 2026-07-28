@@ -34,6 +34,18 @@ class Settings(BaseSettings):
     salt: str | None = None
     data_dir: Path = Path("data/private")
 
+    # Gate E0 §5 (private endpoint configuration loader, Fable ruling F6).
+    # Points at a file OUTSIDE this repository -- typically in the
+    # Founder's private workspace -- that carries a real source_id,
+    # hostname, endpoint, limits, and authorization state for one or more
+    # connector sources. Unset by default and in CI: CI must never require
+    # this file to exist (see
+    # content_machine.connectors.private_config.load_private_source_config,
+    # which fails closed on a missing path exactly the same way it fails
+    # closed on a configured-but-absent file). No default or example value
+    # here is ever a real endpoint.
+    private_source_config_path: Path | None = None
+
     # Vendor keys are optional and read by their conventional names. They exist
     # here so provider modules can check availability without reading os.environ
     # themselves (keeping config the single env-reading choke point).
