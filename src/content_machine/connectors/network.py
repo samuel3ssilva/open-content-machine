@@ -65,7 +65,7 @@ nothing here can silently do more than this module intends.
 13. **Per-source failure isolation**: :meth:`NetworkFetcher.fetch` never
     raises for an expected failure condition (bad scheme, disallowed host,
     blocked address, timeout, oversized body, disallowed MIME, rate limit,
-    denied permission, ...) -- it always returns a :class:`_FetchResult`
+    denied permission, ...) -- it always returns a :class:`FetchResult`
     with a closed, never-collapsed reason code (mirroring
     ``permissions.AuthorizationDecision``'s "one distinct code per
     invariant" philosophy), so one source's failure can never propagate into
@@ -83,12 +83,15 @@ nothing here can silently do more than this module intends.
     :class:`~content_machine.connectors.permissions.AuthorizationReasonCode`
     preserved on the result for audit.
 
-**Public surface (§1b).** Exactly ONE public name is exported from this
-module: :class:`NetworkFetcher`. Every connection primitive -- URL
-validation, address classification, DNS resolution, the pinned connection
-class, the rate limiter -- is private (a leading underscore) specifically so
-no other module can import and misuse a fetch primitive directly, bypassing
-the enforcement this docstring describes. ``tests/test_connectors_network.py``
+**Public surface.** This module exports exactly one public, enforced *entry
+point* -- :class:`NetworkFetcher` -- plus the two inert result DTOs a caller
+needs to name what :meth:`NetworkFetcher.fetch` returns: :class:`FetchResult`
+and :class:`FetchReasonCode`. Neither DTO carries any connection behavior of
+its own. Every connection *primitive* -- URL validation, address
+classification, DNS resolution, the pinned connection class, the rate
+limiter -- stays private (a leading underscore) specifically so no other
+module can import and misuse a fetch primitive directly, bypassing the
+enforcement this docstring describes. ``tests/test_connectors_network.py``
 asserts this module-level contract directly.
 
 **The no-network static scan carve-out (R1/F1).** This is the one file in
@@ -127,7 +130,7 @@ from content_machine.connectors.permissions import (
 )
 from content_machine.connectors.sanitize import sanitize_error
 
-__all__ = ["NetworkFetcher"]
+__all__ = ["FetchReasonCode", "FetchResult", "NetworkFetcher"]
 
 # --- private constants ------------------------------------------------------
 
@@ -153,10 +156,14 @@ _REDIRECT_STATUSES: frozenset[int] = frozenset({301, 302, 303, 307, 308})
 _STREAM_CHUNK_BYTES = 8192
 
 
-# --- private result / reason-code types -------------------------------------
+# --- public, inert result / reason-code types --------------------------------
+#
+# FetchReasonCode and FetchResult are public so a caller can name what
+# NetworkFetcher.fetch() returns -- they carry no connection behavior of
+# their own (pre-E1 fix; see the module docstring's "Public surface" note).
 
 
-class _FetchReasonCode(StrEnum):
+class FetchReasonCode(StrEnum):
     """Closed set of :meth:`NetworkFetcher.fetch` outcomes, one distinct code
     per invariant -- never collapsed (mirrors
     ``permissions.AuthorizationReasonCode``'s philosophy)."""
@@ -182,7 +189,7 @@ class _FetchReasonCode(StrEnum):
     fetch_failed = "fetch_failed"
 
 
-class _FetchResult(BaseModel):
+class FetchResult(BaseModel):
     """The explicit, closed outcome of one :meth:`NetworkFetcher.fetch` call.
 
     Frozen, ``extra="forbid"``, matching every other point-in-time decision
@@ -194,7 +201,7 @@ class _FetchResult(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     ok: bool
-    reason_code: _FetchReasonCode
+    reason_code: FetchReasonCode
     source_id: str
     #: Preserved for audit when ``reason_code == permission_denied`` -- the
     #: specific invariant ``authorize_retrieval`` reported (not_registered,
@@ -217,7 +224,7 @@ class _UrlValidation(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     ok: bool
-    reason_code: _FetchReasonCode = _FetchReasonCode.ok
+    reason_code: FetchReasonCode = FetchReasonCode.ok
     host: str = ""
     port: int = 443
     path_and_query: str = "/"
@@ -370,9 +377,13 @@ class _RateLimiter:
 
 class NetworkFetcher:
     """The enforced fetch boundary. See the module docstring for the full
-    enforcement list; this class is the ONLY public name this module
-    exports (§1b) -- construct one instance (typically per batch run) and
-    call :meth:`fetch` for every retrieval.
+    enforcement list; this class is the one public, enforced *entry point*
+    this module exports -- construct one instance (typically per batch run)
+    and call :meth:`fetch` for every retrieval. (:class:`FetchResult` and
+    :class:`FetchReasonCode`, the inert result DTOs :meth:`fetch` returns,
+    are also public -- see the module docstring's "Public surface" note --
+    but neither performs any connection work of its own; all connection
+    machinery in this module stays private.)
     """
 
     def __init__(
@@ -409,20 +420,27 @@ class NetworkFetcher:
             max_calls=rate_limit_max_calls, window_seconds=rate_limit_window_seconds
         )
 
-    def fetch(self, *, source_id: str, mode: SourceMode, url: str) -> _FetchResult:
+    def fetch(self, *, source_id: str, mode: SourceMode, url: str) -> FetchResult:
         """Fetch ``url`` on behalf of ``source_id``, enforcing every control
         described in the module docstring. Never raises for an expected
-        failure condition -- always returns a closed-reason-code result."""
-        if not self._rate_limiter.allow(source_id):
-            return _FetchResult(
-                ok=False, reason_code=_FetchReasonCode.rate_limited, source_id=source_id
-            )
+        failure condition -- always returns a closed-reason-code result.
 
+        The rate-limit budget is consumed PER HOP, immediately before that
+        hop's DNS resolution and connection attempt -- never before
+        ``_validate_url`` and never before ``authorize_retrieval`` (module
+        docstring, point 11; pre-E1 fix). One budget unit buys exactly one
+        outbound connection attempt (which also covers that hop's DNS
+        query), so a statically-invalid URL or a denied permission consumes
+        no budget and is never masked as ``rate_limited`` -- and a redirect
+        chain can no longer trade one budget unit for
+        ``max_redirects + 1`` outbound connects. A refusal at ANY hop,
+        including mid-chain, is reported as ``rate_limited``; that reason
+        code is intentionally not split per hop-index."""
         current_url = url
         for hop_index in range(self._max_redirects + 1):
             validation = self._validate_url(source_id, current_url)
             if not validation.ok:
-                return _FetchResult(
+                return FetchResult(
                     ok=False, reason_code=validation.reason_code, source_id=source_id
                 )
 
@@ -432,26 +450,31 @@ class NetworkFetcher:
                 # authorize. See the module docstring, point 14.
                 decision = self._permission_registry.authorize_retrieval(source_id, mode)
                 if not decision.allowed:
-                    return _FetchResult(
+                    return FetchResult(
                         ok=False,
-                        reason_code=_FetchReasonCode.permission_denied,
+                        reason_code=FetchReasonCode.permission_denied,
                         source_id=source_id,
                         authorization_reason=decision.reason_code,
                     )
 
+            if not self._rate_limiter.allow(source_id):
+                return FetchResult(
+                    ok=False, reason_code=FetchReasonCode.rate_limited, source_id=source_id
+                )
+
             candidates = self._resolve_host(validation.host, validation.port)
             if not candidates:
-                return _FetchResult(
+                return FetchResult(
                     ok=False,
-                    reason_code=_FetchReasonCode.dns_resolution_failed,
+                    reason_code=FetchReasonCode.dns_resolution_failed,
                     source_id=source_id,
                 )
             vetted_ip = next(
                 (ip for ip in candidates if not self._address_is_blocked(ip)), None
             )
             if vetted_ip is None:
-                return _FetchResult(
-                    ok=False, reason_code=_FetchReasonCode.address_blocked, source_id=source_id
+                return FetchResult(
+                    ok=False, reason_code=FetchReasonCode.address_blocked, source_id=source_id
                 )
 
             outcome = self._connect_and_fetch_one_hop(
@@ -464,16 +487,16 @@ class NetworkFetcher:
 
             if isinstance(outcome, _RedirectHop):
                 if outcome.location is None:
-                    return _FetchResult(
-                        ok=False, reason_code=_FetchReasonCode.invalid_response, source_id=source_id
+                    return FetchResult(
+                        ok=False, reason_code=FetchReasonCode.invalid_response, source_id=source_id
                     )
                 current_url = outcome.location
                 continue
 
             return outcome
 
-        return _FetchResult(
-            ok=False, reason_code=_FetchReasonCode.too_many_redirects, source_id=source_id
+        return FetchResult(
+            ok=False, reason_code=FetchReasonCode.too_many_redirects, source_id=source_id
         )
 
     # -- private helpers ------------------------------------------------
@@ -481,20 +504,20 @@ class NetworkFetcher:
     def _validate_url(self, source_id: str, url_text: str) -> _UrlValidation:
         parsed = urlsplit(url_text)
         if parsed.scheme.lower() != "https":
-            return _UrlValidation(ok=False, reason_code=_FetchReasonCode.scheme_not_https)
+            return _UrlValidation(ok=False, reason_code=FetchReasonCode.scheme_not_https)
         if parsed.username is not None or parsed.password is not None:
-            return _UrlValidation(ok=False, reason_code=_FetchReasonCode.credential_in_url)
+            return _UrlValidation(ok=False, reason_code=FetchReasonCode.credential_in_url)
         hostname = parsed.hostname
         if not hostname:
-            return _UrlValidation(ok=False, reason_code=_FetchReasonCode.invalid_url)
+            return _UrlValidation(ok=False, reason_code=FetchReasonCode.invalid_url)
         if _is_ip_literal(hostname):
-            return _UrlValidation(ok=False, reason_code=_FetchReasonCode.ip_literal_host)
+            return _UrlValidation(ok=False, reason_code=FetchReasonCode.ip_literal_host)
         allowed_hosts = self._source_allowed_hosts.get(source_id, frozenset())
         if hostname not in allowed_hosts:
-            return _UrlValidation(ok=False, reason_code=_FetchReasonCode.host_not_allowed)
+            return _UrlValidation(ok=False, reason_code=FetchReasonCode.host_not_allowed)
         port = parsed.port if parsed.port is not None else 443
         if port not in self._allowed_ports:
-            return _UrlValidation(ok=False, reason_code=_FetchReasonCode.port_not_allowed)
+            return _UrlValidation(ok=False, reason_code=FetchReasonCode.port_not_allowed)
         path_and_query = parsed.path or "/"
         if parsed.query:
             path_and_query = f"{path_and_query}?{parsed.query}"
@@ -508,7 +531,7 @@ class NetworkFetcher:
         port: int,
         vetted_ip: str,
         path_and_query: str,
-    ) -> _FetchResult | _RedirectHop:
+    ) -> FetchResult | _RedirectHop:
         connection = _PinnedHTTPSConnection(
             host,
             vetted_ip,
@@ -520,16 +543,16 @@ class NetworkFetcher:
         try:
             connection.connect()
         except TimeoutError as exc:
-            return _FetchResult(
+            return FetchResult(
                 ok=False,
-                reason_code=_FetchReasonCode.connect_timeout,
+                reason_code=FetchReasonCode.connect_timeout,
                 source_id=source_id,
                 sanitized_error=sanitize_error(exc),
             )
         except (OSError, ssl.SSLError) as exc:
-            return _FetchResult(
+            return FetchResult(
                 ok=False,
-                reason_code=_FetchReasonCode.connect_failed,
+                reason_code=FetchReasonCode.connect_failed,
                 source_id=source_id,
                 sanitized_error=sanitize_error(exc),
             )
@@ -548,17 +571,17 @@ class NetworkFetcher:
             response = connection.getresponse()
         except TimeoutError as exc:
             connection.close()
-            return _FetchResult(
+            return FetchResult(
                 ok=False,
-                reason_code=_FetchReasonCode.read_timeout,
+                reason_code=FetchReasonCode.read_timeout,
                 source_id=source_id,
                 sanitized_error=sanitize_error(exc),
             )
         except (OSError, ssl.SSLError, http.client.HTTPException) as exc:
             connection.close()
-            return _FetchResult(
+            return FetchResult(
                 ok=False,
-                reason_code=_FetchReasonCode.fetch_failed,
+                reason_code=FetchReasonCode.fetch_failed,
                 source_id=source_id,
                 sanitized_error=sanitize_error(exc),
             )
@@ -572,9 +595,9 @@ class NetworkFetcher:
         main_type = content_type_header.split(";", 1)[0].strip().lower()
         if main_type not in self._allowed_mime_types:
             connection.close()
-            return _FetchResult(
+            return FetchResult(
                 ok=False,
-                reason_code=_FetchReasonCode.mime_not_allowed,
+                reason_code=FetchReasonCode.mime_not_allowed,
                 source_id=source_id,
                 status_code=response.status,
                 content_type=main_type or None,
@@ -598,17 +621,17 @@ class NetworkFetcher:
                 chunks.append(chunk)
         except TimeoutError as exc:
             connection.close()
-            return _FetchResult(
+            return FetchResult(
                 ok=False,
-                reason_code=_FetchReasonCode.read_timeout,
+                reason_code=FetchReasonCode.read_timeout,
                 source_id=source_id,
                 sanitized_error=sanitize_error(exc),
             )
         except (OSError, ssl.SSLError, http.client.HTTPException) as exc:
             connection.close()
-            return _FetchResult(
+            return FetchResult(
                 ok=False,
-                reason_code=_FetchReasonCode.fetch_failed,
+                reason_code=FetchReasonCode.fetch_failed,
                 source_id=source_id,
                 sanitized_error=sanitize_error(exc),
             )
@@ -616,18 +639,18 @@ class NetworkFetcher:
         connection.close()
 
         if truncated:
-            return _FetchResult(
+            return FetchResult(
                 ok=False,
-                reason_code=_FetchReasonCode.response_too_large,
+                reason_code=FetchReasonCode.response_too_large,
                 source_id=source_id,
                 status_code=response.status,
                 content_type=main_type,
                 truncated=True,
             )
 
-        return _FetchResult(
+        return FetchResult(
             ok=True,
-            reason_code=_FetchReasonCode.ok,
+            reason_code=FetchReasonCode.ok,
             source_id=source_id,
             status_code=response.status,
             content_type=main_type,

@@ -35,7 +35,7 @@ from pathlib import Path
 import pytest
 
 from content_machine.connectors import network as network_module
-from content_machine.connectors.network import NetworkFetcher
+from content_machine.connectors.network import FetchReasonCode, FetchResult, NetworkFetcher
 from content_machine.connectors.permissions import (
     AuthorizationReasonCode,
     PermissionRegistry,
@@ -224,11 +224,12 @@ def _plain_ok_handler(handler: http.server.BaseHTTPRequestHandler) -> None:
 # --- 1b. public surface -----------------------------------------------
 
 
-def test_module_public_surface_is_exactly_one_name() -> None:
-    """R1/F1-adjacent contract for network.py itself (spec §1b): the ONLY
-    name defined in this module and not underscore-prefixed must be
-    ``NetworkFetcher`` -- every connection primitive is private so no other
-    module can import and misuse it directly."""
+def test_module_public_surface_is_exactly_three_names() -> None:
+    """R1/F1-adjacent contract for network.py itself: the only names defined
+    in this module and not underscore-prefixed must be the one enforced
+    entry point (``NetworkFetcher``) plus its two inert result DTOs
+    (``FetchResult``, ``FetchReasonCode``) -- every connection PRIMITIVE
+    stays private so no other module can import and misuse it directly."""
     public_names = [
         name
         for name, obj in vars(network_module).items()
@@ -236,8 +237,8 @@ def test_module_public_surface_is_exactly_one_name() -> None:
         and not isinstance(obj, types.ModuleType)
         and getattr(obj, "__module__", None) == network_module.__name__
     ]
-    assert public_names == ["NetworkFetcher"]
-    assert network_module.__all__ == ["NetworkFetcher"]
+    assert sorted(public_names) == ["FetchReasonCode", "FetchResult", "NetworkFetcher"]
+    assert network_module.__all__ == ["FetchReasonCode", "FetchResult", "NetworkFetcher"]
 
 
 # --- 1a. the address predicate: hand-written literal table -------------
@@ -915,6 +916,128 @@ def test_rate_limit_is_enforced_per_source_never_globally() -> None:
         # A DIFFERENT source must be unaffected by src_a's rate limit.
         other_source = fetcher.fetch(source_id="src_b", mode=SourceMode.discovery, url=url)
         assert other_source.ok is True
+
+
+# --- pre-E1 fix: rate-limit consumption ordering and per-hop semantics --
+
+
+def test_rate_limit_budget_survives_statically_invalid_urls() -> None:
+    """Pre-E1 fix: a URL that fails ``_validate_url`` (e.g. a disallowed
+    host) must consume NO rate-limit budget, so its rejection reason is
+    never masked as ``rate_limited``. Mutation: hoist ``allow()`` back
+    above ``_validate_url`` -> the final, valid fetch below would itself
+    return ``rate_limited`` instead of succeeding."""
+    with _LoopbackTLSServer(_plain_ok_handler) as server:
+        fetcher = _fetcher(
+            port=server.port, rate_limit_max_calls=1, rate_limit_window_seconds=60.0
+        )
+
+        for _ in range(3):
+            invalid_result = fetcher.fetch(
+                source_id="src_test",
+                mode=SourceMode.discovery,
+                url="https://not-allowed.example.com/evil",
+            )
+            assert invalid_result.ok is False
+            assert invalid_result.reason_code == "host_not_allowed"
+
+        valid_result = fetcher.fetch(
+            source_id="src_test",
+            mode=SourceMode.discovery,
+            url=f"https://localhost:{server.port}/feed",
+        )
+        assert valid_result.ok is True
+
+
+def test_rate_limit_budget_is_consumed_once_per_redirect_hop() -> None:
+    """Pre-E1 fix: the rate-limit budget is consumed PER HOP, not once per
+    call to ``fetch()``. A 3-hop redirect chain (3 outbound connects)
+    against a 2-call budget must be refused mid-chain. Mutation: move
+    ``allow()`` back outside the per-hop loop -> the whole chain completes
+    on a single budget unit."""
+    with _LoopbackTLSServer(_plain_ok_handler) as final_server:
+
+        def redirect_to_final(handler: http.server.BaseHTTPRequestHandler) -> None:
+            handler.send_response(302)
+            handler.send_header("Location", f"https://localhost:{final_server.port}/final")
+            handler.end_headers()
+
+        with _LoopbackTLSServer(redirect_to_final) as mid_server:
+
+            def redirect_to_mid(handler: http.server.BaseHTTPRequestHandler) -> None:
+                handler.send_response(302)
+                handler.send_header("Location", f"https://localhost:{mid_server.port}/mid")
+                handler.end_headers()
+
+            with _LoopbackTLSServer(redirect_to_mid) as origin_server:
+                fetcher = NetworkFetcher(
+                    permission_registry=_ok_permission_registry(),
+                    source_allowed_hosts={"src_test": frozenset({"localhost"})},
+                    allowed_ports=frozenset(
+                        {origin_server.port, mid_server.port, final_server.port}
+                    ),
+                    address_is_blocked=_allow_only_loopback,
+                    resolve_host=lambda host, p: ["127.0.0.1"],
+                    ssl_context=_client_ssl_context(),
+                    rate_limit_max_calls=2,
+                    rate_limit_window_seconds=60.0,
+                )
+                result = fetcher.fetch(
+                    source_id="src_test",
+                    mode=SourceMode.discovery,
+                    url=f"https://localhost:{origin_server.port}/start",
+                )
+                assert result.ok is False
+                assert result.reason_code == "rate_limited"
+
+
+def test_permission_denied_never_masked_as_rate_limited_when_budget_exhausted() -> None:
+    """Pre-E1 fix: ``authorize_retrieval`` runs BEFORE ``allow()`` consumes
+    any budget, so a revoked source with a zero-capacity rate-limit window
+    still returns ``permission_denied``, with ``authorization_reason``
+    populated -- never ``rate_limited``. Mutation: put ``allow()`` before
+    ``authorize_retrieval`` -> this returns ``rate_limited`` with
+    ``authorization_reason`` left ``None``."""
+    source_id = "src_test"
+    revoked_registry = PermissionRegistry(
+        [
+            SourcePermission(
+                source_id=source_id,
+                approved_mode=SourceMode.discovery,
+                permitted_fields=frozenset({"title"}),
+                retention_policy_id="policy_default",
+                authorization_owner="founder",
+                status=PermissionStatus.revoked,
+            )
+        ]
+    )
+    fetcher = _fetcher(
+        port=443,
+        permission_registry=revoked_registry,
+        rate_limit_max_calls=0,
+        rate_limit_window_seconds=60.0,
+    )
+    result = fetcher.fetch(
+        source_id=source_id, mode=SourceMode.discovery, url="https://localhost/feed"
+    )
+    assert result.ok is False
+    assert result.reason_code == "permission_denied"
+    assert result.authorization_reason == AuthorizationReasonCode.status_revoked
+
+
+def test_fetch_result_and_reason_code_are_importable_public_types() -> None:
+    """Public-contract proof for the pre-E1 rename: a caller can import
+    ``FetchReasonCode``/``FetchResult`` from ``network`` directly (no
+    private name needed) and name what ``fetch()`` returns."""
+    with _LoopbackTLSServer(_plain_ok_handler) as server:
+        fetcher = _fetcher(port=server.port)
+        result = fetcher.fetch(
+            source_id="src_test",
+            mode=SourceMode.discovery,
+            url=f"https://localhost:{server.port}/feed",
+        )
+    assert isinstance(result, FetchResult)
+    assert isinstance(result.reason_code, FetchReasonCode)
 
 
 def test_per_source_failure_isolation_one_sources_rejection_does_not_affect_another() -> None:

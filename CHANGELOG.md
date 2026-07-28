@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed (pre-E1 connector fetch-semantics fixes, per Fable ruling 2026-07-27)
+
+- `connectors/network.py` — `NetworkFetcher.fetch` now consumes its
+  rate-limit budget PER HOP, immediately before that hop's DNS resolution
+  and connection attempt, instead of once up front before URL validation
+  and the permission check. Closes the known-open gap noted in the Gate E0
+  changelog entry below: a statically-invalid URL (`host_not_allowed`,
+  `scheme_not_https`, ...) or a denied permission (`permission_denied`) now
+  consumes no budget and is never masked as `rate_limited`, and a redirect
+  chain can no longer spend one budget unit to buy up to `max_redirects + 1`
+  outbound connects and DNS queries. A refusal at any hop — including
+  mid-redirect-chain — is still reported as `rate_limited`; no new reason
+  code was introduced.
+- `connectors/network.py` — promoted `_FetchResult` → `FetchResult` and
+  `_FetchReasonCode` → `FetchReasonCode` to public names (`__all__` is now
+  `["FetchReasonCode", "FetchResult", "NetworkFetcher"]`), so a caller can
+  name what `NetworkFetcher.fetch()` returns without reaching past a
+  private name. All other connection primitives in the module remain
+  private; `NetworkFetcher` remains the module's only public, enforced
+  *entry point*.
+
 ### Added (AI & Claude Intelligence Brief v0.1 — weekly, synthetic signals only)
 
 The Intelligence Brief turns many authorized signals into a small number of
