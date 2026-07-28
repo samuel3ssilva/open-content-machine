@@ -2,8 +2,10 @@
 
 **This is the second, and only other, module in the whole codebase permitted
 to perform network I/O** -- see ``SECURITY.md`` and ``CLAUDE.md`` privacy
-rule 4, both amended in this same commit to say so. Everywhere else, "no
-network calls in core" still holds absolutely; this module exists precisely
+rule 4, which both name this module as the sole retrieval-boundary
+exception (both were amended to say so in the Gate E0 commit that
+introduced this file). Everywhere else, "no network calls in core" still
+holds absolutely; this module exists precisely
 because a *retrieval* boundary (as opposed to the *model* boundary
 ``providers/`` guards) has to live somewhere, and Fable's ruling was to
 confine it to exactly one, heavily-enforced module rather than let every
