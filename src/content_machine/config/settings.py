@@ -46,6 +46,19 @@ class Settings(BaseSettings):
     # here is ever a real endpoint.
     private_source_config_path: Path | None = None
 
+    # Shadow-run harness output (Fable RC-6, operational conditions C2/C3/C4
+    # -- see content_machine.connectors.shadow_run). Points at a PRIVATE
+    # directory OUTSIDE this repository where the harness persists its
+    # append-only run history (one record per invocation: the adapter's own
+    # audit trail, the full BatchDiscoveryResult, and that run's
+    # kill-criteria evaluation). Unset by default and in CI: CI must never
+    # require this directory to exist -- see
+    # content_machine.connectors.shadow_run.resolve_shadow_run_output_dir,
+    # which fails closed on an unset/missing path exactly the way
+    # load_private_source_config fails closed on a missing private config.
+    # No default or example value here is ever a real path.
+    shadow_run_output_dir: Path | None = None
+
     # Vendor keys are optional and read by their conventional names. They exist
     # here so provider modules can check availability without reading os.environ
     # themselves (keeping config the single env-reading choke point).
