@@ -146,6 +146,53 @@ rendering behavior are completely untouched by this gate.
   that there is no claim of semantic prompt-injection detection.
 - Suite grew to 800 tests (208 new), all offline; `ruff` and `mypy` clean.
 
+### Gate E0 — connector security prerequisites (PR #6)
+
+- `security_flags` now survive from `DiscoveryResult` through the bridge,
+  cluster, tiered topic, brief, and audit row — carrying flag names only,
+  never the hostile text, and bypassing `ranking.py` entirely (0-line diff).
+- Live pre-retrieval permission gate (`authorize_retrieval`), separate from
+  `authorize` and exposing no caller-suppliable date: the enforcement clock is
+  read at the enforcement point, so a stale date cannot dodge expiry. New
+  `expires_at` field fails closed; `review_due`'s allowed-but-flagged
+  semantics are unchanged.
+- `may_supply_independence` consumed as a tri-state AND-conjunct that can only
+  ever remove independence, never grant it; the bridge never emits `None`.
+- Bridge permission re-verification at TB-4 is **required**, not optional,
+  with a runtime guard — a control that defaults off is not a control.
+- New `connectors/network.py`, stdlib only, one public entry point: HTTPS
+  only; credential-bearing URLs rejected; a **per-source** hostname allowlist
+  (never a global pool); loopback, private, link-local and IP-literal hosts
+  blocked with no special case; bounded redirects revalidated at every hop;
+  DNS-rebinding defence that resolves once and pins the connection to the
+  vetted IP while verifying TLS against the original hostname; connect/read
+  timeouts; a byte cap that aborts mid-stream; MIME allowlist; per-source rate
+  limiting; errors sanitized so the endpoint never appears.
+- Fail-closed private endpoint config loader: path resolved through `config/`
+  only, endpoint and hostname as `SecretStr`, validation errors re-raised
+  sanitized because pydantic embeds the offending input value.
+- Static AST scan enforcing that only `config/` reads environment variables —
+  a rule the architecture stated but nothing checked.
+- Narrowed the `instruction_shaped_text` heuristics after a security review
+  found the shipped form fired on 11 of 11 ordinary release-note sentences,
+  each raising a blocking flag. Repeated benign blocks train a reflexive
+  override on the one flag whose override must stay exceptional. Three
+  residual false positives are pinned as expected-to-fire so any future
+  narrowing is a visible decision.
+- Suite grew to 965 tests, all offline; `ruff` and `mypy` clean.
+
+Known-open and deliberately not fixed here: stripped HTML tags are replaced
+with the empty string, so a hostile instruction immediately after a closing
+tag produces no sentence boundary for the heuristic to anchor on; the rate
+limiter runs before address validation, so beyond its window an SSRF attempt
+is recorded as `rate_limited` rather than its true reason. Both need their own
+review — the first moves golden hashes, and that is a deliberate decision
+rather than an incidental fix.
+
+**No adapter is wired to the fetcher.** This gate ships an enforced, tested
+boundary with no caller: zero external network calls, zero real sources, zero
+credentials, no scheduler, no publication.
+
 Not implemented and explicitly out of scope for this gate: any real adapter,
 any network call, any credential, any scheduler, coverage reporting wired
 into the published brief, and any change to ranking calibration or
