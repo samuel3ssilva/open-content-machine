@@ -398,7 +398,7 @@ class NetworkFetcher:
         max_response_bytes: int = 2_000_000,
         connect_timeout: float = 5.0,
         read_timeout: float = 10.0,
-        max_redirects: int = 5,
+        max_redirects: int = 4,
         rate_limit_max_calls: int = 5,
         rate_limit_window_seconds: float = 60.0,
         address_is_blocked: Callable[[str], bool] = _default_address_is_blocked,
@@ -437,7 +437,13 @@ class NetworkFetcher:
         chain can no longer trade one budget unit for
         ``max_redirects + 1`` outbound connects. A refusal at ANY hop,
         including mid-chain, is reported as ``rate_limited``; that reason
-        code is intentionally not split per hop-index."""
+        code is intentionally not split per hop-index. Consequently,
+        ``too_many_redirects`` is only reachable when at least
+        ``max_redirects + 1`` budget units remain in the source's window at
+        the start of this ``fetch()`` call; otherwise the chain ends
+        ``rate_limited`` at whichever hop the budget runs out on --
+        deliberate, because the budget covers every packet-emitting hop and
+        is never suspended mid-chain."""
         current_url = url
         for hop_index in range(self._max_redirects + 1):
             validation = self._validate_url(source_id, current_url)

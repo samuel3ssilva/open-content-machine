@@ -1040,6 +1040,80 @@ def test_fetch_result_and_reason_code_are_importable_public_types() -> None:
     assert isinstance(result.reason_code, FetchReasonCode)
 
 
+def test_too_many_redirects_is_reachable_under_shipped_defaults() -> None:
+    """Regression test for a default-value collision the per-hop rate-limit
+    fix could reintroduce: with BOTH ``max_redirects`` and
+    ``rate_limit_max_calls`` left at their shipped constructor defaults
+    (neither is passed to ``_fetcher`` below), a redirect chain longer than
+    ``max_redirects + 1`` must still end ``too_many_redirects`` -- not
+    ``rate_limited``. Mutation-killer: putting ``max_redirects`` back to its
+    old default of 5 (with ``rate_limit_max_calls`` still 5) reintroduces
+    the collision -- the loop then needs 6 successful ``allow()`` calls
+    against a budget of 5, so the 6th hop always refuses first and the
+    result becomes ``rate_limited`` instead of ``too_many_redirects``."""
+
+    def placeholder_handler(handler: http.server.BaseHTTPRequestHandler) -> None:
+        handler.send_response(302)
+        handler.end_headers()
+
+    with _LoopbackTLSServer(placeholder_handler) as server:
+        # Rewrite the handler now that we know our own port (needs the
+        # closure to see the live port value) -- same pattern as
+        # test_too_many_redirects_is_bounded above.
+        def redirect_to_self(handler: http.server.BaseHTTPRequestHandler) -> None:
+            handler.send_response(302)
+            handler.send_header("Location", f"https://localhost:{server.port}/start")
+            handler.end_headers()
+
+        server._httpd.on_get = redirect_to_self  # type: ignore[attr-defined]
+
+        # Neither max_redirects nor rate_limit_max_calls is passed here --
+        # this test must exercise NetworkFetcher's own shipped defaults.
+        fetcher = _fetcher(port=server.port)
+        result = fetcher.fetch(
+            source_id="src_test",
+            mode=SourceMode.discovery,
+            url=f"https://localhost:{server.port}/start",
+        )
+        assert result.ok is False
+        assert result.reason_code == "too_many_redirects"
+
+
+def test_rate_limit_budget_is_consumed_before_dns_resolution() -> None:
+    """Pre-E1 fix, binding clause: the per-hop budget unit must cover that
+    hop's DNS query, so ``allow()`` has to run BEFORE ``_resolve_host``
+    (and before the address-blocked predicate, which only runs on
+    ``_resolve_host``'s output). With the budget already exhausted
+    (``rate_limit_max_calls=0``), the resolver stub below must never be
+    invoked. Kills two mutations: moving ``allow()`` to run after
+    ``_resolve_host`` ("allow after resolve"), and moving it to run after
+    the address-blocked predicate but before connect ("allow after
+    predicate") -- either would invoke the resolver stub once despite the
+    zero-capacity budget. Fully offline: no socket is ever opened, because
+    the refusal happens before ``_resolve_host`` is called."""
+    resolve_calls: list[tuple[str, int]] = []
+
+    def recording_resolve_host(host: str, port: int) -> list[str]:
+        resolve_calls.append((host, port))
+        return ["127.0.0.1"]
+
+    fetcher = NetworkFetcher(
+        permission_registry=_ok_permission_registry(),
+        source_allowed_hosts={"src_test": frozenset({"localhost"})},
+        resolve_host=recording_resolve_host,
+        rate_limit_max_calls=0,
+        rate_limit_window_seconds=60.0,
+    )
+    result = fetcher.fetch(
+        source_id="src_test",
+        mode=SourceMode.discovery,
+        url="https://localhost/feed",
+    )
+    assert result.ok is False
+    assert result.reason_code == "rate_limited"
+    assert resolve_calls == []
+
+
 def test_per_source_failure_isolation_one_sources_rejection_does_not_affect_another() -> None:
     with _LoopbackTLSServer(_plain_ok_handler) as server:
         fetcher = NetworkFetcher(

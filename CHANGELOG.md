@@ -27,6 +27,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   private name. All other connection primitives in the module remain
   private; `NetworkFetcher` remains the module's only public, enforced
   *entry point*.
+- `connectors/network.py` — the per-hop budget change above had an
+  unintended side effect: with the constructor's own shipped defaults
+  (`max_redirects=5`, `rate_limit_max_calls=5`), reaching the
+  post-loop `too_many_redirects` return needed 6 successful `allow()`
+  calls against a budget of 5, so the 6th hop always refused first and
+  `too_many_redirects` became unreachable — a chain long enough to
+  exhaust `max_redirects` was always reported `rate_limited` instead.
+  Fixed by lowering the shipped default `max_redirects` from `5` to `4`
+  (the rate-limit budget itself is unchanged, since raising it would
+  weaken a security control just to make a diagnostic code reachable).
+  `too_many_redirects` is now reachable whenever at least
+  `max_redirects + 1` budget units remain in the source's window at the
+  start of the call; otherwise the chain still correctly ends
+  `rate_limited` at whichever hop the budget runs out on.
 
 ### Added (AI & Claude Intelligence Brief v0.1 — weekly, synthetic signals only)
 
