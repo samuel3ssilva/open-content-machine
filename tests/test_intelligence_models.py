@@ -8,13 +8,19 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from content_machine.intelligence.library import NORMALIZED_SUMMARY_MAX_CHARS
 from content_machine.intelligence.loader import (
     ProfileLoadError,
     SignalLoadError,
     load_profile,
     load_signals,
 )
-from content_machine.intelligence.models import TOPIC_TAXONOMY, RelevanceProfile, SourceItem
+from content_machine.intelligence.models import (
+    SUMMARY_RETENTION_MAX_CHARS,
+    TOPIC_TAXONOMY,
+    RelevanceProfile,
+    SourceItem,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 VALID_FIXTURE = REPO_ROOT / "examples" / "intelligence-signals-synthetic.json"
@@ -361,3 +367,66 @@ def test_relevance_profile_rejects_extra_fields() -> None:
                 "extra_field": "nope",
             }
         )
+
+
+# --- Fable ruling, 2026-07-28: summary_normalized retention cap -------------
+
+
+def _full_source_item_payload(*, summary_normalized: str) -> dict[str, object]:
+    """A fully-populated, otherwise-valid SourceItem payload with only
+    ``summary_normalized`` varying -- used to isolate that field's own
+    length bound from every other required field."""
+    return {
+        "item_id": "x",
+        "source_type": "feed",
+        "source_category": "vendor_blog",
+        "publisher_id": "vendor-x",
+        "subject_entity_ids": ["vendor-x"],
+        "title": "t",
+        "summary_normalized": summary_normalized,
+        "publication_date": "2026-01-01",
+        "detection_date": "2026-01-01",
+        "stable_reference": "https://example.com/x",
+        "evidence_type": "announcement",
+        "change_class": "material_change",
+        "change_class_rationale": "n/a",
+        "action_required": "none",
+        "experiment_affordance": "not_testable",
+        "topic_tags": [],
+        "contains_benefit_or_performance_claim": False,
+        "claim_directly_verifiable_in_artifact": False,
+    }
+
+
+def test_source_item_summary_normalized_rejects_over_length_input() -> None:
+    """Receiving-side bound (Fable ruling, 2026-07-28): SourceItem.
+    summary_normalized was a bare, unbounded ``str`` before this ruling --
+    this test FAILED before the ``Field(max_length=SUMMARY_RETENTION_MAX_CHARS)``
+    constraint was added (an oversized payload validated successfully) and
+    PASSES after it, proving the receiving side of the
+    DiscoveryResult.summary_normalized <-> SourceItem.summary_normalized
+    pair is now actually bounded, not just the sending side."""
+    oversized = "x" * (SUMMARY_RETENTION_MAX_CHARS + 1)
+    with pytest.raises(ValidationError):
+        SourceItem.model_validate(_full_source_item_payload(summary_normalized=oversized))
+    # The boundary value itself remains valid.
+    at_cap = "x" * SUMMARY_RETENTION_MAX_CHARS
+    SourceItem.model_validate(_full_source_item_payload(summary_normalized=at_cap))
+
+
+def test_summary_retention_cap_and_normalized_summary_cap_are_deliberately_different() -> None:
+    """Pin the divergence so a future reader does not "fix" it back into
+    alignment. ``SUMMARY_RETENTION_MAX_CHARS`` (2000, Fable ruling
+    2026-07-28) bounds ``DiscoveryResult.summary_normalized`` <->
+    ``SourceItem.summary_normalized`` -- the same connector-sourced text
+    crossing ``connectors.bridge.to_source_item``.
+    ``library.NORMALIZED_SUMMARY_MAX_CHARS`` (280, unchanged) bounds a wholly
+    different, locally-derived field: the text
+    ``library.build_normalized_summary()`` builds from a topic's own
+    canonical title and ranking explanation, never from a raw connector
+    body. There is no data flow between the two fields, so there is no
+    reason for the two constants to move together, and they must not be
+    "aligned" again."""
+    assert SUMMARY_RETENTION_MAX_CHARS == 2000
+    assert NORMALIZED_SUMMARY_MAX_CHARS == 280
+    assert SUMMARY_RETENTION_MAX_CHARS != NORMALIZED_SUMMARY_MAX_CHARS

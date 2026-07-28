@@ -675,3 +675,49 @@ future implementer is misled by their absence:
   a `DiscoveryResult` that looks complete but sorts and windows incorrectly,
   with no signal to a reviewer that anything was altered. Rejecting the whole
   result and recording an audited reason code is louder but honest.
+
+## Amendment (2026-07-28) — `SUMMARY_MAX_CHARS` retention cap raised 280 → 2000
+
+**Append-only: the "Pinned constants" table above is left exactly as it
+shipped and is not a currently-accurate statement of the code; this section
+is the current, authoritative correction.**
+
+- **Date:** 2026-07-28.
+- **Decider:** the Founder, who requested this change. Security authority
+  for the correction is Fable's retention ruling of the same date (referred
+  to elsewhere in this codebase's history as the "retention ruling"),
+  reviewed and executed under that ruling.
+- **Change:** `SUMMARY_MAX_CHARS` (governing `DiscoveryResult.summary_normalized`)
+  goes from **280 to 2000**. The constant's single source of truth moved to
+  `content_machine.intelligence.models.SUMMARY_RETENTION_MAX_CHARS`;
+  `connectors.models.SUMMARY_MAX_CHARS` now re-exports that value so every
+  existing import site keeps working, and there is exactly one place this
+  number is defined.
+- **Reason:** the first real connector run against a live source retained 20
+  items, and **every one** had a `summary_normalized` truncated to exactly
+  280 characters mid-sentence. That is too little material for the Founder
+  to author the `AuthoredAssessment` that `bridge.to_source_item` requires
+  (it admits only `human_authored` provenance) — the cap was, in practice,
+  starving the human admission gate of the judgment material it depends on,
+  which degrades a security-critical control and pushes toward
+  rubber-stamping rather than genuine review.
+- **Correction to this table's original rationale:** the row above states
+  `SUMMARY_MAX_CHARS` was "aligned with
+  `intelligence.library.NORMALIZED_SUMMARY_MAX_CHARS` so the two layers
+  share one bound." That rationale was mis-motivated: there is no data flow
+  between the two fields it names. `library.NORMALIZED_SUMMARY_MAX_CHARS`
+  bounds text `build_normalized_summary()` derives locally, from a topic's
+  own canonical title and ranking explanation — never a raw connector body.
+  The real pair sharing one bound is `DiscoveryResult.summary_normalized` and
+  `SourceItem.summary_normalized` — the same string crossing
+  `bridge.to_source_item` — and `SourceItem`'s side was, until this
+  amendment, unbounded (a bare `str` with no `Field` constraint). The
+  "alignment" the original table describes was cosmetic, not structural; the
+  actual half-open bound is what this amendment closes.
+- **`NORMALIZED_SUMMARY_MAX_CHARS` is deliberately unchanged at 280.** It
+  governs a different, locally-derived field with no connection to
+  connector-sourced text, and Fable's ruling explicitly left it alone.
+- **No detection weakened:** `sanitize_text` runs every detector (steps 1-6)
+  before truncating to the cap at the very end of the pipeline; the cap
+  never gated detection, so raising it does not change what gets flagged,
+  only how much already-sanitized text survives to the retained record.

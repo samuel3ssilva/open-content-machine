@@ -93,7 +93,7 @@ def test_scalar_constants_are_pinned_to_spec_literals() -> None:
     assert DEFAULT_MAX_REDIRECTS == 3
     assert DEFAULT_MAX_ITEMS_PER_SOURCE == 50
     assert DEFAULT_MAX_REQUESTS_PER_RUN == 200
-    assert SUMMARY_MAX_CHARS == 280
+    assert SUMMARY_MAX_CHARS == 2000
     assert TITLE_MAX_CHARS == 300
 
 

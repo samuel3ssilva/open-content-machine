@@ -103,6 +103,33 @@ ActionRequired = Literal[
 
 ExperimentAffordance = Literal["local_reproducible", "requires_paid_service", "not_testable"]
 
+#: Fable ruling, 2026-07-28 (retention cap correction; see ADR 0005's
+#: append-only amendment and CHANGELOG "Unreleased"): the single source of
+#: truth for how much of ``DiscoveryResult.summary_normalized`` /
+#: ``SourceItem.summary_normalized`` survives to the Founder's admission
+#: review. Lives here, not in ``connectors``, because ``connectors`` may
+#: import FROM ``intelligence`` but never the reverse (see this module's
+#: docstring), and ``SourceItem`` -- the receiving side this constant now
+#: also bounds -- is defined in this module.
+#:
+#: Deliberately a SEPARATE constant from
+#: ``content_machine.intelligence.library.NORMALIZED_SUMMARY_MAX_CHARS``
+#: (280, unchanged): that constant bounds text ``build_normalized_summary()``
+#: derives locally from a topic's own canonical title and ranking
+#: explanation, never a raw connector body, so there is no data flow between
+#: the two fields and no reason for them to move together. This constant
+#: instead bounds the text that actually crosses the connector/intelligence
+#: bridge (``connectors.bridge.to_source_item``): the real pair is
+#: ``DiscoveryResult.summary_normalized`` <-> ``SourceItem.summary_normalized``,
+#: the same string, unbounded on the receiving side before this ruling. The
+#: first real connector run retained 20 items and every one was truncated to
+#: exactly 280 characters mid-sentence -- too little material for the
+#: Founder to author the ``AuthoredAssessment`` the bridge requires -- so
+#: Fable raised this bound to 2,000. Raising it does not weaken any
+#: ``sanitize_text`` detector: detection runs at step 6, truncation to this
+#: cap happens only at the very end of that pipeline.
+SUMMARY_RETENTION_MAX_CHARS = 2000
+
 # M4 (ADR 0004): deterministic, explainable outputs of
 # content_machine.intelligence.tiers -- never a model, never prose parsing.
 ClaimClass = Literal["fact", "hypothesis", "marketing"]
@@ -210,7 +237,11 @@ class SourceItem(BaseModel):
     publisher_id: str
     subject_entity_ids: list[str] = Field(default_factory=list)
     title: str
-    summary_normalized: str
+    # Fable ruling, 2026-07-28: bounded by SUMMARY_RETENTION_MAX_CHARS -- see
+    # that constant's docstring for why this is a separate bound from
+    # library.NORMALIZED_SUMMARY_MAX_CHARS (280, locally-derived text only)
+    # and why this field was unbounded before this ruling.
+    summary_normalized: str = Field(max_length=SUMMARY_RETENTION_MAX_CHARS)
     publication_date: date | None = None
     detection_date: date
     # Opaque; URL-shaped for feeds, "email:<slug>" for email. Do NOT require
