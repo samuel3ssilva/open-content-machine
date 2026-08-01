@@ -334,6 +334,15 @@ def test_cli_skip_with_overlay_warns_loudly_and_names_regenerate(tmp_path: Path)
     assert "WARNING" in second.output
     assert "--regenerate" in second.output
     assert "does NOT carry it" in second.output or "does not carry" in second.output.lower()
+    # Q3 (2026-08-01 QA blocker): assert stale-file EXCLUSIVITY, not just
+    # substring presence -- the overlay legitimately changes brief.md
+    # (unapplied overlay text) AND run-manifest.json (limitations_overlay.
+    # present differs), but nothing else. Before Q1's fix, this would ALSO
+    # have spuriously named run-manifest.json for a second, unrelated
+    # reason (execution_timestamp always differing between invocations) --
+    # a true positive here for the wrong reason is exactly the kind of
+    # co-firing this assertion is meant to catch if it ever recurs.
+    assert "2 file(s) differ: brief.md, run-manifest.json" in second.output
 
     # The skip really was a no-op: brief.md on disk is untouched.
     assert (output_dir / "brief.md").read_text(encoding="utf-8") == brief_md_before
@@ -385,6 +394,16 @@ def test_cli_stale_skip_warns_loudly_with_no_overlay_file_present(tmp_path: Path
     assert "--regenerate" in second.output
     assert "brief.md" in second.output
     assert "does not match" in second.output.lower()
+    # Q1/Q3 (2026-08-01 QA blocker): assert stale-file EXCLUSIVITY -- ONLY
+    # brief.md, which was actually mutated. Before Q1's fix,
+    # run-manifest.json would ALSO have been spuriously named here, because
+    # execution_timestamp always differs between two real CLI invocations
+    # (this test's `first`/`second` are genuine, separate `_invoke()` calls,
+    # each reading the real wall clock via cli/main.py) -- that spurious
+    # co-firing was exactly what the two prior versions of this test (only
+    # substring-checking "brief.md" and "WARNING") could never catch.
+    assert "1 file(s) differ: brief.md." in second.output
+    assert "run-manifest.json" not in second.output
 
     # Still never overwritten without --regenerate.
     assert (output_dir / "brief.md").read_text(encoding="utf-8") == "stale, pre-fix content\n"
@@ -393,3 +412,34 @@ def test_cli_stale_skip_warns_loudly_with_no_overlay_file_present(tmp_path: Path
     assert third.exit_code == 0
     assert "WARNING" not in third.output
     assert (output_dir / "brief.md").read_text(encoding="utf-8") != "stale, pre-fix content\n"
+
+
+# --- Q1/Q3 (2026-08-01 QA blocker, "R1 cries wolf on every rerun") ----------
+# --- two genuine, unmutated CLI invocations must be a silent, non-stale ----
+# --- skip -- reproduces QA's own repro (two `runner.invoke` calls) ---------
+
+
+def test_cli_two_genuine_unmutated_reruns_is_a_silent_non_stale_skip(tmp_path: Path) -> None:
+    """QA reproduced this against the real CLI with two `runner.invoke`
+    calls 1.1s apart: same code, same inputs, nothing changed, but the
+    second invocation ALWAYS flagged `run-manifest.json` as stale (its
+    `execution_timestamp` is read from the real wall clock on every
+    invocation, `cli/main.py`, and was compared byte-for-byte). Reproduced
+    here the same way -- two genuinely separate `_invoke()` calls, no
+    mutation between them, no overlay file -- and the second must be a
+    completely silent skip: no WARNING at all."""
+    signals_path, output_dir, _result = _setup(tmp_path)
+
+    first = _invoke(signals_path, output_dir)
+    assert first.exit_code == 0
+    assert "WARNING" not in first.output
+    brief_md_after_first = (output_dir / "brief.md").read_text(encoding="utf-8")
+
+    second = _invoke(signals_path, output_dir)
+    assert second.exit_code == 0
+    assert "WARNING" not in second.output
+    assert "Skipped write" in second.output
+    assert "stale" not in second.output.lower()
+
+    # Nothing on disk moved.
+    assert (output_dir / "brief.md").read_text(encoding="utf-8") == brief_md_after_first

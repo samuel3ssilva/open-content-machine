@@ -710,20 +710,88 @@ def _atomic_write_all(staged: dict[Path, str]) -> None:
             backup_path.unlink(missing_ok=True)
 
 
+#: Q1 (2026-08-01 QA blocker): the ONE ``RunManifest`` field that varies
+#: purely with wall-clock time, not with code or inputs -- see
+#: ``RunManifest``'s own docstring, which states this explicitly:
+#: ``execution_timestamp`` is "the ONE place a real timestamp is allowed"
+#: and every other field is a deterministic function of the run's inputs.
+#: Audited against every other ``RunManifest`` field for anything else
+#: derived from ``datetime.now()``/``date.today()`` -- there is nothing
+#: else (this module and every module it composes contain no such call
+#: anywhere; see the module docstring's #2 and ``test_module_source_never_
+#: reads_the_wall_clock``). Excluded ONLY from the R1 comparison below --
+#: never from the manifest content actually staged/written to disk, which
+#: still records the real ``execution_timestamp`` verbatim.
+_MANIFEST_COMPARISON_EXCLUDED_FIELDS = frozenset({"execution_timestamp"})
+
+
+def _manifest_content_differs(on_disk: str, staged: str) -> bool:
+    """Q1 (2026-08-01 QA blocker, "R1 cries wolf on every rerun"): whether
+    two ``run-manifest.json`` contents genuinely differ, comparing a
+    CANONICALISED view with every wall-clock-only field (see
+    :data:`_MANIFEST_COMPARISON_EXCLUDED_FIELDS`) normalised out of BOTH
+    sides before comparing -- the on-disk file itself is never touched or
+    rewritten by this function, only the value handed to the comparison.
+
+    Without this, ``execution_timestamp`` alone -- captured fresh on EVERY
+    CLI invocation (``cli/main.py``) and included verbatim in the staged
+    manifest's ``model_dump_json()`` -- made two back-to-back invocations of
+    the exact SAME run (same code, same inputs, nothing changed) ALWAYS
+    differ, so R1's byte-compare fired its loud staleness warning on every
+    routine rerun, training the Founder to ignore it or reflexively pass
+    ``--regenerate`` (destructive without a manual backup, per ADR 0009).
+    This defeated R1's entire purpose: a mechanism meant to catch genuine
+    semantic drift instead fired on every rerun regardless of drift.
+
+    Falls back to a plain string comparison when either side is not a JSON
+    object (e.g. a corrupt on-disk file, or content that is not the manifest
+    at all) -- that must still compare as differing against a well-formed
+    manifest, which a plain string comparison reliably does."""
+    try:
+        on_disk_data = json.loads(on_disk)
+        staged_data = json.loads(staged)
+    except json.JSONDecodeError:
+        return on_disk != staged
+    if not isinstance(on_disk_data, dict) or not isinstance(staged_data, dict):
+        return on_disk != staged
+    for field in _MANIFEST_COMPARISON_EXCLUDED_FIELDS:
+        on_disk_data.pop(field, None)
+        staged_data.pop(field, None)
+    return on_disk_data != staged_data
+
+
 def _staged_differs_from_disk(staged: dict[Path, str]) -> list[str]:
-    """R1 (2026-08-01 post-merge-gate round, ADR 0009): byte-compare every
+    """R1 (2026-08-01 post-merge-gate round, ADR 0009): compare every
     ``staged`` file's content against its on-disk counterpart (if any).
     Returns the sorted filenames that differ -- ``[]`` means the idempotency
     skip's premise holds (the on-disk run IS what current code would still
     produce). A missing on-disk file counts as differing: a skip that leaves
     a promised output absent is exactly the kind of stale state this check
-    exists to catch. Read-only -- never writes anything."""
+    exists to catch. Read-only -- never writes anything.
+
+    ``run-manifest.json`` is compared via :func:`_manifest_content_differs`
+    (Q1, 2026-08-01 QA blocker) -- a CANONICALISED comparison with wall-clock
+    -only fields normalised out, so two genuine reruns of the identical run
+    compare equal despite each capturing its own real
+    ``execution_timestamp``. Every other staged file is still compared by
+    exact byte equality, unchanged.
+
+    F2 (2026-08-01 Fable blocker, "verify, don't assume"): an on-disk file
+    that exists but is not valid UTF-8 text raises ``UnicodeDecodeError``
+    (a ``ValueError``, not an ``OSError``) from ``read_text`` -- caught here
+    alongside ``OSError`` so an unreadable-as-text on-disk file counts as
+    DIFFERING (the same treatment as a missing file) instead of crashing the
+    skip path."""
     differing: list[str] = []
     for path, content in staged.items():
         try:
             on_disk = path.read_text(encoding="utf-8")
-        except OSError:
+        except (OSError, UnicodeDecodeError):
             differing.append(path.name)
+            continue
+        if path.name == "run-manifest.json":
+            if _manifest_content_differs(on_disk, content):
+                differing.append(path.name)
             continue
         if on_disk != content:
             differing.append(path.name)

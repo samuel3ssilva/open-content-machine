@@ -779,6 +779,107 @@ def test_clean_skip_is_not_flagged_stale(tmp_path: Path) -> None:
     )
 
 
+def test_two_genuine_reruns_with_different_execution_timestamps_is_a_silent_skip(
+    tmp_path: Path,
+) -> None:
+    """Q1 (2026-08-01 QA blocker, "R1 cries wolf on every rerun"): the exact
+    defect QA reproduced against the real CLI with two `runner.invoke` calls
+    1.1s apart -- reproduced here directly against `run_weekly`/
+    `write_weekly_run_outputs` instead, with TWO GENUINELY SEPARATE
+    `WeeklyRunResult` objects (never the SAME in-memory result object
+    written twice, which is what `test_clean_skip_is_not_flagged_stale`
+    above does and is exactly why QA found it could not catch this: two
+    calls against the same in-memory object make identical content true by
+    construction, no matter what `execution_timestamp` is). Each result here
+    is built by its own independent `_run()` call with its OWN
+    `execution_timestamp`, mirroring two separate `weekly-run` CLI
+    invocations a minute apart -- same code, same inputs, nothing else
+    changed. Before Q1's fix, `execution_timestamp` alone (captured fresh on
+    every CLI invocation, `cli/main.py`) always differed between the two, so
+    the RAW byte-compare ALWAYS flagged `run-manifest.json` as stale on
+    every routine rerun -- defeating R1's entire purpose. The second,
+    genuinely independent invocation must be a SILENT, non-stale skip."""
+    output_dir = tmp_path / "out"
+
+    first_result = _run(execution_timestamp="2026-07-12T18:00:00-03:00")
+    first_outcome = write_weekly_run_outputs(first_result, output_dir)
+    assert first_outcome.wrote is True
+
+    # A second, independently-built result for the identical run (same
+    # signals, profile, week_label, reference_date, timezone, code_version)
+    # -- only execution_timestamp differs, as it genuinely would across two
+    # real CLI invocations.
+    second_result = _run(execution_timestamp="2026-07-12T18:01:07-03:00")
+    assert second_result.manifest.run_id == first_result.manifest.run_id
+    assert (
+        second_result.manifest.execution_timestamp != first_result.manifest.execution_timestamp
+    )
+
+    second_outcome = write_weekly_run_outputs(second_result, output_dir, regenerate=False)
+    assert second_outcome.wrote is False
+    assert second_outcome.stale is False
+    assert second_outcome.stale_files == []
+    assert second_outcome.skipped_reason is not None
+    assert "stale" not in second_outcome.skipped_reason.lower()
+
+    # The on-disk manifest still records the FIRST run's real
+    # execution_timestamp verbatim -- Q1 changes only the COMPARISON, never
+    # what actually landed on disk.
+    on_disk_manifest = json.loads((output_dir / "run-manifest.json").read_text(encoding="utf-8"))
+    assert on_disk_manifest["execution_timestamp"] == "2026-07-12T18:00:00-03:00"
+
+
+def test_manifest_comparison_ignores_execution_timestamp_but_nothing_else(tmp_path: Path) -> None:
+    """Unit-level companion to the CLI-shaped test above: exercises
+    `weekly._manifest_content_differs` directly. Only `execution_timestamp`
+    is ignored -- any OTHER field changing (e.g. `signal_count`, standing in
+    here for a genuine semantic drift) must still be detected, so Q1's fix
+    cannot be satisfied by a comparison that ignores too much."""
+    result = _run()
+    output_dir = tmp_path / "out"
+    write_weekly_run_outputs(result, output_dir)
+    on_disk = (output_dir / "run-manifest.json").read_text(encoding="utf-8")
+
+    # Only execution_timestamp differs -> NOT differing.
+    staged_same_except_timestamp = json.dumps(
+        {**json.loads(on_disk), "execution_timestamp": "2099-01-01T00:00:00-03:00"}
+    )
+    assert (
+        weekly_module._manifest_content_differs(on_disk, staged_same_except_timestamp) is False
+    )
+
+    # A genuinely different field (signal_count) -> still differing, even
+    # though execution_timestamp is untouched.
+    staged_genuinely_different = json.dumps({**json.loads(on_disk), "signal_count": 999})
+    assert weekly_module._manifest_content_differs(on_disk, staged_genuinely_different) is True
+
+    # Malformed on-disk content must still compare as differing against a
+    # well-formed staged manifest.
+    assert weekly_module._manifest_content_differs("not json at all", on_disk) is True
+
+
+def test_unicode_decode_error_on_corrupt_on_disk_file_counts_as_differing(
+    tmp_path: Path,
+) -> None:
+    """F2 (2026-08-01 Fable blocker, "verify, don't assume"): a corrupt or
+    non-UTF-8 on-disk file must count as DIFFERING (the same treatment as a
+    missing file), never crash the skip path with an unhandled
+    UnicodeDecodeError -- `read_text(encoding="utf-8")` raises
+    `UnicodeDecodeError` (a `ValueError`, not an `OSError`) for invalid
+    UTF-8 bytes."""
+    result = _run()
+    output_dir = tmp_path / "out"
+    write_weekly_run_outputs(result, output_dir)
+
+    # Corrupt brief.md with invalid UTF-8 bytes (a lone continuation byte).
+    (output_dir / "brief.md").write_bytes(b"\xff\xfe not valid utf-8 \x80\x81")
+
+    outcome = write_weekly_run_outputs(result, output_dir, regenerate=False)
+    assert outcome.wrote is False
+    assert outcome.stale is True
+    assert "brief.md" in outcome.stale_files
+
+
 def test_stale_on_disk_run_is_detected_and_still_skipped(tmp_path: Path) -> None:
     """Simulates exactly the headline defect this round fixes: an on-disk
     run whose run_id still matches (nothing about the INPUTS changed), but

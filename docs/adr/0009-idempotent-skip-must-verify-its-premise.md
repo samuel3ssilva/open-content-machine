@@ -49,14 +49,16 @@ rendered.
 
 ## Decision
 
-### 1. The skip verifies its premise by byte-comparing, not by trusting `run_id`
+### 1. The skip verifies its premise by comparing, not by trusting `run_id`
 
 `weekly.write_weekly_run_outputs` already builds `staged: dict[Path, str]`
 — every file this call WOULD write, computed purely from `result` (already
 fully computed by the caller; this is formatting, not extra pipeline work).
 This round moves that construction to BEFORE the skip decision, so on the
-`run_id`-match path it can byte-compare every staged file against its
-on-disk counterpart (`_staged_differs_from_disk`) BEFORE deciding to skip:
+`run_id`-match path it can compare every staged file against its on-disk
+counterpart (`_staged_differs_from_disk`) BEFORE deciding to skip: an exact
+byte-compare for every file except `run-manifest.json`, which is compared
+via a canonicalised view instead (see the Q1 addendum below) —
 
 - **All equal** → today's clean skip: `outcome.wrote` is `False`,
   `outcome.stale` is `False`, `skipped_reason` text UNCHANGED from before
@@ -107,6 +109,28 @@ backstop that fires even if a future change forgets to bump either marker
 is the fast, human-legible diagnostic for the common case where a marker WAS
 bumped correctly.
 
+### 4. Addendum (2026-08-01, QA blocker Q1): the comparison canonicalises wall-clock-only fields
+
+QA reproduced, against the real CLI, that step 1 above as first implemented
+was itself broken: two back-to-back `runner.invoke` calls 1.1s apart, same
+code, same inputs, nothing changed, ALWAYS flagged `run-manifest.json` as
+differing and fired the loud staleness warning — because `execution_
+timestamp` is captured fresh on every invocation (`cli/main.py`) and was
+included verbatim in the RAW byte-compare `_staged_differs_from_disk`
+described in step 1. `weekly._manifest_content_differs` now compares
+`run-manifest.json` specifically (every other staged file is still an exact
+byte-compare, unchanged) via a CANONICALISED view: both the staged and
+on-disk JSON are parsed, every field in `weekly._MANIFEST_COMPARISON_
+EXCLUDED_FIELDS` (today just `execution_timestamp` — audited against every
+other `RunManifest` field for anything else derived from `datetime.now()`/
+`date.today()`; there is nothing else) is popped from BOTH before comparing
+the remaining dicts for equality. This changes only the COMPARISON: the
+manifest actually staged and written to disk is untouched and still records
+the real `execution_timestamp` verbatim, so the audit trail is unaffected —
+only the "is this on-disk run still what current code would produce"
+question stops being answered incorrectly by a field that was never
+supposed to gate it in the first place.
+
 ## Consequences
 
 ### Operator runbook requirement
@@ -137,9 +161,31 @@ implied, in both the CLI epilog and the runbook doc.
   because `tests/test_performance.py::test_8000_rows` (the one wall-clock
   performance test in this repository) exercises the CSV/audience pipeline,
   not `weekly.py`.
+- F2 (2026-08-01 Fable blocker, "verify, don't assume"): `_staged_differs_
+  from_disk`'s per-file read originally caught only `OSError`. A corrupt or
+  non-UTF-8 on-disk file raises `UnicodeDecodeError` (a `ValueError`, not an
+  `OSError`) from `read_text(encoding="utf-8")`, which crashed the skip path
+  instead of marking that file stale. `UnicodeDecodeError` is now in the
+  same except tuple as `OSError` — an unreadable-as-text on-disk file counts
+  as DIFFERING, the same treatment already given to a missing file.
 - A Founder who runs `weekly-run` repeatedly without `--regenerate` on an
-  UNCHANGED codebase sees no new output — the clean-skip path is unchanged
-  and silent, as before.
+  UNCHANGED codebase sees no new output: the clean-skip path is silent, and
+  the comparison behind it is CANONICALISED (Q1, 2026-08-01 QA blocker) —
+  `_staged_differs_from_disk` compares `run-manifest.json` with every
+  wall-clock-only field (`execution_timestamp`, the only one — see
+  `RunManifest`'s own docstring) normalised out of both the staged and
+  on-disk views before comparing, so two genuine, unmutated invocations of
+  the identical run compare equal even though each one's `execution_
+  timestamp` is a real, distinct wall-clock reading. Before Q1, this claim
+  was FALSE as written: `execution_timestamp` is captured fresh on every CLI
+  invocation and was included verbatim in the RAW byte-compare, so it always
+  differed between any two invocations, and R1's staleness warning fired on
+  every routine rerun regardless of whether anything had actually changed —
+  defeating R1's entire purpose by training the Founder to ignore the
+  warning or reflexively pass `--regenerate` (itself destructive without a
+  manual backup, per the runbook requirement above). The manifest FILE
+  written to disk is unaffected by Q1 — it still records the real
+  `execution_timestamp` verbatim; only the R1 COMPARISON is canonicalised.
 
 ## Alternatives considered
 
