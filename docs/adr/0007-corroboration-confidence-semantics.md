@@ -152,6 +152,120 @@ of this brief? This ADR keeps the gate at `{high, medium}` for the
 Founder-reviewed-draft use case only and takes no position on any future,
 different use case.
 
+## Round 5 (2026-08-01, this branch): further rendering and wording fixes
+
+Three reviewers (Fable, product, QA) found five more defects in the
+RENDERED document on this same branch, none of which touch
+`tiers._assess_confidence`'s confidence-level logic (unchanged; no
+`CONFIDENCE_RUBRIC_VERSION` bump) or any ranking/tiering/admission
+computation:
+
+- **F1** (Fable, reversing an earlier "it's just a disjunction"
+  classification): `tiers._classify_claim_class`'s fact-branch reason text
+  called `has_direct_artifact_or_independent_source`'s third disjunct
+  (`independent_publisher_count > 0`, i.e. `has_genuine_independent_
+  evidence` in `cluster.py`) "genuine independent corroboration" — but that
+  disjunct requires only ONE independent publisher, not two; "corroboration"
+  implies a second, confirming source, so the word was simply wrong for the
+  case where that disjunct is the ONLY one holding (`evid_4_independent_
+  rigorous_alone`: the first three disjuncts are all false by construction
+  for that anchor). Fixed to "evidence from at least one publisher
+  structurally independent of the subject" — evidence, not corroboration.
+  `BRIEF_VERSION` bumped `"gate-e0-m5-3"` → `"gate-e0-m5-4"` (document
+  wording only; `CONFIDENCE_RUBRIC_VERSION` is unchanged).
+- **P1** (product, MUST-FIX, "worse than before"): the shared evidence
+  sentence still didn't parse — `"Strong evidence: a first-party source or
+  rigorous independent evidence, and no second, independent source
+  corroborates it."` conjoined a noun phrase with a finite clause after a
+  colon that opens an explanatory scope, so the warning read as part of the
+  DEFINITION of "strong" rather than a limit on it — inverting the exact
+  signal this whole ADR exists to deliver. Fixed two ways: (1) the evidence
+  phrase and the independence clause are now two separate sentences, not one
+  comma-joined sentence; (2) `evidence_level == 4`'s phrase, previously the
+  disjunction `"a first-party source or rigorous independent evidence"`
+  (ambiguous — evidence_level 4 is reached by two structurally different
+  anchors), is now resolved to the disjunct the anchor actually selected
+  (`brief._evidence_level_phrase`, same principle as F1's appendix-text
+  resolution, applied to the higher-consequence Tier 1/2 BODY text instead).
+- **P2** (product, new contradiction on this branch, reviewed by nobody):
+  dropping confidence high → medium (Part B/C above) flipped both Tier 2
+  fact topics' recommended action `read` → `save`, but the Study Queue gates
+  light-study only on `claim_class == 'fact'` (no confidence/action gate),
+  so the SAME topic could read "Light study: ..." in the Study Queue and
+  "Recommended action: save" in its own Tier 2 block with no visible
+  connection between the two. See the "Study Queue / Tier 2 action"
+  decision below.
+- **P3** (product): the G2 methodology note (see Decision #2 above) was
+  unfindable — nothing in the executive summary pointed to it, and the
+  Top-N single-source sentence it qualifies is only true by construction on
+  a fixture where every topic happens to hold exactly one item. The
+  existing `"(see appendix for method)"` convention (already used by the
+  reading/study-time header lines) is now applied to this sentence too.
+- **P4** (product): the G3 single-sourced disclosure (Decision #3 above)
+  was appended to the tail of the section's longest, most machine-shaped
+  line. `ContentOpportunity` gains a structured `single_sourced: bool`
+  field (the base `reason` text no longer carries the suffix baked in), and
+  the Markdown renderer puts the disclosure on its own line — the same
+  "give the caveat a visually distinct line" principle P3 (round 4)
+  established for the Founder-limitation blockquote, applied here to a
+  machine-generated caveat instead (a plain sub-bullet, not the blockquote
+  glyph itself — that glyph stays reserved for human-authored text, per
+  round 4's own reasoning for introducing it).
+- **P5** (product, minor): each Tier 1 block stated "medium confidence"
+  twice in adjacent lines (`why_it_matters` and `evidence_and_confidence`
+  both ended with a claim_class/confidence sentence); Tier 2 stated it a
+  third time via a bare `- **Confidence:** medium` bullet under a sentence
+  that just said the same thing. `_human_why_it_matters` no longer restates
+  claim_class/confidence (that stays the evidence line's job); the bare
+  Tier 2 `Confidence` bullet is removed (superseded by `principal_evidence`,
+  which already ends with the same information framed as a full sentence).
+
+### Decision: Study Queue / Tier 2 action (P2)
+
+Two ways to resolve the contradiction were on the table: (a) gate the
+light-study queue on the topic's `recommended_action` (e.g. `read` only),
+or (b) keep the existing `claim_class == 'fact'` gate and make the two
+lines visibly agree instead. **Decision: (b).** `Tier2Item` gains a
+`recommended_action_reason` field (mirroring `Tier1LeanItem`'s field of the
+same name, which round 4 already required — "Tier 1 already prints its
+reason"), rendered next to Tier 2's `Recommended action` line instead of
+the previous bare action word. Rationale:
+
+- Changing the light-study GATE means touching `library._derive_current_
+  status`'s `study_queue` lifecycle state too (its own docstring says it
+  "mirrors `brief._build_study_queue`'s light-study criterion" — the two
+  are deliberately kept in lockstep). That is a persisted-lifecycle-state
+  change, not a rendering fix, and a materially larger, riskier edit for a
+  wording-contradiction ticket to make unreviewed.
+  `library.TopicLibraryEntry.current_status` is read back into next week's
+  run (`prior_library`) and is part of this module's own persisted
+  contract — the kind of change this codebase's routing rules ask to be
+  reviewed above the daily-execution level, not folded into a same-round
+  prose fix.
+- The two lines are not actually incompatible once each states *why*. A
+  Tier 2 `fact` topic lands here precisely because it lacks genuine
+  cross-source corroboration, so it is medium confidence and its action is
+  `save` — but "save for later" and "queued for light study" are NOT
+  actually contradictory instructions once each states *why*: `save` means
+  "don't rush to act on it, the evidence stands but isn't doubly attested
+  yet" (now visible via `recommended_action_reason`), and the Study Queue's
+  own reason line already says the same thing in different words ("Tier 2
+  fact-classified topic, rank N, medium confidence"). The apparent
+  contradiction was a DISCLOSURE gap (the "why" for `save` was invisible
+  next to the bare word), not a genuine logical conflict between "queue it
+  for a light read" and "it's not corroborated enough to read now and move
+  on" for a `fact`-classified, medium-confidence topic.
+- This keeps the fix inside `brief.py`'s existing "give the reader the
+  reason, not just the label" pattern (P2 round 4's own Tier 1 precedent),
+  rather than introducing a new gating rule that would need its own
+  justification for why `read`-only is the right cut line (e.g. should a
+  `high`-confidence-but-Tier-2 topic with action `read` still be excluded
+  from light study if some OTHER criterion changes it to `save` later?).
+
+If a future round finds this still reads as contradictory in practice, the
+gate-on-action alternative above remains available — it was not rejected on
+technical grounds, only deferred as the larger, riskier edit for this round.
+
 ## Consequences
 
 ### Golden-hash re-pin rationale
@@ -200,6 +314,53 @@ structural-count proof would be.
   evidence lines, the executive summary's marketing sentence, the
   limitations-overlay bullet glyph) was updated in the same commit as the
   rendering change it covers — never left stale.
+- Round 5: `ContentOpportunity` gains an additive `single_sourced: bool`
+  field; `Tier2Item` gains an additive `recommended_action_reason: str`
+  field. Both are structured (discoverable in `brief.json`, not only
+  Markdown), consistent with every other additive field this ADR's rounds
+  have introduced.
+
+### Deferred work
+
+Fable swept `src/` for every unrecorded deferral this ADR's rulings depend
+on and found two, neither previously written down anywhere as deferred —
+an unrecorded deferral is a silent non-decision, so both are recorded here
+explicitly rather than left implicit in code comments only:
+
+(i) **`cluster._evidence_level_and_marketing_risk` sets `has_independent_
+rigorous`/`has_independent_analysis` without consulting `may_supply_
+independence`.** The anchor-selection logic that drives `evidence_anchor_id`
+reads the raw evidence-type/publisher-affiliation check only — it does not
+ask the Gate E0.3 independence registry whether a given member is actually
+*allowed* to supply independence. This means a registry-denied member
+(`may_supply_independence=False`) can still drive a cluster to an anchor
+like `evid_4_first_party_plus_independent` even though it contributes zero
+to `independent_publisher_count`. The Round 3 fix (F1/F2 of that round —
+requiring `independent_publisher_count >= 1` alongside `_CORROBORATED_
+ANCHORS` membership in `tiers.has_cross_source_corroboration`) MITIGATES
+this downstream, at the confidence-gating layer, but the root cause —
+anchor selection itself not consulting the registry — is untouched. A
+root-cause fix belongs to its own scoped ruling (it would change
+`cluster.py`, which is outside this ADR's and this branch's scope fence)
+rather than being folded into a confidence-semantics ADR.
+
+(ii) **No authored `originating_entity_id` exists on `SourceItem`.**
+`independent_publisher_count` (and `CORROBORATION_METHODOLOGY_NOTE`'s G2
+disclosure, above) counts at `publisher_id` granularity — but for
+aggregator venues (e.g. arXiv, a preprint server hosting work from many
+unaffiliated research groups under one `publisher_id`), the entity that
+actually matters for independence is the ORIGINATING research group or
+organization, not the hosting venue. No field on `SourceItem` currently
+distinguishes them; `originating_entity_id` (defaulting to `publisher_id`
+for every non-aggregator source, where the two already coincide) is the
+natural future corroboration-dedup key, but adding it is a schema change to
+`SourceItem` — outside this ADR's scope fence — and needs its own ADR to
+work through the aggregator-detection question it would raise (how is
+"this publisher is an aggregator" determined, and by whom). The G2
+methodology note (Decision #2 above, findable via the P3 pointer added this
+round) is the interim disclosure: it tells the reader the counting rule is
+coarser than author/research-group granularity, so the measurement is
+honest about its own limits even without the future field.
 
 ## Alternatives considered
 

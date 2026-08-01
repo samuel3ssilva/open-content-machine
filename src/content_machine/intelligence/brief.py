@@ -72,7 +72,17 @@ from content_machine.intelligence.tiers import (
 # ``WeeklyBrief.confidence_rubric_version`` for the companion marker that is
 # owned by ``tiers.py`` specifically (confidence semantics, not the document
 # schema/wording this constant covers).
-BRIEF_VERSION = "gate-e0-m5-3"
+#
+# Round 5 (2026-08-01, this branch): bumped again from "gate-e0-m5-3" --
+# document wording only (F1's tiers.py fact-branch text fix, P1's sentence
+# restructure + evidence_level-4 disjunct resolution, P2's Tier2
+# recommended_action_reason field, P3's methodology-note pointer, P4's
+# single_sourced own-line rendering, P5's confidence de-duplication). See
+# ADR 0007's "Round 5" section. ``CONFIDENCE_RUBRIC_VERSION`` is
+# DELIBERATELY unchanged -- none of this round's fixes touch
+# ``tiers._assess_confidence``'s confidence-level semantics, only rendered
+# prose and additive schema fields around it.
+BRIEF_VERSION = "gate-e0-m5-4"
 
 REVIEW_STATUS = "awaiting_founder_review"
 
@@ -182,12 +192,51 @@ _CONSEQUENCE_SEVERITY_PHRASE: dict[int, str] = {
 
 _EVIDENCE_LEVEL_HUMAN_PHRASE: dict[int, str] = {
     5: "very strong evidence: an authoritative source plus rigorous independent analysis",
-    4: "strong evidence: a first-party source or rigorous independent evidence",
+    # 4 is deliberately absent: evidence_level 4 is reached by two
+    # structurally different anchors (see _EVIDENCE_LEVEL_4_PHRASE_BY_ANCHOR
+    # and _evidence_level_phrase below) -- P1 (product review round 5,
+    # MUST-FIX): the old single entry here, "a first-party source or
+    # rigorous independent evidence", was an unresolved disjunction that left
+    # the reader unable to tell which applied to a given topic.
     3: "a single first-party authoritative source",
     2: "limited evidence",
     1: "weak, largely uncorroborated evidence",
     0: "no meaningful evidence",
 }
+
+# P1 (product review round 5, MUST-FIX): evidence_level 4's two anchors,
+# resolved to the disjunct each one actually is -- same principle as F1's
+# resolution of tiers.py's D3 disjunction in the appendix text, applied here
+# to the higher-consequence Tier 1/2 BODY line. ``evid_4_first_party_plus_
+# independent`` genuinely combines a first-party leg with an independent
+# leg (both present, by construction -- see
+# ``cluster._evidence_level_and_marketing_risk``); ``evid_4_independent_
+# rigorous_alone`` has no first-party leg at all.
+_EVIDENCE_LEVEL_4_PHRASE_BY_ANCHOR: dict[str, str] = {
+    "evid_4_first_party_plus_independent": (
+        "strong evidence: a first-party source corroborated by independent evidence"
+    ),
+    "evid_4_independent_rigorous_alone": "strong evidence: rigorous independent evidence",
+}
+
+
+def _evidence_level_phrase(inputs: RankingInputs) -> str:
+    """P1 (product review round 5, MUST-FIX): the evidence-level phrase used
+    by :func:`_human_evidence_sentence`, resolved to the specific anchor for
+    ``evidence_level == 4`` (see :data:`_EVIDENCE_LEVEL_4_PHRASE_BY_ANCHOR`)
+    instead of the old unresolved disjunction. Every other evidence_level
+    keeps its existing, non-disjunctive phrase from
+    :data:`_EVIDENCE_LEVEL_HUMAN_PHRASE` unchanged. Falls back to the
+    generic ``evidence level N`` text for an evidence_level this dict does
+    not cover (defensive only -- ``cluster.py`` only ever produces 0-5)."""
+    if inputs.evidence_level == 4:
+        return _EVIDENCE_LEVEL_4_PHRASE_BY_ANCHOR.get(
+            inputs.evidence_anchor_id,
+            "strong evidence: a first-party source or rigorous independent evidence",
+        )
+    return _EVIDENCE_LEVEL_HUMAN_PHRASE.get(
+        inputs.evidence_level, f"evidence level {inputs.evidence_level}"
+    )
 
 # --- library movements (M6 deferral note for a standalone M5 brief) --------
 LIBRARY_MOVEMENTS_DEFERRED_NOTE = (
@@ -279,6 +328,14 @@ class Tier2Item(BaseModel):
     principal_evidence: str
     confidence: ConfidenceLevel
     recommended_action: RecommendedAction
+    # P2 (product review round 5): see Tier1LeanItem's field of the same
+    # name -- identical semantics, applied to Tier 2. Round 4 already
+    # required this for Tier 1 ("Tier 1 already prints its reason"); Tier 2
+    # used to print a bare action word, leaving an unexplained "save" next
+    # to a Study Queue line that reads, to a quick glance, like "read it now"
+    # -- see ADR 0007's "Study Queue / Tier 2 action" decision for why this
+    # field (not a light-study gate change) is this round's fix.
+    recommended_action_reason: str
     # Gate E0 (E0.1, product ruling P1): see Tier1LeanItem's field of the
     # same name -- identical semantics, applied to Tier 2.
     adversarial_security_flags: tuple[str, ...] = Field(default_factory=tuple)
@@ -340,7 +397,18 @@ class ExperimentSelection(BaseModel):
 
 
 class ContentOpportunity(BaseModel):
-    """One topic that passed the content-opportunity editorial-gate proxy."""
+    """One topic that passed the content-opportunity editorial-gate proxy.
+
+    P4 (product review round 5): ``single_sourced`` is a STRUCTURED flag,
+    not text baked into ``reason`` -- the G3 single-sourced caveat used to
+    be appended to the tail of ``reason`` (already this section's longest,
+    most machine-shaped line), where it was easy to miss. The Markdown
+    renderer now gives it its own line instead (see
+    ``_render_content_opportunities_section``), the same "give the caveat a
+    visually distinct line" principle P3 (round 4) used for the
+    Founder-limitation blockquote, applied here to a machine-generated
+    caveat. ``reason`` itself now states only the base fact/relevance
+    rationale."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -348,6 +416,7 @@ class ContentOpportunity(BaseModel):
     canonical_title: str
     rank: int
     reason: str
+    single_sourced: bool = False
 
 
 class ContentOpportunitySelection(BaseModel):
@@ -591,18 +660,23 @@ def _human_what_changed(anchor: SourceItem) -> str:
     return anchor.change_class_rationale or anchor.summary_normalized
 
 
-def _human_why_it_matters(inputs: RankingInputs, claim: ClaimAssessment) -> str:
+def _human_why_it_matters(inputs: RankingInputs) -> str:
     """Deterministic, human-readable template built ONLY from already-computed
-    structured fields (topic_tags, action_required, claim_class, confidence)
-    -- no rubric jargon (raw/effective values, weights, caps/floors)."""
+    structured fields (topic_tags, action_required) -- no rubric jargon
+    (raw/effective values, weights, caps/floors).
+
+    P5 (product review round 5, minor -- de-duplication): this used to end
+    with its own "{claim_class} at {confidence} confidence." sentence, which
+    said the exact same thing as the very next bullet
+    (``evidence_and_confidence``, i.e. :func:`_human_evidence_sentence`) --
+    every Tier 1 block stated "medium confidence" (or whichever level) twice
+    in adjacent lines. Classification now lives in exactly ONE place: the
+    evidence/confidence line."""
     territory = ", ".join(sorted(inputs.topic_tags)) if inputs.topic_tags else "no matched tag"
     action_phrase = _ACTION_REQUIRED_HUMAN_PHRASE.get(
         inputs.action_required, inputs.action_required
     )
-    return (
-        f"On-territory ({territory}); {action_phrase}. "
-        f"{claim.claim_class} at {claim.confidence} confidence."
-    )
+    return f"On-territory ({territory}); {action_phrase}."
 
 
 def _human_practical_consequence(inputs: RankingInputs, consequence: DimensionScore) -> str:
@@ -675,13 +749,23 @@ def _human_evidence_sentence(
     bare comma produced a comma-splice that said "independent evidence"
     twice in one breath ("...rigorous independent evidence, independent
     evidence from a single source."). ``independence_clause`` below is now a
-    full VERB CLAUSE ("no second, independent source corroborates it") joined
-    with "and" instead of a bare comma, so the sentence reads as one
-    grammatical whole in every evidence-level/corroboration combination,
-    without repeating "independent evidence" as a noun phrase twice."""
-    evidence_phrase = _EVIDENCE_LEVEL_HUMAN_PHRASE.get(
-        inputs.evidence_level, f"evidence level {inputs.evidence_level}"
-    )
+    full VERB CLAUSE ("no second, independent source corroborates it").
+
+    P1 (product review round 5, MUST-FIX -- "worse than before"): joining
+    the two with "and" (round 4's fix) was STILL wrong: "Strong evidence: a
+    first-party source or rigorous independent evidence, and no second,
+    independent source corroborates it." conjoins a noun phrase with a
+    finite clause (a category mismatch), and -- worse -- "Strong evidence:"
+    opens an explanatory scope, so everything after the colon reads as
+    elaboration OF "strong evidence" rather than a limit on it, inverting
+    the exact signal this whole line exists to deliver. The evidence phrase
+    and the independence clause are now two SEPARATE sentences. Also,
+    ``evidence_phrase`` is now built by :func:`_evidence_level_phrase`,
+    which resolves evidence_level 4's old unresolved disjunction to the
+    anchor actually reached (see that function's docstring) -- the reader
+    can now tell which of the two evidence_level-4 anchors applies to THIS
+    topic, instead of being shown both options every time."""
+    evidence_phrase = _evidence_level_phrase(inputs)
     if claim.confidence == "high":
         independence_clause = "the claim is corroborated across multiple distinct sources"
     elif independent_publisher_count >= 2:
@@ -691,7 +775,7 @@ def _human_evidence_sentence(
     else:
         independence_clause = "no independent source corroborates it"
     return (
-        f"{evidence_phrase.capitalize()}, and {independence_clause}. "
+        f"{evidence_phrase.capitalize()}. {independence_clause.capitalize()}. "
         f"Classified as {claim.claim_class} at {claim.confidence} confidence."
     )
 
@@ -727,7 +811,7 @@ def _build_tier1_lean(
         topic_id=topic.topic_id,
         canonical_title=topic.canonical_title,
         what_changed=_human_what_changed(anchor),
-        why_it_matters=_human_why_it_matters(inputs, topic.claim),
+        why_it_matters=_human_why_it_matters(inputs),
         # P2 (product review round 4, MUST-FIX): routed through the same
         # human-prose builder Tier 2 already uses, instead of piping
         # tiers.py's raw audit rationale (confidence_reason -- three
@@ -766,6 +850,7 @@ def _build_tier2(
         ),
         confidence=topic.claim.confidence,
         recommended_action=topic.tier_assignment.recommended_action,
+        recommended_action_reason=topic.tier_assignment.recommended_action_reason,
         adversarial_security_flags=_adversarial_flags(topic),
     )
 
@@ -925,8 +1010,10 @@ def _build_content_opportunities(
     auto-publish path -- see ADR 0007's addendum), but a topic that reached
     ``medium`` (or, in principle, ``high``) with no genuine cross-source
     corroboration (``tiers.has_cross_source_corroboration`` is False) must
-    say so plainly in its own reason line, not leave it for the reader to
-    infer from the confidence label alone. Negated/advisory wording only
+    say so plainly, not leave it for the reader to infer from the confidence
+    label alone -- rendered on its own line (P4, product review round 5),
+    never appended to the tail of this function's already-longest ``reason``
+    line (see :class:`ContentOpportunity`). Negated/advisory wording only
     (Part B's ban on affirmative ``corroborat*`` phrasing): this states the
     ABSENCE of a second source and instructs the human reviewer, never
     claims corroboration exists."""
@@ -945,14 +1032,13 @@ def _build_content_opportunities(
             f"relevance effective_value={relevance.effective_value} >= 4 "
             "(on-territory)"
         )
-        if single_sourced_by_topic_id.get(topic.topic_id, True):
-            reason += " -- single-sourced: corroborate before publishing"
         opportunities.append(
             ContentOpportunity(
                 topic_id=topic.topic_id,
                 canonical_title=topic.canonical_title,
                 rank=topic.rank,
                 reason=reason,
+                single_sourced=single_sourced_by_topic_id.get(topic.topic_id, True),
             )
         )
         # Defensive cap, currently structurally unreachable: Tier 1 never
@@ -1112,9 +1198,19 @@ def _build_executive_summary(
     single_source_count = sum(
         1 for t in top_n_topics if single_sourced_by_topic_id.get(t.topic_id, True)
     )
+    # P3 (product review round 5): this sentence is only true because
+    # independent_publisher_count is counted at publisher/venue granularity
+    # (CORROBORATION_METHODOLOGY_NOTE, G2) -- cluster two same-venue items
+    # into one topic and the count here would change without the underlying
+    # sourcing changing. The existing "(see appendix for method)" pointer
+    # convention (already used by the reading/study-time header lines) is
+    # applied here too, so the reader can find the note that makes this
+    # sentence honest instead of it sitting unfindable under the appendix
+    # heading with nothing pointing to it.
     sentences.append(
         f"{single_source_count} of the Top {len(top_n_topics)} topics have no second, "
-        "distinct independent source -- no independent corroboration has been found for them."
+        "distinct independent source -- no independent corroboration has been found for them "
+        "(see appendix for method)."
     )
 
     if discarded:
@@ -1527,12 +1623,27 @@ def _render_tier2_section(
         lines.append(f"### {item.rank}. {item.canonical_title}")
         lines.append(f"- **Explanation:** {item.explanation}")
         lines.append(f"- **Practical consequence:** {item.practical_consequence}")
+        # P5 (product review round 5, minor -- de-duplication): no separate
+        # bare "- **Confidence:** {level}" bullet here any more --
+        # principal_evidence (above) already ends with "Classified as
+        # {claim_class} at {confidence} confidence.", so a bare repeat of
+        # just the level, one line down, said the same thing a third time
+        # (Tier 1's why_it_matters/evidence_and_confidence pair had the same
+        # defect -- see _human_why_it_matters).
         lines.append(f"- **Principal evidence:** {item.principal_evidence}")
-        lines.append(f"- **Confidence:** {item.confidence}")
         # P3 (product review round 4): same reordering as Tier 1 -- the
         # caveat renders before the recommendation it qualifies.
         lines.extend(_limitation_lines(item.topic_id, limitations_overlay))
-        lines.append(f"- **Recommended action:** {item.recommended_action}")
+        # P2 (product review round 5): the reason now renders alongside the
+        # action, mirroring Tier 1's "- **Recommended action:** {action} --
+        # {reason}" line below -- see ADR 0007's "Study Queue / Tier 2
+        # action" decision for why (a bare action word left "save" looking
+        # unexplained next to the Study Queue's own light-study line for the
+        # SAME topic).
+        lines.append(
+            f"- **Recommended action:** {item.recommended_action} -- "
+            f"{item.recommended_action_reason}"
+        )
         if item.adversarial_security_flags:
             lines.append(
                 "- **Security flags:** " + ", ".join(item.adversarial_security_flags)
@@ -1592,6 +1703,12 @@ def _render_content_opportunities_section(brief: WeeklyBrief) -> list[str]:
     if brief.content_opportunities.opportunities:
         for item in brief.content_opportunities.opportunities:
             lines.append(f"- **{item.canonical_title}** (rank {item.rank}): {item.reason}")
+            # P4 (product review round 5): its own line, directly under the
+            # machine-shaped rank/reason line it qualifies -- not appended
+            # to that line's tail, for the section that directly precedes
+            # publishing.
+            if item.single_sourced:
+                lines.append("  - _Single-sourced: corroborate before publishing._")
     else:
         lines.append(f"- None -- {brief.content_opportunities.none_reason}")
     return lines

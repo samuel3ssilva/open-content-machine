@@ -312,11 +312,55 @@ def test_golden_existing_synthetic_fixture_output_is_unchanged_by_gate_d() -> No
     # same round):
     # markdown "b58d377fd9d6c4fb7947f2f895e58251c97bd0d79d87bfdd6104ba5811d40e48",
     # json "31d4c1822d1b41191cd37f95290af6297f35e4095dde2122c5757e4f72bc900f".
+    #
+    # Round 5 re-pin (2026-08-01, #5 -- same structural-count-proof standard
+    # as the previous four): the hashes below changed again, and MUST have --
+    # this round bumped BRIEF_VERSION ("gate-e0-m5-3" -> "gate-e0-m5-4",
+    # document wording only, CONFIDENCE_RUBRIC_VERSION unchanged) and fixed
+    # five more rendering/wording defects, verified per-topic against this
+    # exact fixture (the per-topic (rank, evidence_anchor_id, claim_class,
+    # confidence) dump behind this re-pin is unchanged from the pre-round-5
+    # dump except for the rendered text named below -- ranks/tiers/scores did
+    # not move):
+    #   - F1: tiers._classify_claim_class's fact-branch reason text changed
+    #     for every fact-classified topic's claim_class_reason (ranks 1, 2,
+    #     3, 4, 5, 10 on this fixture are claim_class='fact'; only ranks 1-3
+    #     render it, in the Tier 1 appendix -- ranks 4/5/10 carry the same
+    #     structured field but Tier2Item/RadarItem never expose it).
+    #   - P1: the shared evidence sentence is now two sentences instead of
+    #     one comma/"and"-joined sentence, for every Tier 1/2 topic (ranks
+    #     1-7); AND evidence_level 4's phrase is now resolved per anchor
+    #     instead of an unresolved disjunction, affecting ranks 1 and 4
+    #     (evid_4_first_party_plus_independent -> "a first-party source
+    #     corroborated by independent evidence") and rank 3
+    #     (evid_4_independent_rigorous_alone -> "rigorous independent
+    #     evidence"). Ranks 2, 5, 6, 7, 8, 9, 10 are not at evidence_level 4,
+    #     so only the sentence-split applies to them (ranks 6-9's evidence
+    #     phrase text itself is unchanged; rank 10 is Tier 3, a different
+    #     paragraph builder untouched by this line).
+    #   - P2: Tier2Item gains recommended_action_reason, rendered next to
+    #     Tier 2's "Recommended action" line -- ranks 4-7.
+    #   - P3: the executive summary's Top-N single-source sentence gains a
+    #     "(see appendix for method)" pointer -- one sentence, run-level.
+    #   - P4: ContentOpportunity's single-sourced disclosure moved from a
+    #     `reason`-suffix to a structured field rendered on its own Markdown
+    #     line -- this fixture's 3 content opportunities are ranks 1, 2, 3;
+    #     rank 1 is cross-source corroborated (no disclosure either before or
+    #     after), ranks 2 and 3 are single-sourced (disclosure text
+    #     unchanged, only its line position moved).
+    #   - P5: Tier 1's why_it_matters no longer restates
+    #     "{claim_class} at {confidence} confidence" (ranks 1-3); Tier 2's
+    #     bare "- **Confidence:** {level}" bullet is removed (ranks 4-7).
+    # Confidence LEVEL, claim_class, score, and tier admission are unchanged
+    # for every topic -- see the unchanged structural counts above and
+    # unchanged ranked[0][1].score == 80. Old hashes (pre-round-5):
+    # markdown "232f204e03c74cbb49f5e134c786671a2688e9b9f9355919f38575af219978ac",
+    # json "8a2b830f28e5065198e6f076caab9bdc3f4e2fbda61e56c9793687c33f1d8442".
     assert (
         hashlib.sha256(markdown.encode("utf-8")).hexdigest()
-        == "232f204e03c74cbb49f5e134c786671a2688e9b9f9355919f38575af219978ac"
+        == "98b9609314cf60e2f6b9d0df6e332d66e09eded987a235c5098b0faafc846493"
     )
     assert (
         hashlib.sha256(brief.model_dump_json().encode("utf-8")).hexdigest()
-        == "8a2b830f28e5065198e6f076caab9bdc3f4e2fbda61e56c9793687c33f1d8442"
+        == "36433ca24801bce184e842e13ed851531d0e7d8961e4f22f01e1a5482290060e"
     )

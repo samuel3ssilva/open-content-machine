@@ -126,8 +126,20 @@ def _classify_claim_class(inputs: RankingInputs) -> tuple[ClaimClass, str]:
     ``fact`` reuses ``has_direct_artifact_or_independent_source`` (Founder
     decision D3) unchanged -- that fact is already exactly "the change is
     attested by an artifact": a first-party or non-subject authoritative
-    source, a self-published rigorous artifact, or genuine independent
-    corroboration.
+    artifact, a self-published rigorous artifact, or evidence from at least
+    one publisher structurally independent of the subject.
+
+    Fable ruling 2026-08-01 (reversing an earlier "it's just a disjunction"
+    classification): the third disjunct of ``has_direct_artifact_or_
+    independent_source`` is ``independent_publisher_count > 0`` --
+    ``has_genuine_independent_evidence`` in ``cluster.py`` -- and that is
+    independent EVIDENCE, not independent CORROBORATION: a single source
+    suffices, no second source is required. For the anchor
+    ``evid_4_independent_rigorous_alone``, the first three disjuncts
+    (first-party authoritative, non-subject authoritative, first-party
+    artifact) are all false by construction, so this third disjunct is the
+    ONLY one that holds -- and only under the "evidence" reading. Calling it
+    "corroboration" here would be false for exactly that anchor.
 
     Everything else is ``hypothesis`` -- rumor, isolated uncorroborated
     secondary news (D2), or any evidentiary basis that does not establish the
@@ -152,8 +164,8 @@ def _classify_claim_class(inputs: RankingInputs) -> tuple[ClaimClass, str]:
                 "has_direct_artifact_or_independent_source=True "
                 f"(evidence_anchor_id={inputs.evidence_anchor_id}): the change is attested "
                 "by a first-party or non-subject authoritative artifact, a self-published "
-                "rigorous artifact, or genuine independent corroboration (Founder decision "
-                "D3)."
+                "rigorous artifact, or evidence from at least one publisher structurally "
+                "independent of the subject (Founder decision D3)."
             ),
         )
     return (

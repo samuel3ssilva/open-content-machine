@@ -505,7 +505,10 @@ def test_human_evidence_phrase_reports_two_or_more_distinct_sources() -> None:
     # clause ("the claim is supported by...") rather than a noun phrase, to
     # fix a comma-splice/repeated-noun-phrase grammar regression -- see
     # brief._human_evidence_sentence's docstring.
-    assert "the claim is supported by two or more independent sources" in target.principal_evidence
+    # P1 (product review round 5): the evidence phrase and the independence
+    # clause are now two separate sentences (no longer comma/"and"-joined),
+    # so the independence clause starts its own sentence and is capitalized.
+    assert "The claim is supported by two or more independent sources" in target.principal_evidence
     assert "single source" not in target.principal_evidence
 
 
@@ -1686,7 +1689,13 @@ def test_g2_corroboration_methodology_note_present_in_brief_and_appendix() -> No
     assert parsed["corroboration_methodology_note"] == brief.corroboration_methodology_note
 
 
-# --- G3: single-sourced content opportunities disclose it in their reason --
+# --- G3: single-sourced content opportunities disclose it on their own line -
+
+# P4 (product review round 5): the disclosure moved from a suffix baked into
+# `reason` to a structured `single_sourced: bool` field, rendered on its own
+# Markdown line (see `_render_content_opportunities_section`) instead of
+# appended to the tail of `reason` -- this test now checks the flag and the
+# rendered line separately, rather than substring-matching `reason`.
 
 
 def test_g3_single_sourced_content_opportunity_discloses_it_with_negated_wording() -> None:
@@ -1695,13 +1704,22 @@ def test_g3_single_sourced_content_opportunity_discloses_it_with_negated_wording
     tiered = assign_tiers(ranked, clusters_by_topic_id, items_by_id)
     brief = build_weekly_brief(tiered, ranked, clusters_by_topic_id, items_by_id, WEEK_LABEL)
     confidence_by_topic_id = {t.topic_id: t.claim.confidence for t in tiered}
+    markdown = render_markdown(brief)
+    section = _extract_markdown_section(markdown, "## Content Opportunities")
 
     assert brief.content_opportunities.opportunities  # sanity: fixture has some
+    assert any(opp.single_sourced for opp in brief.content_opportunities.opportunities)
     for opp in brief.content_opportunities.opportunities:
-        if "single-sourced" in opp.reason:
+        # `reason` itself is now the base rationale only -- never carries the
+        # single-sourced suffix (P4).
+        assert "single-sourced" not in opp.reason
+        if opp.single_sourced:
             # Advisory/negated wording only -- never an affirmative
-            # corroboration claim.
-            assert "corroborate before publishing" in opp.reason
+            # corroboration claim -- rendered on its OWN line, directly
+            # under this opportunity's rank/reason line.
+            opp_index = section.index(f"**{opp.canonical_title}** (rank {opp.rank}):")
+            following = section[opp_index : opp_index + 400]
+            assert "_Single-sourced: corroborate before publishing._" in following
         else:
             # Only a topic that IS cross-source corroborated may omit the
             # disclosure -- i.e. it must be 'high' confidence via genuine
