@@ -921,15 +921,20 @@ def intelligence_weekly_run(
             except (OSError, json.JSONDecodeError, AttributeError):
                 # Unreadable/malformed manifest: treat as "not confirmed
                 # applied" -- the conservative, warn-worthy assumption below.
+                # Round 3 (Fable final recheck): the warning text must stay
+                # true on THIS path too -- an unreadable/malformed manifest
+                # never actually "records" present=false, it simply cannot be
+                # read, so the wording below is phrased to hold in both the
+                # readable-and-false and the unreadable/malformed cases.
                 on_disk_overlay_present = False
             if not on_disk_overlay_present:
                 typer.secho(
                     "WARNING: a valid limitations overlay was supplied for this run, but "
                     f"the existing run already completed on disk at {output_dir} "
                     f"(run_id={outcome.run_id}) does NOT carry it -- its brief.md has no "
-                    "limitations text and run-manifest.json records "
-                    "limitations_overlay.present=false. The overlay was NOT applied. Pass "
-                    "--regenerate to redo this run's outputs with the overlay applied.",
+                    "limitations text and run-manifest.json does not record the overlay as "
+                    "applied. The overlay was NOT applied. Pass --regenerate to redo this "
+                    "run's outputs with the overlay applied.",
                     fg=typer.colors.YELLOW,
                     err=True,
                 )

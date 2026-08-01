@@ -184,9 +184,24 @@ def _assess_confidence(
     ``has_cross_source_corroboration`` (either a corroborating evidence
     anchor, or two-or-more distinct independent publishers). A single-source
     independent topic is capped at ``medium`` and says so explicitly, rather
-    than being rendered as "genuine independent corroboration is present"."""
-    has_cross_source_corroboration = (
-        inputs.evidence_anchor_id in _CORROBORATED_ANCHORS or independent_publisher_count >= 2
+    than being rendered as "genuine independent corroboration is present".
+
+    Fable ruling 2026-08-01 (round 3, final recheck defect): a
+    ``_CORROBORATED_ANCHORS`` member alone is NOT sufficient -- both anchors
+    in that set are reached by a FIRST-PARTY leg plus a SECOND, independent
+    leg, and it is the independent leg that must actually be countable.
+    ``cluster._evidence_level_and_marketing_risk`` sets
+    ``has_independent_rigorous``/``has_independent_analysis`` off the raw
+    evidence_type/publisher check alone -- it does not consult
+    ``_is_independent``/``may_supply_independence`` -- so a Gate E0.3
+    registry-denied member (``may_supply_independence=False``) can still
+    drive the cluster to ``evid_4_first_party_plus_independent`` while
+    contributing ZERO to ``independent_publisher_count``. Requiring
+    ``independent_publisher_count >= 1`` alongside the anchor closes that
+    gap: the anchor alone no longer manufactures a second source out of a
+    leg the registry has explicitly forbidden from supplying independence."""
+    has_cross_source_corroboration = independent_publisher_count >= 2 or (
+        inputs.evidence_anchor_id in _CORROBORATED_ANCHORS and independent_publisher_count >= 1
     )
     if claim_class != "fact":
         return (
@@ -227,13 +242,27 @@ def _assess_confidence(
     # also clears >= 4 -- see the corroboration check above). The text below
     # is therefore true whatever independent_publisher_count is, and asserts
     # nothing about single-sourcing.
+    #
+    # Fable ruling 2026-08-01 (round 3, final recheck defect): the text
+    # ALSO used to say "evidence_level is below the >= 4 bar that high
+    # confidence requires" unconditionally -- FALSE once the anchor +
+    # independent_publisher_count >= 1 corroboration check above was
+    # introduced, because this branch is now also reached at evidence_level
+    # == 4 whenever cross-source corroboration is absent (e.g. a Gate E0.3
+    # registry-denied member drove the anchor to
+    # evid_4_independent_rigorous_alone or evid_4_first_party_plus_independent
+    # without supplying a countable independent publisher). The wording below
+    # names the real, two-part bar (level AND corroboration) instead of
+    # asserting which part failed, so it stays true at level 4 without
+    # corroboration and at any level below 4.
     return (
         "medium",
         (
             f"claim_class=fact, evidence_level={inputs.evidence_level}, "
             f"has_independent_evidence={inputs.has_independent_evidence}, "
             f"independent_publisher_count={independent_publisher_count}: "
-            "evidence_level is below the >= 4 bar that high confidence requires."
+            "does not meet the high-confidence bar (evidence_level >= 4 together with "
+            "cross-source corroboration)."
         ),
     )
 

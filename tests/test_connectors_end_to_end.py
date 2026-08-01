@@ -238,11 +238,42 @@ def test_golden_existing_synthetic_fixture_output_is_unchanged_by_gate_d() -> No
     # Old hashes (pre-Part-C):
     # markdown "a83aa65ea1c38b987bca8b64403e9a2c478540ab3686799b7250e567857c89be",
     # json "348db9d34fed658ee92bdc96e9e85899b9ad1a102ce412bfdca98f5f367cd5e0".
+    #
+    # Round 3 (Fable final-recheck defect, F1+F2) re-pin: the hashes below
+    # changed again. F1 (tiers._assess_confidence's has_cross_source_
+    # corroboration predicate now also requires independent_publisher_count
+    # >= 1 alongside a _CORROBORATED_ANCHORS membership) changes NOTHING on
+    # this fixture -- verified directly against the per-topic dump below --
+    # because this fixture has no may_supply_independence=False items (see
+    # the R4 comment above), and every non-denied member whose evidence_type
+    # drives a _CORROBORATED_ANCHORS anchor also, by construction, satisfies
+    # _is_independent and therefore independent_publisher_count >= 1. Only
+    # F2 (the branch-(d) catch-all text, changed unconditionally from
+    # "evidence_level is below the >= 4 bar that high confidence requires"
+    # -- false at evidence_level == 4, the exact round-3 defect -- to "does
+    # not meet the high-confidence bar (evidence_level >= 4 together with
+    # cross-source corroboration)") moved anything here, and it moved
+    # exactly the two topics the Part-C re-pin comment above already names
+    # as reaching that catch-all branch on this fixture: rank 2 ("Core
+    # Project Spec: Breaking Change To Tool Call Framing", Tier 1,
+    # evidence_level=3) and rank 5 ("VendorC Deprecates Legacy Harness
+    # Plugin API", Tier 2, evidence_level=3). For both, the OLD text
+    # ("evidence_level is below the >= 4 bar...") was not actually false on
+    # this fixture (both are below 4), so this re-pin is prose-only, not a
+    # bugfix on this fixture. Confidence LEVEL (medium for both), claim_class
+    # (fact), score, and tier admission are unchanged for every topic -- see
+    # the unchanged structural counts above, unchanged ranked[0][1].score ==
+    # 80, and the full per-topic (claim_class, confidence) dump used to
+    # derive this re-pin, which is identical to the pre-round-3 dump except
+    # for the two confidence_reason strings named above. Old hashes
+    # (pre-round-3):
+    # markdown "76f856ea357fc931a029b05ba110f3477ed5e00a4918e701f565d868df9eea45",
+    # json "3e782c404ca69aab5ced740d2667c0b4bca565d992f002a57c28a20249c20b34".
     assert (
         hashlib.sha256(markdown.encode("utf-8")).hexdigest()
-        == "76f856ea357fc931a029b05ba110f3477ed5e00a4918e701f565d868df9eea45"
+        == "50b221d238e6bc29107798ca34104ed91c8c7ac2c4adb63924d1a56b915da151"
     )
     assert (
         hashlib.sha256(brief.model_dump_json().encode("utf-8")).hexdigest()
-        == "3e782c404ca69aab5ced740d2667c0b4bca565d992f002a57c28a20249c20b34"
+        == "2bae3f0a4910a2e1b8196b60288d932eb853b4a34ec6c86e9aefe5eed817e8c7"
     )
