@@ -409,6 +409,102 @@ def test_tier2_practical_consequence_and_principal_evidence_are_human_not_rubric
         assert item.confidence in item.principal_evidence
 
 
+def _independent_two_source_topic(
+    topic_id: str, first_seen: date
+) -> tuple[SourceItem, TopicCluster, RankingInputs]:
+    """A Tier-2-eligible topic with evidence_level=3
+    (evid_3_independent_only) and independent_publisher_count=2 -- the QA
+    real case (Fable ruling 2026-08-01, follow-up, Part C): two
+    independent_analysis items from DIFFERENT publishers, no first-party
+    member. Confidence is 'medium' (evidence_level < 4 blocks 'high'), but
+    the claim carries genuine two-source independence -- distinct from the
+    single-source case ``_synthetic_topic(..., qualifies=True)`` already
+    covers (evid_4_independent_rigorous_alone, count=1)."""
+    anchor = _make_item(
+        item_id=f"{topic_id}-anchor",
+        subject_entity_ids=[f"{topic_id}-subject"],
+        evidence_type="independent_analysis",
+        topic_tags=["agents"],
+        publication_date=first_seen,
+        detection_date=first_seen,
+        stable_reference=f"https://example.com/{topic_id}",
+        title=f"Synthetic Topic {topic_id}",
+    )
+    cluster = _make_cluster(
+        topic_id=topic_id,
+        cluster_fingerprint=f"fp_{topic_id}",
+        canonical_title=f"Synthetic Topic {topic_id}",
+        anchor_item_id=anchor.item_id,
+        member_ids=[anchor.item_id],
+        member_roles={anchor.item_id: "primary"},
+        independent_publisher_count=2,
+        has_independent_evidence=True,
+        has_direct_artifact_or_independent_source=True,
+        evidence_level=3,
+        evidence_anchor_id="evid_3_independent_only",
+        marketing_risk=False,
+        first_seen=first_seen,
+        last_seen=first_seen,
+        cluster_size=2,
+        topic_tags=["agents"],
+        evidence_types=["independent_analysis"],
+    )
+    inputs = _make_inputs(
+        topic_id=topic_id,
+        topic_tags=["agents"],
+        change_class="material_change",
+        action_required="new_option_available",
+        evidence_level=3,
+        evidence_anchor_id="evid_3_independent_only",
+        has_independent_evidence=True,
+        has_direct_artifact_or_independent_source=True,
+        marketing_risk=False,
+        experiment_affordance="not_testable",
+        first_seen=first_seen,
+    )
+    return anchor, cluster, inputs
+
+
+def test_human_evidence_phrase_reports_two_or_more_distinct_sources() -> None:
+    """DEVIATION from Fable's literal Part B text (flagged for Fable to
+    ratify or correct): a topic with independent_publisher_count >= 2 but
+    evidence_level < 4 is medium confidence, never high -- but the OLD
+    two-branch phrasing rendered "independent evidence from a single
+    source" for it, which is false (there are two). The fixed phrase must
+    say "two or more distinct sources" and must never call it a single
+    source."""
+    profile = _profile()
+    clusters_by_topic_id: dict[str, TopicCluster] = {}
+    items_by_id: dict[str, SourceItem] = {}
+    ranked: list[tuple[RankingInputs, RankingBreakdown]] = []
+    # Ranks 1-3: simple non-qualifying filler topics (Tier 1 candidates that
+    # fall through to Tier 2 by rank) -- irrelevant to this test, just
+    # occupying the ranks ahead of the rank-4 target so it lands in the
+    # ALWAYS-Tier-2 rank-4-7 band (tiers.py: never Tier-1 dependent).
+    for i in range(1, 4):
+        topic_id = f"t_filler{i}"
+        anchor, cluster, inputs = _synthetic_topic(
+            topic_id, qualifies=False, first_seen=date(2026, 1, i)
+        )
+        clusters_by_topic_id[topic_id] = cluster
+        items_by_id[anchor.item_id] = anchor
+        ranked.append((inputs, score_topic(inputs, profile)))
+
+    target_topic_id = "t_two_indep"
+    anchor, cluster, inputs = _independent_two_source_topic(target_topic_id, date(2026, 1, 4))
+    clusters_by_topic_id[target_topic_id] = cluster
+    items_by_id[anchor.item_id] = anchor
+    ranked.append((inputs, score_topic(inputs, profile)))
+
+    tiered = assign_tiers(ranked, clusters_by_topic_id, items_by_id)
+    brief = build_weekly_brief(tiered, ranked, clusters_by_topic_id, items_by_id, WEEK_LABEL)
+
+    target = next(item for item in brief.tier2 if item.topic_id == target_topic_id)
+    assert target.confidence == "medium"
+    assert "independent evidence from two or more distinct sources" in target.principal_evidence
+    assert "single source" not in target.principal_evidence
+
+
 def test_dimension_rationales_for_tier2_still_live_in_the_appendix_dimension_breakdown() -> None:
     """F-B: the raw consequence/evidence rationale strings must not be LOST
     -- Tier 2 topics that also happen to be Tier 1 don't exist (disjoint

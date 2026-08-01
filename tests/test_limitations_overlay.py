@@ -1,10 +1,12 @@
 """Tests for content_machine.intelligence.limitations_overlay (Fable ruling
-2026-08-01, Part C: the Founder-approved, per-item limitations overlay).
+2026-08-01, Part C: the Founder-approved, per-item limitations overlay;
+rekeyed to be item_id-keyed under Part A of the 2026-08-01 follow-up
+ruling).
 
-All fixtures here are SYNTHETIC only -- invented topic/run ids and invented
-limitation text, never anything resembling the real 2026-W31 run or any real
-Founder-authored prose. No content in this file is loaded from, or written
-to, ``data/private/``.
+All fixtures here are SYNTHETIC only -- invented topic/item/run ids and
+invented limitation text, never anything resembling the real 2026-W31 run or
+any real Founder-authored prose. No content in this file is loaded from, or
+written to, ``data/private/``.
 """
 
 from __future__ import annotations
@@ -22,7 +24,6 @@ from content_machine.intelligence.limitations_overlay import (
     OVERLAY_FILENAME,
     LimitationsOverlayError,
     LimitationsOverlayResult,
-    corpus_topic_ids,
     load_limitations_overlay,
     rendered_topic_ids,
 )
@@ -53,7 +54,11 @@ def _write_overlay(path: Path, **fields: object) -> None:
     _write(path, json.dumps(payload))
 
 
-def _brief_from_real_fixture() -> object:
+def _real_fixture_pipeline() -> tuple[object, dict, list]:
+    """Returns (brief, item_topic_map, clusters) built from the shipped
+    synthetic fixture -- the same real pipeline objects a caller (cli/main.py)
+    would have via run_weekly, without pulling in the whole weekly.py window/
+    manifest machinery this module doesn't need."""
     items = load_signals(VALID_FIXTURE).items
     items_by_id = {item.item_id: item for item in items}
     clusters = cluster_items(items)
@@ -63,49 +68,54 @@ def _brief_from_real_fixture() -> object:
 
     ranked = rank_topics(inputs_list, load_profile(PROFILE_FIXTURE))
     tiered = assign_tiers(ranked, clusters_by_topic_id, items_by_id)
-    return build_weekly_brief(tiered, ranked, clusters_by_topic_id, items_by_id, WEEK_LABEL)
+    brief = build_weekly_brief(tiered, ranked, clusters_by_topic_id, items_by_id, WEEK_LABEL)
+    item_topic_map = {
+        item_id: cluster.topic_id for cluster in clusters for item_id in cluster.member_ids
+    }
+    return brief, item_topic_map, clusters
 
 
 # --- 1. unknown item_id -------------------------------------------------------
 
 
 def test_overlay_unknown_item_id_aborts_render(tmp_path: Path) -> None:
-    """An overlay item_id that names a topic this run never produced at all
-    (outside the corpus) must abort the entire render."""
+    """An overlay item_id that names an item this run never produced at all
+    (outside the corpus -- not a key of item_topic_map) must abort the
+    entire render."""
     overlay_path = tmp_path / OVERLAY_FILENAME
     _write_overlay(
         overlay_path,
-        limitations={"topic-not-in-corpus": "a synthetic, invented limitation about scope"},
+        limitations={"item-not-in-corpus": "a synthetic, invented limitation about scope"},
     )
-    with pytest.raises(LimitationsOverlayError, match="topic-not-in-corpus") as exc_info:
+    with pytest.raises(LimitationsOverlayError, match="item-not-in-corpus") as exc_info:
         load_limitations_overlay(
             overlay_path,
             run_id=RUN_ID,
-            corpus_topic_ids={"topic-a", "topic-b"},
+            item_topic_map={"item-a": "topic-a", "item-b": "topic-b"},
             rendered_topic_ids={"topic-a"},
         )
     # The error names the item_id and run_id only, never the limitation text.
     assert "a synthetic, invented limitation about scope" not in str(exc_info.value)
 
 
-# --- 2. item_id in corpus but never rendered ---------------------------------
+# --- 2. item_id in corpus but its containing topic never rendered ------------
 
 
 def test_overlay_unrendered_item_id_aborts_render(tmp_path: Path) -> None:
-    """An overlay item_id that names a real topic from this run's corpus
-    (e.g. one that was discarded below the Top N) but was never rendered
-    into a Tier 1/2/3 block must also abort -- there is no block to attach
-    the limitation to."""
+    """An overlay item_id whose containing topic is a real topic from this
+    run's corpus (e.g. one that was discarded below the Top N) but was never
+    rendered into a Tier 1/2/3 block must also abort -- there is no block to
+    attach the limitation to."""
     overlay_path = tmp_path / OVERLAY_FILENAME
     _write_overlay(
         overlay_path,
-        limitations={"topic-b": "a synthetic, invented limitation about scope"},
+        limitations={"item-b": "a synthetic, invented limitation about scope"},
     )
     with pytest.raises(LimitationsOverlayError, match="not rendered in the brief") as exc_info:
         load_limitations_overlay(
             overlay_path,
             run_id=RUN_ID,
-            corpus_topic_ids={"topic-a", "topic-b"},
+            item_topic_map={"item-a": "topic-a", "item-b": "topic-b"},
             rendered_topic_ids={"topic-a"},
         )
     assert "a synthetic, invented limitation about scope" not in str(exc_info.value)
@@ -121,15 +131,15 @@ def test_overlay_duplicate_item_id_aborts_render(tmp_path: Path) -> None:
     overlay_path = tmp_path / OVERLAY_FILENAME
     raw = (
         f'{{"schema_version": 1, "run_id": "{RUN_ID}", "provenance": "human_authored", '
-        '"limitations": {"topic-a": "first synthetic invented text", '
-        '"topic-a": "second synthetic invented text"}}'
+        '"limitations": {"item-a": "first synthetic invented text", '
+        '"item-a": "second synthetic invented text"}}'
     )
     _write(overlay_path, raw)
-    with pytest.raises(LimitationsOverlayError, match="duplicate key 'topic-a'") as exc_info:
+    with pytest.raises(LimitationsOverlayError, match="duplicate key 'item-a'") as exc_info:
         load_limitations_overlay(
             overlay_path,
             run_id=RUN_ID,
-            corpus_topic_ids={"topic-a"},
+            item_topic_map={"item-a": "topic-a"},
             rendered_topic_ids={"topic-a"},
         )
     assert "synthetic invented text" not in str(exc_info.value)
@@ -142,12 +152,12 @@ def test_overlay_empty_limitation_text_aborts_render(tmp_path: Path) -> None:
     """An empty or whitespace-only limitation string must abort -- absence of
     a limitation means the key is omitted entirely, never an empty value."""
     overlay_path = tmp_path / OVERLAY_FILENAME
-    _write_overlay(overlay_path, limitations={"topic-a": "   "})
+    _write_overlay(overlay_path, limitations={"item-a": "   "})
     with pytest.raises(LimitationsOverlayError, match="empty or whitespace-only"):
         load_limitations_overlay(
             overlay_path,
             run_id=RUN_ID,
-            corpus_topic_ids={"topic-a"},
+            item_topic_map={"item-a": "topic-a"},
             rendered_topic_ids={"topic-a"},
         )
 
@@ -160,7 +170,7 @@ def test_overlay_unparseable_file_aborts_render(tmp_path: Path) -> None:
     _write(overlay_path, "{not valid json at all")
     with pytest.raises(LimitationsOverlayError, match="unparseable"):
         load_limitations_overlay(
-            overlay_path, run_id=RUN_ID, corpus_topic_ids=set(), rendered_topic_ids=set()
+            overlay_path, run_id=RUN_ID, item_topic_map={}, rendered_topic_ids=set()
         )
 
 
@@ -175,7 +185,7 @@ def test_overlay_schema_invalid_file_aborts_render(tmp_path: Path) -> None:
     )
     with pytest.raises(LimitationsOverlayError, match="schema-invalid"):
         load_limitations_overlay(
-            overlay_path, run_id=RUN_ID, corpus_topic_ids=set(), rendered_topic_ids=set()
+            overlay_path, run_id=RUN_ID, item_topic_map={}, rendered_topic_ids=set()
         )
 
 
@@ -187,13 +197,13 @@ def test_overlay_run_id_mismatch_aborts_render(tmp_path: Path) -> None:
     _write_overlay(
         overlay_path,
         run_id="run-some-other-run-entirely",
-        limitations={"topic-a": "a synthetic, invented limitation about scope"},
+        limitations={"item-a": "a synthetic, invented limitation about scope"},
     )
     with pytest.raises(LimitationsOverlayError, match="does not match the run being rendered"):
         load_limitations_overlay(
             overlay_path,
             run_id=RUN_ID,
-            corpus_topic_ids={"topic-a"},
+            item_topic_map={"item-a": "topic-a"},
             rendered_topic_ids={"topic-a"},
         )
 
@@ -207,7 +217,7 @@ def test_overlay_absent_file_renders_without_limitations(tmp_path: Path) -> None
     result = load_limitations_overlay(
         overlay_path,
         run_id=RUN_ID,
-        corpus_topic_ids={"topic-a"},
+        item_topic_map={"item-a": "topic-a"},
         rendered_topic_ids={"topic-a"},
     )
     assert result is None
@@ -217,7 +227,7 @@ def test_overlay_absent_reproduces_baseline_rendering_byte_for_byte() -> None:
     """No overlay supplied at all (the default) must reproduce EXACTLY the
     pre-overlay rendering -- proving 'renders without limitations' really
     means unchanged output, not merely 'does not crash'."""
-    brief = _brief_from_real_fixture()
+    brief, _item_topic_map, _clusters = _real_fixture_pipeline()
     baseline = render_markdown(brief)
     assert render_markdown(brief, limitations_overlay=None) == baseline
     assert render_markdown(brief, limitations_overlay={}) == baseline
@@ -272,16 +282,19 @@ def test_overlay_never_reaches_strip_for_model_or_providers() -> None:
 
 
 def test_valid_overlay_composes_only_into_rendered_markdown() -> None:
-    """A fully valid overlay renders the exact literal line inside the
-    named item's own Tier 1/2/3 block, and changes NOTHING else -- not the
-    structured WeeklyBrief object, not any other item's text."""
-    brief = _brief_from_real_fixture()
+    """A fully valid overlay renders the exact literal line inside the named
+    item's CONTAINING TOPIC's own Tier 1/2/3 block, and changes NOTHING else
+    -- not the structured WeeklyBrief object, not any other topic's text."""
+    brief, item_topic_map, _clusters = _real_fixture_pipeline()
     baseline_markdown = render_markdown(brief)
 
-    corpus = corpus_topic_ids(brief)
     rendered = rendered_topic_ids(brief)
-    assert corpus and rendered
-    target_topic_id = next(iter(rendered))
+    assert item_topic_map and rendered
+    target_item_id, target_topic_id = next(
+        (item_id, topic_id)
+        for item_id, topic_id in item_topic_map.items()
+        if topic_id in rendered
+    )
     target_title = next(
         item.canonical_title
         for item in (*brief.tier1, *brief.tier2, *brief.tier3)
@@ -289,7 +302,7 @@ def test_valid_overlay_composes_only_into_rendered_markdown() -> None:
     )
 
     overlay_result = LimitationsOverlayResult(
-        limitations={target_topic_id: "a synthetic, invented limitation for this one item"},
+        limitations={target_topic_id: ["a synthetic, invented limitation for this one item"]},
         overlay_sha256="0" * 64,
         item_count=1,
         provenance="human_authored",
@@ -305,4 +318,78 @@ def test_valid_overlay_composes_only_into_rendered_markdown() -> None:
     # reproduces the baseline exactly.
     new_lines = set(composed_markdown.splitlines()) - set(baseline_markdown.splitlines())
     assert len(new_lines) == 1
-    assert target_title  # sanity: the target item really was found
+    assert target_title  # sanity: the target topic really was found
+    assert target_item_id  # sanity: the target item really was found
+
+
+def test_valid_overlay_via_load_limitations_overlay_resolves_item_to_topic(
+    tmp_path: Path,
+) -> None:
+    """End-to-end through load_limitations_overlay itself (not a directly
+    constructed LimitationsOverlayResult): an item_id-keyed overlay file
+    resolves to the topic-keyed shape render_markdown expects."""
+    brief, item_topic_map, _clusters = _real_fixture_pipeline()
+    rendered = rendered_topic_ids(brief)
+    target_item_id, target_topic_id = next(
+        (item_id, topic_id)
+        for item_id, topic_id in item_topic_map.items()
+        if topic_id in rendered
+    )
+
+    overlay_path = tmp_path / OVERLAY_FILENAME
+    _write_overlay(
+        overlay_path,
+        limitations={target_item_id: "a synthetic, invented limitation for this one item"},
+    )
+    result = load_limitations_overlay(
+        overlay_path, run_id=RUN_ID, item_topic_map=item_topic_map, rendered_topic_ids=rendered
+    )
+    assert result is not None
+    assert result.limitations == {
+        target_topic_id: ["a synthetic, invented limitation for this one item"]
+    }
+    assert result.item_count == 1
+
+
+def test_multi_member_topic_two_item_ids_render_two_distinct_lines(tmp_path: Path) -> None:
+    """Fable's explicit ruling: two distinct item_ids in the SAME rendered
+    topic each carry a limitation -- both render, one line each, in the
+    overlay file's authored order. This is legitimate, not a duplicate."""
+    brief, item_topic_map, clusters = _real_fixture_pipeline()
+    rendered = rendered_topic_ids(brief)
+    clusters_by_topic_id = {c.topic_id: c for c in clusters}
+    multi_member_topic_id = next(
+        c.topic_id
+        for c in clusters
+        if c.topic_id in rendered and len(c.member_ids) >= 2
+    )
+    member_ids = clusters_by_topic_id[multi_member_topic_id].member_ids
+    item_a, item_b = member_ids[0], member_ids[1]
+
+    overlay_path = tmp_path / OVERLAY_FILENAME
+    _write_overlay(
+        overlay_path,
+        limitations={
+            item_a: "first synthetic invented limitation",
+            item_b: "second synthetic invented limitation",
+        },
+    )
+    result = load_limitations_overlay(
+        overlay_path, run_id=RUN_ID, item_topic_map=item_topic_map, rendered_topic_ids=rendered
+    )
+    assert result is not None
+    assert result.limitations[multi_member_topic_id] == [
+        "first synthetic invented limitation",
+        "second synthetic invented limitation",
+    ]
+    assert result.item_count == 2
+
+    composed_markdown = render_markdown(brief, limitations_overlay=result.limitations)
+    assert (
+        "- **Founder-noted limitation (human-authored):** first synthetic invented limitation"
+        in composed_markdown
+    )
+    assert (
+        "- **Founder-noted limitation (human-authored):** second synthetic invented limitation"
+        in composed_markdown
+    )

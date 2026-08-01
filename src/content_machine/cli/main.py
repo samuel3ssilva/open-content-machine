@@ -7,6 +7,7 @@ rows by index and columns by name, never personal field values.
 
 from __future__ import annotations
 
+import json
 import os
 from collections import Counter
 from datetime import UTC, datetime
@@ -45,7 +46,6 @@ from content_machine.intelligence.library import load_topics
 from content_machine.intelligence.limitations_overlay import (
     OVERLAY_FILENAME,
     LimitationsOverlayError,
-    corpus_topic_ids,
     load_limitations_overlay,
     rendered_topic_ids,
 )
@@ -843,21 +843,26 @@ def intelligence_weekly_run(
 
     assert output_dir is not None  # guarded above
 
-    # Fable ruling 2026-08-01 (Part C): the Founder-approved, per-item
+    # Fable ruling 2026-08-01 (Part C; rekeyed by item_id under Part A of the
+    # 2026-08-01 follow-up ruling): the Founder-approved, per-item
     # limitations overlay -- a private, run-specific, human-authored JSON
     # sidecar a human places at <output_dir>/limitations-overlay.json BEFORE
-    # this command runs. Absent file is NOT a failure (the run proceeds with
-    # no limitations composed); any other validation failure aborts the
-    # ENTIRE render -- nothing is written -- so this must run BEFORE
-    # write_weekly_run_outputs is ever called. Composed ONLY into the
-    # rendered brief.md string (never into result.brief / brief.json, the
-    # pipeline, or a model boundary).
+    # this command runs, keyed by SourceItem.item_id (never topic_id -- a
+    # topic_id is run-scoped and would not exist yet at authoring time).
+    # Absent file is NOT a failure (the run proceeds with no limitations
+    # composed); any other validation failure aborts the ENTIRE render --
+    # nothing is written -- so this must run BEFORE write_weekly_run_outputs
+    # is ever called. load_limitations_overlay validates each item_id
+    # against result.item_topic_map and resolves it to its containing
+    # topic_id BEFORE render_markdown is ever called with it -- composed
+    # ONLY into the rendered brief.md string (never into result.brief /
+    # brief.json, the pipeline, or a model boundary).
     overlay_path = output_dir / OVERLAY_FILENAME
     try:
         overlay_result = load_limitations_overlay(
             overlay_path,
             run_id=result.manifest.run_id,
-            corpus_topic_ids=corpus_topic_ids(result.brief),
+            item_topic_map=result.item_topic_map,
             rendered_topic_ids=rendered_topic_ids(result.brief),
         )
     except LimitationsOverlayError as exc:
@@ -893,6 +898,41 @@ def intelligence_weekly_run(
             typer.echo(f"  - {name}")
     else:
         typer.echo(f"Skipped write: {outcome.skipped_reason}")
+        # Fable ruling 2026-08-01 (Part B, follow-up: "idempotency skip
+        # gap"): a validated overlay this invocation, combined with a skip
+        # (a completed run with a matching run_id already on disk), can mean
+        # the Founder believes the overlay was applied when it was not --
+        # write_weekly_run_outputs never re-writes brief.md on a skip, so an
+        # overlay validated THIS run never reaches a prior run's on-disk
+        # brief.md. Detect the divergence by reading the ON-DISK manifest's
+        # own limitations_overlay.present (never assumed from this
+        # invocation's overlay_result, which describes the FILE, not what
+        # was actually written to brief.md) and warn loudly -- a WARNING,
+        # not an error, since a prior run that already applied the same
+        # overlay is a legitimate, non-divergent idempotent skip.
+        if overlay_result is not None:
+            on_disk_overlay_present = False
+            manifest_path = output_dir / "run-manifest.json"
+            try:
+                on_disk_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                on_disk_overlay_present = bool(
+                    on_disk_manifest.get("limitations_overlay", {}).get("present", False)
+                )
+            except (OSError, json.JSONDecodeError, AttributeError):
+                # Unreadable/malformed manifest: treat as "not confirmed
+                # applied" -- the conservative, warn-worthy assumption below.
+                on_disk_overlay_present = False
+            if not on_disk_overlay_present:
+                typer.secho(
+                    "WARNING: a valid limitations overlay was supplied for this run, but "
+                    f"the existing run already completed on disk at {output_dir} "
+                    f"(run_id={outcome.run_id}) does NOT carry it -- its brief.md has no "
+                    "limitations text and run-manifest.json records "
+                    "limitations_overlay.present=false. The overlay was NOT applied. Pass "
+                    "--regenerate to redo this run's outputs with the overlay applied.",
+                    fg=typer.colors.YELLOW,
+                    err=True,
+                )
     raise typer.Exit(code=0)
 
 

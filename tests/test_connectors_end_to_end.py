@@ -216,11 +216,33 @@ def test_golden_existing_synthetic_fixture_output_is_unchanged_by_gate_d() -> No
     # the one topic's confidence LEVEL changed. Old hashes (pre-Part-B):
     # markdown "dced152158d2c669e7dd0cf624b2c5c4df5a46106ae3effe466b635d7f4ce30d",
     # json "6ffa84f2440007140a02a5c6b8731792feb85541952277b4a587dee481e65cbf".
+    #
+    # Fable ruling 2026-08-01 (follow-up, Part C, "the mirror-image prose
+    # defect") re-pin: the hashes below changed again -- this is item C's
+    # authorized exception to the "do not touch the golden-hash re-pin"
+    # instruction, since Part C's tiers.py catch-all fix changes rendered
+    # confidence_reason text. On this real fixture, two topics reach the
+    # catch-all branch: rank 2 ("Core Project Spec: Breaking Change To Tool
+    # Call Framing", Tier 1) and rank 5 ("VendorC Deprecates Legacy Harness
+    # Plugin API", Tier 2). Both used to say "attested by an artifact, but no
+    # second, distinct source supports the claim at the high-confidence bar"
+    # -- both topics have independent_publisher_count 0 or 1 on this fixture,
+    # so that old text was not actually false here, but the fix removes the
+    # single-sourcing claim from the catch-all branch UNCONDITIONALLY (it is
+    # false whenever independent_publisher_count >= 2 -- see
+    # test_confidence_two_independent_publishers_below_level_4_does_not_claim_single_source
+    # in test_intelligence_tiers.py for that exact case). Confidence LEVEL
+    # (medium), claim_class, score, and tier admission are all unchanged for
+    # both topics -- see the unchanged structural counts above and unchanged
+    # ranked[0][1].score == 80: only the confidence-reason PROSE changed.
+    # Old hashes (pre-Part-C):
+    # markdown "a83aa65ea1c38b987bca8b64403e9a2c478540ab3686799b7250e567857c89be",
+    # json "348db9d34fed658ee92bdc96e9e85899b9ad1a102ce412bfdca98f5f367cd5e0".
     assert (
         hashlib.sha256(markdown.encode("utf-8")).hexdigest()
-        == "a83aa65ea1c38b987bca8b64403e9a2c478540ab3686799b7250e567857c89be"
+        == "76f856ea357fc931a029b05ba110f3477ed5e00a4918e701f565d868df9eea45"
     )
     assert (
         hashlib.sha256(brief.model_dump_json().encode("utf-8")).hexdigest()
-        == "348db9d34fed658ee92bdc96e9e85899b9ad1a102ce412bfdca98f5f367cd5e0"
+        == "3e782c404ca69aab5ced740d2667c0b4bca565d992f002a57c28a20249c20b34"
     )

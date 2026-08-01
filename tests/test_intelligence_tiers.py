@@ -723,8 +723,9 @@ def test_confidence_two_distinct_independent_publishers_is_high() -> None:
 
 def test_confidence_first_party_only_is_medium() -> None:
     """A single first-party-authoritative source (evidence_level 3, no
-    independent evidence at all) is attested by an artifact but has no
-    second, distinct supporting source -- medium, never high."""
+    independent evidence at all) is attested by an artifact but falls short
+    of the evidence_level >= 4 bar high confidence requires -- medium, never
+    high."""
     inputs = _make_inputs(
         change_class="breaking_change",
         action_required="migration_required",
@@ -737,7 +738,47 @@ def test_confidence_first_party_only_is_medium() -> None:
     claim = build_claim_assessment(inputs, independent_publisher_count=0)
     assert claim.claim_class == "fact"
     assert claim.confidence == "medium"
-    assert "no second, distinct source supports the claim" in claim.confidence_reason
+    # Fable ruling 2026-08-01 (follow-up, Part C): the catch-all branch no
+    # longer asserts anything about single-sourcing (it used to say "no
+    # second, distinct source supports the claim", which is false whenever
+    # independent_publisher_count >= 2 -- see
+    # test_confidence_two_independent_publishers_below_level_4_does_not_claim_single_source
+    # for that exact defect). It states only the true, count-independent
+    # reason: evidence_level is below the >= 4 bar.
+    assert "evidence_level is below the >= 4 bar that high confidence requires" in (
+        claim.confidence_reason
+    )
+    assert "no second" not in claim.confidence_reason
+    assert "single source" not in claim.confidence_reason
+
+
+def test_confidence_two_independent_publishers_below_level_4_does_not_claim_single_source() -> (
+    None
+):
+    """QA-constructed real case (Fable ruling 2026-08-01, follow-up, Part C):
+    two independent_analysis items from DIFFERENT publishers, no first-party
+    member -- evid_3_independent_only, independent_publisher_count=2,
+    evidence_level=3. Confidence is correctly 'medium' (the untouched
+    evidence_level >= 4 gate blocks 'high'), but the OLD catch-all text said
+    "no second, distinct source supports the claim" -- FALSE, there are two.
+    The fixed text must claim neither 'no second' single-sourcing NOR
+    (wrongly) 'high'-grade corroboration -- it states only the true,
+    count-independent reason evidence_level < 4."""
+    inputs = _make_inputs(
+        change_class="material_change",
+        action_required="none",
+        evidence_level=3,
+        evidence_anchor_id="evid_3_independent_only",
+        has_independent_evidence=True,
+        has_direct_artifact_or_independent_source=True,
+        marketing_risk=False,
+    )
+    claim = build_claim_assessment(inputs, independent_publisher_count=2)
+    assert claim.claim_class == "fact"
+    assert claim.confidence == "medium"
+    assert "no second" not in claim.confidence_reason
+    assert "single source" not in claim.confidence_reason
+    assert "independent_publisher_count=2" in claim.confidence_reason
 
 
 def test_confidence_first_party_plus_independent_is_high() -> None:

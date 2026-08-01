@@ -575,24 +575,44 @@ def _human_practical_consequence(inputs: RankingInputs, consequence: DimensionSc
     return sentence
 
 
-def _human_principal_evidence(inputs: RankingInputs, claim: ClaimAssessment) -> str:
+def _human_principal_evidence(
+    inputs: RankingInputs, claim: ClaimAssessment, independent_publisher_count: int
+) -> str:
     """F-B: Tier 2's principal-evidence line, human prose built only from
     already-computed structured fields (evidence_level in words,
-    has_independent_evidence, claim_class, confidence) -- never the
-    dimension's raw rationale ("evidence_level=N (...); "
-    "has_independent_evidence=..., marketing_risk=...").
+    has_independent_evidence, independent_publisher_count, claim_class,
+    confidence) -- never the dimension's raw rationale ("evidence_level=N
+    (...); has_independent_evidence=..., marketing_risk=...").
 
     Fable ruling 2026-08-01 (Part B): ``independence_phrase`` is keyed off
     ``claim.confidence`` (not the raw ``has_independent_evidence`` flag) so a
     single independent source is never described the same way as two or more
     distinct corroborating sources -- ``confidence == "high"`` is the only
     case that now implies genuine cross-source corroboration (see
-    ``tiers._assess_confidence``)."""
+    ``tiers._assess_confidence``).
+
+    DEVIATION from Fable's literal Part B text, made 2026-08-01 (follow-up
+    ruling, Part C) to close a defect QA proved by construction and flagged
+    for Fable to ratify or correct: a topic with TWO OR MORE independent
+    publishers but evidence_level < 4 (e.g. two independent_analysis items
+    from different publishers, no first-party member --
+    ``evid_3_independent_only``) is correctly ``medium`` confidence (the
+    untouched ``evidence_level >= 4`` gate blocks ``high``), but the old
+    two-branch phrasing here rendered "independent evidence from a single
+    source" for it -- FALSE, there are two. Adding the
+    ``independent_publisher_count >= 2`` branch below (checked before the
+    single-source branch, since ``confidence == "high"`` is still checked
+    first) makes this line true whatever the count is, without overclaiming
+    ``claim.confidence == "high"``-grade corroboration for a claim that
+    remains capped at medium by the untouched ``evidence_level >= 4`` gate in
+    ``tiers._assess_confidence``."""
     evidence_phrase = _EVIDENCE_LEVEL_HUMAN_PHRASE.get(
         inputs.evidence_level, f"evidence level {inputs.evidence_level}"
     )
     if claim.confidence == "high":
         independence_phrase = "corroborated across multiple distinct sources"
+    elif independent_publisher_count >= 2:
+        independence_phrase = "independent evidence from two or more distinct sources"
     elif inputs.has_independent_evidence:
         independence_phrase = "independent evidence from a single source"
     else:
@@ -645,7 +665,11 @@ def _build_tier1_lean(
 
 
 def _build_tier2(
-    topic: TieredTopic, breakdown: RankingBreakdown, inputs: RankingInputs, anchor: SourceItem
+    topic: TieredTopic,
+    breakdown: RankingBreakdown,
+    inputs: RankingInputs,
+    anchor: SourceItem,
+    independent_publisher_count: int,
 ) -> Tier2Item:
     consequence = _dimension(breakdown, "consequence")
     return Tier2Item(
@@ -654,7 +678,9 @@ def _build_tier2(
         canonical_title=topic.canonical_title,
         explanation=_human_what_changed(anchor),
         practical_consequence=_human_practical_consequence(inputs, consequence),
-        principal_evidence=_human_principal_evidence(inputs, topic.claim),
+        principal_evidence=_human_principal_evidence(
+            inputs, topic.claim, independent_publisher_count
+        ),
         confidence=topic.claim.confidence,
         recommended_action=topic.tier_assignment.recommended_action,
         adversarial_security_flags=_adversarial_flags(topic),
@@ -1181,6 +1207,7 @@ def build_weekly_brief(
             breakdown_by_topic_id[t.topic_id],
             inputs_by_topic_id[t.topic_id],
             _anchor_for_topic(t.topic_id, clusters_by_topic_id, items_by_id),
+            clusters_by_topic_id[t.topic_id].independent_publisher_count,
         )
         for t in tier2_topics
     ]
@@ -1281,14 +1308,20 @@ def build_weekly_brief(
 _FOUNDER_LIMITATION_LABEL = "Founder-noted limitation (human-authored)"
 
 
-def _limitation_line(topic_id: str, limitations_overlay: dict[str, str]) -> str | None:
-    text = limitations_overlay.get(topic_id)
-    if not text:
-        return None
-    return f"- **{_FOUNDER_LIMITATION_LABEL}:** {text}"
+def _limitation_lines(topic_id: str, limitations_overlay: dict[str, list[str]]) -> list[str]:
+    """One rendered bullet per limitation text attached to ``topic_id``, in
+    the overlay file's own authored order (Fable ruling 2026-08-01, Part A:
+    two distinct item_ids resolving to the same rendered topic is legitimate
+    -- both are rendered, one line each, never merged or deduplicated). Never
+    prints an item_id/hash -- attribution lives in the human-authored prose
+    itself, per the ruling."""
+    texts = limitations_overlay.get(topic_id) or []
+    return [f"- **{_FOUNDER_LIMITATION_LABEL}:** {text}" for text in texts]
 
 
-def _render_tier1_section(brief: WeeklyBrief, limitations_overlay: dict[str, str]) -> list[str]:
+def _render_tier1_section(
+    brief: WeeklyBrief, limitations_overlay: dict[str, list[str]]
+) -> list[str]:
     lines = ["## Tier 1 -- Must Understand"]
     if brief.tier1_short_reason:
         lines.append(f"_{brief.tier1_short_reason}_")
@@ -1310,13 +1343,13 @@ def _render_tier1_section(brief: WeeklyBrief, limitations_overlay: dict[str, str
             lines.append(
                 "- **Security flags:** " + ", ".join(item.adversarial_security_flags)
             )
-        limitation_line = _limitation_line(item.topic_id, limitations_overlay)
-        if limitation_line is not None:
-            lines.append(limitation_line)
+        lines.extend(_limitation_lines(item.topic_id, limitations_overlay))
     return lines
 
 
-def _render_tier2_section(brief: WeeklyBrief, limitations_overlay: dict[str, str]) -> list[str]:
+def _render_tier2_section(
+    brief: WeeklyBrief, limitations_overlay: dict[str, list[str]]
+) -> list[str]:
     lines = ["## Should Know"]
     if not brief.tier2:
         lines.append("No topics in this tier this week.")
@@ -1331,25 +1364,24 @@ def _render_tier2_section(brief: WeeklyBrief, limitations_overlay: dict[str, str
             lines.append(
                 "- **Security flags:** " + ", ".join(item.adversarial_security_flags)
             )
-        limitation_line = _limitation_line(item.topic_id, limitations_overlay)
-        if limitation_line is not None:
-            lines.append(limitation_line)
+        lines.extend(_limitation_lines(item.topic_id, limitations_overlay))
     return lines
 
 
-def _render_tier3_section(brief: WeeklyBrief, limitations_overlay: dict[str, str]) -> list[str]:
+def _render_tier3_section(
+    brief: WeeklyBrief, limitations_overlay: dict[str, list[str]]
+) -> list[str]:
     lines = ["## Radar"]
     if not brief.tier3:
         lines.append("No topics in this tier this week.")
     for item in brief.tier3:
         lines.append(f"- **{item.rank}. {item.canonical_title}** -- {item.signal_paragraph}")
         # Tier 3 items are single-line list entries with no bulleted
-        # sub-block of their own (unlike Tier 1/2) -- a limitation is
+        # sub-block of their own (unlike Tier 1/2) -- each limitation is
         # rendered as a nested bullet directly under that item's own line so
         # it stays visibly attached to it.
-        limitation_line = _limitation_line(item.topic_id, limitations_overlay)
-        if limitation_line is not None:
-            lines.append(f"  {limitation_line}")
+        for line in _limitation_lines(item.topic_id, limitations_overlay):
+            lines.append(f"  {line}")
     return lines
 
 
@@ -1480,7 +1512,7 @@ def _render_appendix_section(brief: WeeklyBrief) -> list[str]:
 
 
 def render_markdown(
-    brief: WeeklyBrief, limitations_overlay: dict[str, str] | None = None
+    brief: WeeklyBrief, limitations_overlay: dict[str, list[str]] | None = None
 ) -> str:
     """Render the Markdown Intelligence Brief FROM the structured
     :class:`WeeklyBrief` object -- never re-derived from raw pipeline output,
@@ -1488,16 +1520,23 @@ def render_markdown(
     diverge. Pure and deterministic: same ``brief`` and same
     ``limitations_overlay``, same string, always.
 
-    ``limitations_overlay`` (Fable ruling 2026-08-01, Part C) is an OPTIONAL,
-    caller-supplied ``{topic_id: limitation_text}`` mapping -- a private,
-    run-specific, human-authored overlay validated by the caller (see
-    ``content_machine.intelligence.limitations_overlay``) BEFORE it ever
-    reaches this function. It is composed ONLY into this rendered Markdown
-    string, inside each named topic's own Tier 1/2/3 block -- it is never
-    added to ``WeeklyBrief`` itself, so ``render_json``/``brief.json`` and
-    every other structured field are completely unaffected by whether an
-    overlay was supplied. Defaults to no overlay (``{}``) when omitted, which
-    reproduces the pre-overlay rendering byte-for-byte."""
+    ``limitations_overlay`` (Fable ruling 2026-08-01, Part C; rekeyed under
+    Part A of the 2026-08-01 follow-up ruling) is an OPTIONAL, caller-
+    supplied ``{topic_id: [limitation_text, ...]}`` mapping -- this parameter
+    stays TOPIC-keyed (a rendered block is addressed by topic_id) even though
+    the overlay FILE itself is item_id-keyed: the caller (see
+    ``content_machine.intelligence.limitations_overlay.load_limitations_overlay``)
+    validates each item_id and resolves it to its containing topic_id BEFORE
+    calling this function, so by the time a mapping reaches here it is
+    already fully validated and topic-resolved. Multiple item_ids resolving
+    to the same topic yield multiple list entries -- each renders as its own
+    line, in the overlay file's own authored order (legitimate, not a
+    duplicate). It is composed ONLY into this rendered Markdown string,
+    inside each named topic's own Tier 1/2/3 block -- it is never added to
+    ``WeeklyBrief`` itself, so ``render_json``/``brief.json`` and every other
+    structured field are completely unaffected by whether an overlay was
+    supplied. Defaults to no overlay (``{}``) when omitted, which reproduces
+    the pre-overlay rendering byte-for-byte."""
     limitations_overlay = limitations_overlay or {}
     lines: list[str] = []
     lines.append(f"# Intelligence Brief -- Week {brief.week_label}")

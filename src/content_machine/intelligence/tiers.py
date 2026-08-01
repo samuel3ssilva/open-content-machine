@@ -216,14 +216,24 @@ def _assess_confidence(
                 "capped at medium."
             ),
         )
+    # Fable ruling 2026-08-01 (follow-up, Part C): this catch-all used to say
+    # "no second, distinct source supports the claim" unconditionally -- FALSE
+    # whenever independent_publisher_count >= 2 (e.g. two independent_analysis
+    # items from different publishers, no first-party member --
+    # evid_3_independent_only, evidence_level 3). This branch is reached
+    # ONLY because evidence_level is below the high-confidence bar (the
+    # independent_publisher_count >= 1 single-source case is branch (c)
+    # above, and count >= 2 already reaches 'high' whenever evidence_level
+    # also clears >= 4 -- see the corroboration check above). The text below
+    # is therefore true whatever independent_publisher_count is, and asserts
+    # nothing about single-sourcing.
     return (
         "medium",
         (
             f"claim_class=fact, evidence_level={inputs.evidence_level}, "
             f"has_independent_evidence={inputs.has_independent_evidence}, "
-            f"independent_publisher_count={independent_publisher_count}: attested "
-            "by an artifact, but no second, distinct source supports the claim at "
-            "the high-confidence bar."
+            f"independent_publisher_count={independent_publisher_count}: "
+            "evidence_level is below the >= 4 bar that high confidence requires."
         ),
     )
 

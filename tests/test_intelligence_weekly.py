@@ -446,6 +446,42 @@ def test_write_creates_all_eight_core_outputs(tmp_path: Path) -> None:
         assert (output_dir / name).exists()
 
 
+# --- Fable ruling 2026-08-01 (Part A): item_topic_map -----------------------
+
+
+def test_item_topic_map_covers_every_member_id_across_every_cluster() -> None:
+    """item_topic_map (WeeklyRunResult, Part A) must map EVERY item_id that
+    appears as a member_id of ANY cluster this run produced -- including
+    clusters that end up discarded below the Top N -- to that cluster's own
+    topic_id. Built from cluster.cluster_items directly here (independent of
+    run_weekly's own construction) so this pins the CONTRACT, not just
+    round-trips the implementation."""
+    from content_machine.intelligence.cluster import cluster_items
+    from content_machine.intelligence.weekly import filter_signals_to_window, resolve_window
+
+    result = _run()
+    window = resolve_window(W28_REFERENCE_DATE, TIMEZONE)
+    windowed = filter_signals_to_window(_signals(), window, TIMEZONE)
+    clusters = cluster_items(windowed)
+
+    expected = {item_id: c.topic_id for c in clusters for item_id in c.member_ids}
+    assert result.item_topic_map == expected
+    assert expected  # sanity: the fixture window has real clusters
+
+
+def test_item_topic_map_is_never_written_to_any_output_file(tmp_path: Path) -> None:
+    """item_topic_map lives on WeeklyRunResult ONLY (Part A ruling): it must
+    never leak into brief.json, topics.jsonl, run-manifest.json, or any
+    other output -- raw item_ids paired with topic_ids are not part of any
+    documented output schema."""
+    result = _run()
+    output_dir = tmp_path / "out"
+    write_weekly_run_outputs(result, output_dir)
+    for name in weekly_module.OUTPUT_FILENAMES:
+        on_disk = (output_dir / name).read_text(encoding="utf-8")
+        assert "item_topic_map" not in on_disk
+
+
 # --- v0.2 (Opus orchestrator, Gate C; ADR 0004 D8): movements.md/discarded.jsonl
 
 

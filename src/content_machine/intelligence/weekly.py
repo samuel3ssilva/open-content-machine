@@ -379,6 +379,21 @@ class WeeklyRunResult(BaseModel):
     week's tracked topic) and ``movements_markdown`` (the rendered
     ``movements.md`` content, from
     :func:`content_machine.intelligence.library.render_movements_markdown`).
+
+    ``item_topic_map`` (Fable ruling 2026-08-01, Part A -- the limitations
+    overlay must be keyed by ``item_id``, never ``topic_id``): every
+    ``SourceItem.item_id`` in this run's full corpus, mapped to the
+    ``topic_id`` of the :class:`TopicCluster` that contains it as a
+    ``member_id``. Built inside :func:`run_weekly` from EVERY cluster this
+    run produced (not only the Top ``TOP_N``), so it covers discarded topics
+    too. This field lives HERE ONLY: it is never added to
+    :class:`~content_machine.intelligence.brief.WeeklyBrief` (that would leak
+    raw ``item_id`` values into ``brief.json``) and is never written to any
+    output file -- see :func:`write_weekly_run_outputs`, whose staged output
+    set does not reference it. It exists solely so a caller (``cli/main.py``)
+    can validate a limitations-overlay file's item_id keys and resolve each
+    to its containing topic_id BEFORE calling
+    ``brief.render_markdown``.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -392,6 +407,7 @@ class WeeklyRunResult(BaseModel):
     new_audit_rows: list[AuditRow]
     deltas: list[WeeklyDelta]
     movements_markdown: str
+    item_topic_map: dict[str, str] = Field(default_factory=dict)
 
 
 def run_weekly(
@@ -472,6 +488,15 @@ def run_weekly(
         row.event_type for row in library_result.new_audit_rows
     )
 
+    # Fable ruling 2026-08-01 (Part A): item_id -> topic_id, over EVERY
+    # cluster this run produced (not only the Top TOP_N) -- so an overlay
+    # item naming a discarded topic's member still resolves to a real
+    # topic_id for the corpus check, even though that topic has no rendered
+    # block. Never on WeeklyBrief; see the WeeklyRunResult docstring.
+    item_topic_map: dict[str, str] = {
+        item_id: cluster.topic_id for cluster in clusters for item_id in cluster.member_ids
+    }
+
     manifest = RunManifest(
         run_id=run_id,
         input_fingerprint=input_fingerprint,
@@ -502,6 +527,7 @@ def run_weekly(
         new_audit_rows=library_result.new_audit_rows,
         deltas=library_result.deltas,
         movements_markdown=movements_markdown,
+        item_topic_map=item_topic_map,
     )
 
 
