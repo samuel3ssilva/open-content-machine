@@ -74,6 +74,24 @@ marcada). Nenhum dado real foi processado.
   7 dias com timezone, `run_id` determinístico, re-run idempotente,
   `--regenerate` explícito, escritas atômicas com rollback, 8 artefatos por
   semana
+- ✅ **ADR 0009 — o skip idempotente verifica a própria premissa** (rodada de
+  merge-gate, 2026-08-01): um `run_id` igual não prova mais, sozinho, que o
+  run em disco é o que o código ATUAL produziria — `write_weekly_run_outputs`
+  agora compara byte a byte cada arquivo que escreveria contra o que já está
+  em disco antes de pular a escrita; se algo divergir (ex.: semântica de
+  renderização/confiança mudou desde aquele run sem um bump de
+  `code_version`), o run continua sendo pulado (nunca sobrescreve sem
+  `--regenerate`), mas a CLI imprime um WARNING alto no stderr nomeando os
+  arquivos divergentes — incondicional, mesmo sem `limitations-overlay.json`
+  presente. **Procedimento operacional obrigatório:** aplicar uma correção a
+  uma semana JÁ EXISTENTE exige `--regenerate` explícito, e o operador DEVE
+  arquivar uma cópia do `output_dir` ANTES de rodar `--regenerate` — os
+  arquivos `.bak.tmp` que `_atomic_write_all` usa internamente são apenas
+  staging de rollback de UMA escrita atômica e são apagados automaticamente
+  assim que ela tem sucesso; eles NÃO são um backup e não permitem recuperar
+  o conteúdo pré-`--regenerate` depois do fato. Ver `docs/adr/
+  0009-idempotent-skip-must-verify-its-premise.md` e o epílogo de
+  `--help` do comando.
 - ✅ Biblioteca v0.2: merge de tópicos com aliases, decay e staleness,
   relevância estruturada, resumo normalizado (≤280 chars, sem corpo bruto),
   deltas semanais de score/rank/tier

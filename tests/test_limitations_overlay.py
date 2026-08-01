@@ -311,7 +311,7 @@ def test_valid_overlay_composes_only_into_rendered_markdown() -> None:
 
     assert composed_markdown != baseline_markdown
     assert (
-        "- **Founder-noted limitation (human-authored):** "
+        "> **Founder-noted limitation (human-authored):** "
         "a synthetic, invented limitation for this one item"
     ) in composed_markdown
     # Nothing else in the document moved: stripping the one new line back out
@@ -386,10 +386,10 @@ def test_multi_member_topic_two_item_ids_render_two_distinct_lines(tmp_path: Pat
 
     composed_markdown = render_markdown(brief, limitations_overlay=result.limitations)
     assert (
-        "- **Founder-noted limitation (human-authored):** first synthetic invented limitation"
+        "> **Founder-noted limitation (human-authored):** first synthetic invented limitation"
         in composed_markdown
     )
     assert (
-        "- **Founder-noted limitation (human-authored):** second synthetic invented limitation"
+        "> **Founder-noted limitation (human-authored):** second synthetic invented limitation"
         in composed_markdown
     )

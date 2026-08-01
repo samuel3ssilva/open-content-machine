@@ -280,8 +280,11 @@ def test_cli_valid_overlay_writes_limitation_into_brief_md_only(tmp_path: Path) 
     assert invocation.exit_code == 0
 
     brief_md = (output_dir / "brief.md").read_text(encoding="utf-8")
+    # P3 (product review round 4): rendered as a blockquote, not a plain
+    # bullet -- see brief._limitation_lines's docstring for why (it used to
+    # be visually identical to the six machine-generated bullets around it).
     assert (
-        "- **Founder-noted limitation (human-authored):** "
+        "> **Founder-noted limitation (human-authored):** "
         "a synthetic invented limitation for this one item"
     ) in brief_md
 
@@ -349,3 +352,44 @@ def test_cli_skip_with_overlay_warns_loudly_and_names_regenerate(tmp_path: Path)
     )
     manifest_after = json.loads((output_dir / "run-manifest.json").read_text(encoding="utf-8"))
     assert manifest_after["limitations_overlay"]["present"] is True
+
+
+# --- R1 (2026-08-01 post-merge-gate round): the general stale warning must --
+# --- fire for a Founder with NO overlay file too, unconditionally ----------
+
+
+def test_cli_stale_skip_warns_loudly_with_no_overlay_file_present(tmp_path: Path) -> None:
+    """The headline defect this round fixes: a Founder re-running weekly-run
+    with NO limitations-overlay file at all must still be warned when the
+    on-disk run no longer matches what current code would produce -- the
+    round-2 overlay-specific warning must not be the ONLY path to a warning.
+    Simulated the same way as the weekly.py unit test: directly mutate an
+    on-disk output after a real baseline CLI run, then re-invoke unchanged."""
+    signals_path, output_dir, _result = _setup(tmp_path)
+
+    first = _invoke(signals_path, output_dir)
+    assert first.exit_code == 0
+    assert "WARNING" not in first.output
+
+    # Simulate drift: current code would render something different for the
+    # same run_id (e.g. a rendering-semantics change that never bumped
+    # code_version) by corrupting the on-disk brief.md directly.
+    (output_dir / "brief.md").write_text("stale, pre-fix content\n", encoding="utf-8")
+
+    # No overlay file exists anywhere in output_dir.
+    assert not (output_dir / OVERLAY_FILENAME).exists()
+
+    second = _invoke(signals_path, output_dir)
+    assert second.exit_code == 0  # a WARNING, never an error
+    assert "WARNING" in second.output
+    assert "--regenerate" in second.output
+    assert "brief.md" in second.output
+    assert "does not match" in second.output.lower()
+
+    # Still never overwritten without --regenerate.
+    assert (output_dir / "brief.md").read_text(encoding="utf-8") == "stale, pre-fix content\n"
+
+    third = _invoke(signals_path, output_dir, regenerate=True)
+    assert third.exit_code == 0
+    assert "WARNING" not in third.output
+    assert (output_dir / "brief.md").read_text(encoding="utf-8") != "stale, pre-fix content\n"

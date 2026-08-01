@@ -51,13 +51,28 @@ from content_machine.intelligence.models import (
     TieredTopic,
     TopicCluster,
 )
-from content_machine.intelligence.tiers import TOP_N
+from content_machine.intelligence.tiers import (
+    CONFIDENCE_RUBRIC_VERSION,
+    TOP_N,
+    has_cross_source_corroboration,
+)
 
 # Gate E0 (E0.1/E0.3, product ruling P4): bumped from "gate-b-m5-1" because
 # the brief schema gains a new security field (WeeklyBrief.security_flag_summary,
 # plus adversarial_security_flags on Tier1LeanItem/Tier2Item/Tier1AppendixRecord)
 # -- otherwise two structurally different JSON briefs would claim one version.
-BRIEF_VERSION = "gate-e0-m5-2"
+#
+# R2 (2026-08-01, post-merge-gate round): bumped again from "gate-e0-m5-2".
+# This round changed rendering semantics TWICE (the corroboration-language
+# fix across Tier 1/2's evidence lines -- P1/P2 below -- and the executive
+# summary/content-opportunity disclosure wording -- G1/G3 below) without
+# ever bumping this marker; Fable named that omission an aggravating defect
+# in its own right, since it means an identity guard keyed on ``run_id``
+# alone would not have caught its own introducing branch. See
+# ``WeeklyBrief.confidence_rubric_version`` for the companion marker that is
+# owned by ``tiers.py`` specifically (confidence semantics, not the document
+# schema/wording this constant covers).
+BRIEF_VERSION = "gate-e0-m5-3"
 
 REVIEW_STATUS = "awaiting_founder_review"
 
@@ -116,6 +131,28 @@ ESTIMATED_STUDY_TIME_METHOD = (
     f"{_STUDY_MINUTES_DEEP_STUDY_TOPIC}; each light-study topic "
     f"{_STUDY_MINUTES_LIGHT_STUDY_TOPIC}. Summed, integer minutes; zero when the study queue "
     "is empty."
+)
+
+# G2 (product review round 4, Fable gate item G2): a static methodology
+# disclosure for the confidence/limitations appendix. Fable's finding: every
+# arXiv item in the current corpus carries publisher_id == "arxiv", so two
+# INDEPENDENT RESEARCH GROUPS both publishing on arXiv count as ONE publisher
+# for ``independent_publisher_count`` -- corroboration is counted at
+# publisher/venue granularity, never at author/research-group granularity.
+# This raises the bar for reaching "high" confidence, it does not lower it,
+# but an undisclosed conservatism is still a measurement misstatement (an
+# unlabeled number reads as more precise than it is). Fable explicitly
+# refused to certify "high confidence is permanently unreachable" -- the D1
+# anchor path and mixed-publisher corpora both still reach it -- so this
+# note states the counting rule only, never that conclusion.
+CORROBORATION_METHODOLOGY_NOTE = (
+    "Corroboration is counted at publisher/venue granularity, not at author or research-group "
+    "granularity: independent_publisher_count counts distinct publishers/venues, so two "
+    "artifacts from the same venue (e.g. two arXiv papers, both publisher_id='arxiv') never "
+    "count as corroborating each other for confidence purposes, even when authored by "
+    "different, unaffiliated research groups. This makes the bar for high confidence stricter "
+    "than a same-venue reading would suggest -- it does not make high confidence unreachable; "
+    "a first-party-plus-independent anchor or a genuinely cross-venue corpus still reaches it."
 )
 
 # --- human phrase for action_required, used by the Tier 1/2 lean "why it ----
@@ -437,6 +474,13 @@ class WeeklyBrief(BaseModel):
 
     week_label: str
     brief_version: str
+    # R2 (2026-08-01, post-merge-gate round): additive marker owned by
+    # tiers.py's confidence/corroboration semantics -- see
+    # ``tiers.CONFIDENCE_RUBRIC_VERSION`` for why this is a field distinct
+    # from ``rubric_version`` below (ranking's six-dimension scoring rubric)
+    # and from ``brief_version`` above (this document's own schema/wording).
+    # Never fed into ``weekly.compute_run_id``/``compute_input_fingerprint``.
+    confidence_rubric_version: str
     rubric_version: str
     weights_version: str
     taxonomy_version: str
@@ -459,6 +503,11 @@ class WeeklyBrief(BaseModel):
     ranking_explanation_pointer: str
     appendix: list[Tier1AppendixRecord]
     security_flag_summary: SecurityFlagSummary
+    # G2 (product review round 4): static methodology disclosure -- see
+    # CORROBORATION_METHODOLOGY_NOTE. A structured field (not markdown-only
+    # text) so it is discoverable in brief.json too, not only in the
+    # rendered appendix.
+    corroboration_methodology_note: str = CORROBORATION_METHODOLOGY_NOTE
     review_status: str = REVIEW_STATUS
 
 
@@ -575,16 +624,27 @@ def _human_practical_consequence(inputs: RankingInputs, consequence: DimensionSc
     return sentence
 
 
-def _human_principal_evidence(
+def _human_evidence_sentence(
     inputs: RankingInputs, claim: ClaimAssessment, independent_publisher_count: int
 ) -> str:
-    """F-B: Tier 2's principal-evidence line, human prose built only from
-    already-computed structured fields (evidence_level in words,
+    """F-B: the shared human-prose evidence/corroboration sentence, built
+    only from already-computed structured fields (evidence_level in words,
     has_independent_evidence, independent_publisher_count, claim_class,
-    confidence) -- never the dimension's raw rationale ("evidence_level=N
+    confidence) -- never a dimension's raw rationale ("evidence_level=N
     (...); has_independent_evidence=..., marketing_risk=...").
 
-    Fable ruling 2026-08-01 (Part B): ``independence_phrase`` is keyed off
+    Shared by BOTH Tier 1's "Evidence & confidence" line and Tier 2's
+    "Principal evidence" line (P2, product review round 4): Tier 2 already
+    routed through this builder; Tier 1 used to pipe ``tiers.py``'s raw
+    ``confidence_reason`` audit rationale straight into reader-facing prose
+    instead (three key=value tokens, ~250 chars, duplicating the SAME string
+    already in the appendix/brief.json). That raw string remains available
+    verbatim as ``Tier1AppendixRecord.confidence_reason`` / the appendix
+    section / brief.json's ``confidence_reason`` field -- it is the audit
+    trail and stays put; only the reader-facing body line now goes through
+    this human-prose builder instead of repeating it.
+
+    Fable ruling 2026-08-01 (Part B): ``independence_clause`` is keyed off
     ``claim.confidence`` (not the raw ``has_independent_evidence`` flag) so a
     single independent source is never described the same way as two or more
     distinct corroborating sources -- ``confidence == "high"`` is the only
@@ -605,20 +665,33 @@ def _human_principal_evidence(
     first) makes this line true whatever the count is, without overclaiming
     ``claim.confidence == "high"``-grade corroboration for a claim that
     remains capped at medium by the untouched ``evidence_level >= 4`` gate in
-    ``tiers._assess_confidence``."""
+    ``tiers._assess_confidence``.
+
+    P1 (product review round 4, MUST-FIX -- ungrammatical regression): the
+    evidence-level phrases in ``_EVIDENCE_LEVEL_HUMAN_PHRASE`` are NOUN
+    phrases ("strong evidence: a first-party source or rigorous independent
+    evidence"). The old ``independence_phrase`` here was ALSO a noun phrase
+    ("independent evidence from a single source"), so joining the two with a
+    bare comma produced a comma-splice that said "independent evidence"
+    twice in one breath ("...rigorous independent evidence, independent
+    evidence from a single source."). ``independence_clause`` below is now a
+    full VERB CLAUSE ("no second, independent source corroborates it") joined
+    with "and" instead of a bare comma, so the sentence reads as one
+    grammatical whole in every evidence-level/corroboration combination,
+    without repeating "independent evidence" as a noun phrase twice."""
     evidence_phrase = _EVIDENCE_LEVEL_HUMAN_PHRASE.get(
         inputs.evidence_level, f"evidence level {inputs.evidence_level}"
     )
     if claim.confidence == "high":
-        independence_phrase = "corroborated across multiple distinct sources"
+        independence_clause = "the claim is corroborated across multiple distinct sources"
     elif independent_publisher_count >= 2:
-        independence_phrase = "independent evidence from two or more distinct sources"
+        independence_clause = "the claim is supported by two or more independent sources"
     elif inputs.has_independent_evidence:
-        independence_phrase = "independent evidence from a single source"
+        independence_clause = "no second, independent source corroborates it"
     else:
-        independence_phrase = "no independent evidence"
+        independence_clause = "no independent source corroborates it"
     return (
-        f"{evidence_phrase.capitalize()}, {independence_phrase}. "
+        f"{evidence_phrase.capitalize()}, and {independence_clause}. "
         f"Classified as {claim.claim_class} at {claim.confidence} confidence."
     )
 
@@ -635,7 +708,11 @@ def _adversarial_flags(topic: TieredTopic) -> tuple[str, ...]:
 
 
 def _build_tier1_lean(
-    topic: TieredTopic, breakdown: RankingBreakdown, inputs: RankingInputs, anchor: SourceItem
+    topic: TieredTopic,
+    breakdown: RankingBreakdown,
+    inputs: RankingInputs,
+    anchor: SourceItem,
+    independent_publisher_count: int,
 ) -> Tier1LeanItem:
     d1_only_admission = topic.tier_assignment.d1_exception_fired and not breakdown.tier1_eligible
     first_party_authoritative_note = (
@@ -651,9 +728,15 @@ def _build_tier1_lean(
         canonical_title=topic.canonical_title,
         what_changed=_human_what_changed(anchor),
         why_it_matters=_human_why_it_matters(inputs, topic.claim),
-        evidence_and_confidence=(
-            f"{topic.claim.claim_class} claim, {topic.claim.confidence} confidence -- "
-            f"{topic.claim.confidence_reason}"
+        # P2 (product review round 4, MUST-FIX): routed through the same
+        # human-prose builder Tier 2 already uses, instead of piping
+        # tiers.py's raw audit rationale (confidence_reason -- three
+        # key=value tokens, ~250 chars) straight into reader-facing prose.
+        # That raw string is unchanged and REMAINS the audit trail in
+        # Tier1AppendixRecord.confidence_reason / brief.json -- see
+        # _human_evidence_sentence's docstring.
+        evidence_and_confidence=_human_evidence_sentence(
+            inputs, topic.claim, independent_publisher_count
         ),
         first_party_authoritative_note=first_party_authoritative_note,
         recommended_action=topic.tier_assignment.recommended_action,
@@ -678,7 +761,7 @@ def _build_tier2(
         canonical_title=topic.canonical_title,
         explanation=_human_what_changed(anchor),
         practical_consequence=_human_practical_consequence(inputs, consequence),
-        principal_evidence=_human_principal_evidence(
+        principal_evidence=_human_evidence_sentence(
             inputs, topic.claim, independent_publisher_count
         ),
         confidence=topic.claim.confidence,
@@ -835,7 +918,18 @@ def _build_experiment(
 def _build_content_opportunities(
     tier1_topics: list[TieredTopic],
     breakdown_by_topic_id: dict[str, RankingBreakdown],
+    single_sourced_by_topic_id: dict[str, bool],
 ) -> ContentOpportunitySelection:
+    """G3 (product review round 4, Fable gate item G3): the gate stays at
+    ``confidence in {high, medium}`` (Founder-reviewed drafts only, never an
+    auto-publish path -- see ADR 0007's addendum), but a topic that reached
+    ``medium`` (or, in principle, ``high``) with no genuine cross-source
+    corroboration (``tiers.has_cross_source_corroboration`` is False) must
+    say so plainly in its own reason line, not leave it for the reader to
+    infer from the confidence label alone. Negated/advisory wording only
+    (Part B's ban on affirmative ``corroborat*`` phrasing): this states the
+    ABSENCE of a second source and instructs the human reviewer, never
+    claims corroboration exists."""
     opportunities: list[ContentOpportunity] = []
     for topic in tier1_topics:
         if topic.claim.claim_class != "fact":
@@ -846,16 +940,19 @@ def _build_content_opportunities(
         relevance = _dimension(breakdown, "relevance")
         if relevance.effective_value < 4:
             continue
+        reason = (
+            f"Tier 1, claim_class=fact, confidence={topic.claim.confidence}, "
+            f"relevance effective_value={relevance.effective_value} >= 4 "
+            "(on-territory)"
+        )
+        if single_sourced_by_topic_id.get(topic.topic_id, True):
+            reason += " -- single-sourced: corroborate before publishing"
         opportunities.append(
             ContentOpportunity(
                 topic_id=topic.topic_id,
                 canonical_title=topic.canonical_title,
                 rank=topic.rank,
-                reason=(
-                    f"Tier 1, claim_class=fact, confidence={topic.claim.confidence}, "
-                    f"relevance effective_value={relevance.effective_value} >= 4 "
-                    "(on-territory)"
-                ),
+                reason=reason,
             )
         )
         # Defensive cap, currently structurally unreachable: Tier 1 never
@@ -946,6 +1043,7 @@ def _build_executive_summary(
     experiment: ExperimentSelection,
     content_opportunities: ContentOpportunitySelection,
     tier1_short_reason: str | None,
+    single_sourced_by_topic_id: dict[str, bool],
 ) -> list[str]:
     sentences: list[str] = []
 
@@ -978,10 +1076,45 @@ def _build_executive_summary(
             "confidence."
         )
 
+    # G1 (product review round 4, MUST-FIX): the old trailing clause here
+    # ("...that still require independent corroboration before acting")
+    # scoped the corroboration need to marketing-risk claims only. In
+    # position -- directly above topic blocks that each individually say no
+    # second source supports their claim -- that scoping made the sentence
+    # read as an all-clear on corroboration in general (marketing_count is
+    # usually 0), exactly the question this branch exists to stop answering
+    # with an all-clear. The clause is dropped; marketing_count is now
+    # stated as a plain fact with no implication about any other topic's
+    # corroboration status.
     marketing_count = sum(1 for t in top_n_topics if t.claim.claim_class == "marketing")
     sentences.append(
         f"{marketing_count} of the Top {len(top_n_topics)} topics were classified as "
-        "marketing-risk claims that still require independent corroboration before acting."
+        "marketing-risk claims."
+    )
+
+    # G1: the single-source count this sentence above no longer implies an
+    # all-clear on. NEGATED wording only (Part B's ban on affirmative
+    # ``corroborat*`` phrasing -- this must never claim corroboration is
+    # present): states the absence of a second, distinct source, never that
+    # one has been found. "Single-source" here is
+    # ``not tiers.has_cross_source_corroboration(...)`` -- deliberately NOT
+    # "independent_publisher_count <= 1" (that would wrongly flag an
+    # anchor-corroborated topic, e.g. evid_4_first_party_plus_independent
+    # with independent_publisher_count == 1, as single-sourced, even though
+    # it may be rendered a few sentences above as high-confidence) and NOT
+    # "confidence != high" either (a topic can land at MEDIUM confidence
+    # with TWO OR MORE independent publishers but evidence_level < 4 --
+    # Part C's deviation, e.g. evid_3_independent_only -- that topic is
+    # genuinely multi-sourced and must not be counted here as
+    # single-sourced). This is the SAME predicate G3's content-opportunity
+    # disclosure below uses, so the two sections can never disagree about
+    # which topics are single-sourced.
+    single_source_count = sum(
+        1 for t in top_n_topics if single_sourced_by_topic_id.get(t.topic_id, True)
+    )
+    sentences.append(
+        f"{single_source_count} of the Top {len(top_n_topics)} topics have no second, "
+        "distinct independent source -- no independent corroboration has been found for them."
     )
 
     if discarded:
@@ -1198,6 +1331,7 @@ def build_weekly_brief(
             breakdown_by_topic_id[t.topic_id],
             inputs_by_topic_id[t.topic_id],
             _anchor_for_topic(t.topic_id, clusters_by_topic_id, items_by_id),
+            clusters_by_topic_id[t.topic_id].independent_publisher_count,
         )
         for t in tier1_topics
     ]
@@ -1217,10 +1351,32 @@ def build_weekly_brief(
         _build_appendix_record(t, breakdown_by_topic_id[t.topic_id]) for t in tier1_topics
     ]
 
+    # G1/G3 (product review round 4): per-topic "is this genuinely
+    # single-sourced" over every Top-N topic -- needed by both the executive
+    # summary's single-source count (G1) and the content-opportunity
+    # single-source disclosure (G3), neither of which may re-derive it.
+    # Delegates to tiers.has_cross_source_corroboration -- the SAME
+    # predicate tiers._assess_confidence already uses to gate 'high'
+    # confidence -- rather than approximating from independent_publisher_
+    # count alone, which would wrongly flag an anchor-corroborated topic
+    # (e.g. evid_4_first_party_plus_independent with
+    # independent_publisher_count == 1) as single-sourced even though it is
+    # already rendered elsewhere as high-confidence/cross-source-
+    # corroborated.
+    single_sourced_by_topic_id = {
+        t.topic_id: not has_cross_source_corroboration(
+            inputs_by_topic_id[t.topic_id].evidence_anchor_id,
+            clusters_by_topic_id[t.topic_id].independent_publisher_count,
+        )
+        for t in tiered
+    }
+
     discarded = _build_discarded(ranked, clusters_by_topic_id)
     study_queue = _build_study_queue(tier1_topics, tier2_topics)
     experiment = _build_experiment(tiered, ranked, clusters_by_topic_id, items_by_id)
-    content_opportunities = _build_content_opportunities(tier1_topics, breakdown_by_topic_id)
+    content_opportunities = _build_content_opportunities(
+        tier1_topics, breakdown_by_topic_id, single_sourced_by_topic_id
+    )
     tier1_short_reason = _tier1_short_reason(tiered, len(tier1_topics), clusters_by_topic_id)
     security_flag_summary = _build_security_flag_summary(
         items_by_id, tier3_topics, ranked, clusters_by_topic_id
@@ -1241,6 +1397,7 @@ def build_weekly_brief(
         experiment=experiment,
         content_opportunities=content_opportunities,
         tier1_short_reason=tier1_short_reason,
+        single_sourced_by_topic_id=single_sourced_by_topic_id,
     )
 
     tldr = _build_tldr(tier1_topics, items_by_id)
@@ -1273,6 +1430,7 @@ def build_weekly_brief(
     return WeeklyBrief(
         week_label=week_label,
         brief_version=BRIEF_VERSION,
+        confidence_rubric_version=CONFIDENCE_RUBRIC_VERSION,
         rubric_version=first_breakdown.rubric_version if first_breakdown else "",
         weights_version=first_breakdown.weights_version if first_breakdown else "",
         taxonomy_version=first_breakdown.taxonomy_version if first_breakdown else "",
@@ -1309,14 +1467,22 @@ _FOUNDER_LIMITATION_LABEL = "Founder-noted limitation (human-authored)"
 
 
 def _limitation_lines(topic_id: str, limitations_overlay: dict[str, list[str]]) -> list[str]:
-    """One rendered bullet per limitation text attached to ``topic_id``, in
-    the overlay file's own authored order (Fable ruling 2026-08-01, Part A:
-    two distinct item_ids resolving to the same rendered topic is legitimate
-    -- both are rendered, one line each, never merged or deduplicated). Never
-    prints an item_id/hash -- attribution lives in the human-authored prose
-    itself, per the ruling."""
+    """One rendered blockquote line per limitation text attached to
+    ``topic_id``, in the overlay file's own authored order (Fable ruling
+    2026-08-01, Part A: two distinct item_ids resolving to the same rendered
+    topic is legitimate -- both are rendered, one line each, never merged or
+    deduplicated). Never prints an item_id/hash -- attribution lives in the
+    human-authored prose itself, per the ruling.
+
+    P3 (product review round 4): rendered as a Markdown blockquote (``>``),
+    not a plain ``- **Label:** text`` bullet -- as a plain bullet it was
+    visually IDENTICAL to the six machine-generated bullets around it (What
+    changed / Why it matters / ... / Score), so the Founder's own words read
+    as if they were more model output rather than a human override. The
+    blockquote glyph is the one visual cue every Markdown renderer (and a
+    plain-text read of the file) shows distinctly from a ``-`` list item."""
     texts = limitations_overlay.get(topic_id) or []
-    return [f"- **{_FOUNDER_LIMITATION_LABEL}:** {text}" for text in texts]
+    return [f"> **{_FOUNDER_LIMITATION_LABEL}:** {text}" for text in texts]
 
 
 def _render_tier1_section(
@@ -1334,6 +1500,11 @@ def _render_tier1_section(
         lines.append(f"- **Evidence & confidence:** {item.evidence_and_confidence}")
         if item.first_party_authoritative_note:
             lines.append(f"- **Note:** {item.first_party_authoritative_note}")
+        # P3 (product review round 4): the Founder-noted limitation renders
+        # BEFORE "Recommended action" -- the reader sees the caveat that
+        # qualifies the recommendation before the recommendation itself,
+        # never after (see _limitation_lines for the blockquote styling).
+        lines.extend(_limitation_lines(item.topic_id, limitations_overlay))
         lines.append(
             f"- **Recommended action:** {item.recommended_action} -- "
             f"{item.recommended_action_reason}"
@@ -1343,7 +1514,6 @@ def _render_tier1_section(
             lines.append(
                 "- **Security flags:** " + ", ".join(item.adversarial_security_flags)
             )
-        lines.extend(_limitation_lines(item.topic_id, limitations_overlay))
     return lines
 
 
@@ -1359,12 +1529,14 @@ def _render_tier2_section(
         lines.append(f"- **Practical consequence:** {item.practical_consequence}")
         lines.append(f"- **Principal evidence:** {item.principal_evidence}")
         lines.append(f"- **Confidence:** {item.confidence}")
+        # P3 (product review round 4): same reordering as Tier 1 -- the
+        # caveat renders before the recommendation it qualifies.
+        lines.extend(_limitation_lines(item.topic_id, limitations_overlay))
         lines.append(f"- **Recommended action:** {item.recommended_action}")
         if item.adversarial_security_flags:
             lines.append(
                 "- **Security flags:** " + ", ".join(item.adversarial_security_flags)
             )
-        lines.extend(_limitation_lines(item.topic_id, limitations_overlay))
     return lines
 
 
@@ -1500,6 +1672,11 @@ def _render_appendix_section(brief: WeeklyBrief) -> list[str]:
     lines.append("### Reading & Study Time Method")
     lines.append(f"- Reading time method: {brief.estimated_reading_time_method}")
     lines.append(f"- Study time method: {brief.estimated_study_time_method}")
+    lines.append("")
+    # G2 (product review round 4): the static corroboration-counting
+    # methodology disclosure -- see CORROBORATION_METHODOLOGY_NOTE.
+    lines.append("### Confidence & Corroboration Methodology")
+    lines.append(f"- {brief.corroboration_methodology_note}")
     lines.append("")
     # Gate E0 (E0.1), product ruling P1: hygiene flags and Tier 3/discarded
     # adversarial flags are run-level/count-only -- rendered here, in the

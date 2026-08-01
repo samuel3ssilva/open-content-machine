@@ -357,6 +357,17 @@ class RunManifest(BaseModel):
     library_score_change_count: int
     library_rejected_reappearance_count: int
     review_status: str = REVIEW_STATUS
+    # R2 (2026-08-01, post-merge-gate round): additive markers only -- NEVER
+    # fed into compute_run_id/compute_input_fingerprint (Fable's explicit
+    # ruling: semantics must never enter run identity, since that would
+    # silently un-guard every historical output directory and make past
+    # run_ids non-recomputable). Mirrors brief.WeeklyBrief's own
+    # brief_version/confidence_rubric_version fields -- recorded here too so
+    # a stale on-disk manifest's DELTA against current code is
+    # human-readable without opening brief.json: this is the "why" that
+    # complements write_weekly_run_outputs' byte-compare "that" (R1).
+    brief_version: str
+    confidence_rubric_version: str
     # Fable ruling 2026-08-01 (Part C): additive only -- computed and set by
     # the caller (cli/main.py) AFTER run_weekly returns, from the overlay
     # file's own bytes/parsed content. run_weekly itself never reads this
@@ -515,6 +526,11 @@ def run_weekly(
         library_lifecycle_transition_count=movement_counts.get("lifecycle_transition", 0),
         library_score_change_count=movement_counts.get("score_change", 0),
         library_rejected_reappearance_count=movement_counts.get("rejected_reappearance", 0),
+        # R2: mirrored from the brief this same call already built -- never
+        # re-derived, and never fed back into run_id/input_fingerprint
+        # (both already computed above, before this line runs).
+        brief_version=brief.brief_version,
+        confidence_rubric_version=brief.confidence_rubric_version,
     )
 
     return WeeklyRunResult(
@@ -533,7 +549,22 @@ def run_weekly(
 
 class WeeklyWriteOutcome(BaseModel):
     """What :func:`write_weekly_run_outputs` actually did -- reported by the
-    CLI command so a re-run's idempotent skip is visible, not silent."""
+    CLI command so a re-run's idempotent skip is visible, not silent.
+
+    ``stale``/``stale_files`` (R1, 2026-08-01 post-merge-gate round):
+    additive fields, populated only on the idempotency-skip path (``wrote``
+    is False). The skip's PREMISE -- that the existing on-disk run is what
+    current code would still produce -- is verified by byte-comparing every
+    staged output against its on-disk counterpart BEFORE skipping, rather
+    than assumed from the ``run_id`` match alone. ``stale`` is True and
+    ``stale_files`` lists the differing filenames when at least one staged
+    file's content differs from what is already on disk (e.g. rendering
+    semantics changed since that run was written without a
+    ``code_version``/``run_id`` change to catch it -- see
+    ``brief.BRIEF_VERSION``/``tiers.CONFIDENCE_RUBRIC_VERSION``). The write
+    is STILL skipped either way -- this never writes without
+    ``regenerate=True`` -- ``stale`` only controls whether the caller
+    (``cli/main.py``) prints a loud warning."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -541,6 +572,8 @@ class WeeklyWriteOutcome(BaseModel):
     skipped_reason: str | None = None
     files_written: list[str] = Field(default_factory=list)
     run_id: str
+    stale: bool = False
+    stale_files: list[str] = Field(default_factory=list)
 
 
 def _existing_manifest_run_id(output_dir: Path) -> str | None:
@@ -677,6 +710,26 @@ def _atomic_write_all(staged: dict[Path, str]) -> None:
             backup_path.unlink(missing_ok=True)
 
 
+def _staged_differs_from_disk(staged: dict[Path, str]) -> list[str]:
+    """R1 (2026-08-01 post-merge-gate round, ADR 0009): byte-compare every
+    ``staged`` file's content against its on-disk counterpart (if any).
+    Returns the sorted filenames that differ -- ``[]`` means the idempotency
+    skip's premise holds (the on-disk run IS what current code would still
+    produce). A missing on-disk file counts as differing: a skip that leaves
+    a promised output absent is exactly the kind of stale state this check
+    exists to catch. Read-only -- never writes anything."""
+    differing: list[str] = []
+    for path, content in staged.items():
+        try:
+            on_disk = path.read_text(encoding="utf-8")
+        except OSError:
+            differing.append(path.name)
+            continue
+        if on_disk != content:
+            differing.append(path.name)
+    return sorted(differing)
+
+
 def write_weekly_run_outputs(
     result: WeeklyRunResult, output_dir: str | Path, *, regenerate: bool = False
 ) -> WeeklyWriteOutcome:
@@ -685,15 +738,39 @@ def write_weekly_run_outputs(
 
     IDEMPOTENCY: if ``output_dir`` already contains a ``run-manifest.json``
     whose ``run_id`` matches ``result.manifest.run_id`` and ``regenerate``
-    is False (the default), this is a no-op: nothing is read or written
-    beyond the existing manifest, and ``outcome.wrote`` is False -- no
-    library/score-history/audit row is ever duplicated by re-running the
-    same week. Pass ``regenerate=True`` to redo it anyway; even then, this
-    week's score-history/audit rows REPLACE (never duplicate) any rows
-    already recorded for the SAME ``week_label`` (see
-    :func:`_jsonl_lines_excluding_week`), and ``topics.jsonl``/``brief.*``
-    are always the full current state, so they are naturally idempotent on
-    re-write.
+    is False (the default), this is normally a no-op: nothing is written,
+    and ``outcome.wrote`` is False -- no library/score-history/audit row is
+    ever duplicated by re-running the same week. Pass ``regenerate=True`` to
+    redo it anyway; even then, this week's score-history/audit rows REPLACE
+    (never duplicate) any rows already recorded for the SAME ``week_label``
+    (see :func:`_jsonl_lines_excluding_week`), and ``topics.jsonl``/
+    ``brief.*`` are always the full current state, so they are naturally
+    idempotent on re-write.
+
+    R1 (2026-08-01 post-merge-gate round, ADR 0009 -- "an idempotent skip
+    must verify its premise, not assume it"): a ``run_id`` match alone does
+    NOT prove the on-disk run still matches what CURRENT code would
+    produce -- a rendering/semantics change that never bumped ``code_version``
+    (see ``brief.BRIEF_VERSION``/``tiers.CONFIDENCE_RUBRIC_VERSION``) could
+    leave a stale on-disk run silently guarded forever. So ``staged`` (every
+    output this call WOULD write) is always built first -- from ``result``,
+    already fully computed by the caller, this is pure formatting, not extra
+    work -- and on the ``run_id``-match path it is byte-compared against
+    what is already on disk (:func:`_staged_differs_from_disk`) BEFORE
+    deciding to skip:
+
+    - every staged file byte-identical to its on-disk counterpart -> the
+      ordinary clean skip (``outcome.stale`` is False, ``skipped_reason``
+      text unchanged from before this round).
+    - ANY staged file differs -> STILL skipped (this never writes without
+      ``regenerate=True``), but ``outcome.stale`` is True and
+      ``outcome.stale_files`` names every differing file, so the caller
+      (``cli/main.py``) can warn loudly instead of silently serving a
+      stale run.
+
+    This changes neither ``run_id`` nor ``input_fingerprint`` computation,
+    and only ever READS against an existing ``output_dir`` -- it never
+    writes on the skip path, regenerate or not.
 
     ATOMICITY: delegated to :func:`_atomic_write_all` -- either all eight
     files land, or none of them change.
@@ -701,19 +778,6 @@ def write_weekly_run_outputs(
     output_dir = Path(output_dir)
     run_id = result.manifest.run_id
     week_label = result.manifest.week_label
-
-    if not regenerate and _existing_manifest_run_id(output_dir) == run_id:
-        return WeeklyWriteOutcome(
-            wrote=False,
-            skipped_reason=(
-                f"a completed run with run_id={run_id} already exists in {output_dir}; "
-                "pass --regenerate to redo it"
-            ),
-            files_written=[],
-            run_id=run_id,
-        )
-
-    output_dir.mkdir(parents=True, exist_ok=True)
 
     score_history_path = output_dir / "score-history.jsonl"
     audit_path = output_dir / "audit.jsonl"
@@ -737,6 +801,7 @@ def write_weekly_run_outputs(
     # already computed by brief.build_weekly_brief; never re-derived here.
     discarded_lines = [d.model_dump_json() for d in result.brief.discarded]
 
+    # R1: built BEFORE the skip decision -- see this function's docstring.
     staged: dict[Path, str] = {
         output_dir / "brief.md": result.brief_markdown,
         output_dir / "brief.json": result.brief_json,
@@ -747,6 +812,34 @@ def write_weekly_run_outputs(
         output_dir / "movements.md": result.movements_markdown,
         output_dir / "discarded.jsonl": _jsonl_text(discarded_lines),
     }
+
+    if not regenerate and _existing_manifest_run_id(output_dir) == run_id:
+        differing_files = _staged_differs_from_disk(staged)
+        if not differing_files:
+            return WeeklyWriteOutcome(
+                wrote=False,
+                skipped_reason=(
+                    f"a completed run with run_id={run_id} already exists in {output_dir}; "
+                    "pass --regenerate to redo it"
+                ),
+                files_written=[],
+                run_id=run_id,
+            )
+        return WeeklyWriteOutcome(
+            wrote=False,
+            skipped_reason=(
+                f"a completed run with run_id={run_id} already exists in {output_dir}; "
+                "pass --regenerate to redo it -- STALE: "
+                f"{len(differing_files)} on-disk file(s) no longer match what current code "
+                f"would produce for this run: {', '.join(differing_files)}"
+            ),
+            files_written=[],
+            run_id=run_id,
+            stale=True,
+            stale_files=differing_files,
+        )
+
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     _atomic_write_all(staged)
 

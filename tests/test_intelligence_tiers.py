@@ -1019,7 +1019,7 @@ def test_denied_independence_never_yields_high_confidence() -> None:
     false corroboration claim this branch exists to eliminate. After F1,
     this must fall through to 'medium' with no affirmative corroboration
     wording anywhere -- not in the structured confidence_reason, and not in
-    the brief's rendered human phrase (brief._human_principal_evidence,
+    the brief's rendered human phrase (brief._human_evidence_sentence,
     which is keyed off claim.confidence and therefore self-corrects once
     confidence stops being 'high' -- untouched in this commit)."""
     first_party_artifact = _make_item(
@@ -1073,7 +1073,9 @@ def test_denied_independence_never_yields_high_confidence() -> None:
     for phrase in affirmative_corroboration_phrases:
         assert phrase not in claim.confidence_reason
 
-    human_phrase = brief_module._human_principal_evidence(
+    # P1/P2 (product review round 4): renamed to _human_evidence_sentence and
+    # shared by Tier 1 and Tier 2 (see brief.py) -- same semantics.
+    human_phrase = brief_module._human_evidence_sentence(
         inputs, claim, cluster.independent_publisher_count
     )
     for phrase in affirmative_corroboration_phrases:

@@ -689,7 +689,21 @@ _WEEKLY_RUN_EPILOG = (
     "ONLY -- nothing here installs this):\n\n"
     "  0 18 * * 6 cd /path/to/repo && content-machine intelligence weekly-run "
     "--signals /path/to/signals.json --library /path/to/library.jsonl "
-    '--reference-date "$(date +\\%F)" --output-dir /path/to/output'
+    '--reference-date "$(date +\\%F)" --output-dir /path/to/output\n\n'
+    "RE-RUNNING AN EXISTING WEEK (ADR 0009): re-invoking this command over an "
+    "output-dir that already has a completed run (same run_id) is a no-op by "
+    "default -- nothing is overwritten. If the installed code's rendering or "
+    "confidence semantics changed since that run was written (e.g. after "
+    "upgrading), the on-disk run can go STALE -- it still exists, but no longer "
+    "matches what current code would produce -- and this command prints a loud "
+    "WARNING to stderr naming the differing file(s) on every such re-run, "
+    "whether or not a limitations-overlay.json is present. Applying a fix to an "
+    "EXISTING week's output-dir therefore requires an explicit --regenerate. "
+    "BEFORE passing --regenerate, ARCHIVE A COPY OF output-dir FIRST: the "
+    "'.bak.tmp' move-asides this command uses internally are rollback staging "
+    "for a single write operation, deleted automatically once that write "
+    "succeeds -- they are NOT a backup and will not let you recover the "
+    "pre-regenerate content afterwards."
 )
 
 
@@ -898,6 +912,32 @@ def intelligence_weekly_run(
             typer.echo(f"  - {name}")
     else:
         typer.echo(f"Skipped write: {outcome.skipped_reason}")
+        # R1 (2026-08-01 post-merge-gate round, ADR 0009 -- "an idempotent
+        # skip must verify its premise, not assume it"): UNCONDITIONAL --
+        # NOT gated on overlay_result, unlike the overlay-specific warning
+        # below. write_weekly_run_outputs byte-compares every output this
+        # invocation would have written against what is already on disk
+        # before it ever skips (see its docstring); outcome.stale is True
+        # when at least one differs, meaning the on-disk run under
+        # output_dir no longer matches what CURRENT code would produce for
+        # it -- most likely because rendering/confidence semantics changed
+        # (see brief.BRIEF_VERSION / tiers.CONFIDENCE_RUBRIC_VERSION in the
+        # on-disk run-manifest.json vs. the current package) without a
+        # code_version/run_id change to catch it on its own. A Founder with
+        # NO limitations-overlay file must still see this -- it is not a
+        # special case of the overlay warning, the overlay warning below is
+        # a special case of THIS one.
+        if outcome.stale:
+            typer.secho(
+                f"WARNING: the run already completed on disk at {output_dir} "
+                f"(run_id={outcome.run_id}) does NOT match what the CURRENT code would "
+                f"produce for it -- {len(outcome.stale_files)} file(s) differ: "
+                f"{', '.join(outcome.stale_files)}. This run was left in place unchanged "
+                "(no output is ever overwritten without --regenerate). Pass --regenerate to "
+                "redo this run's outputs with the current code.",
+                fg=typer.colors.YELLOW,
+                err=True,
+            )
         # Fable ruling 2026-08-01 (Part B, follow-up: "idempotency skip
         # gap"): a validated overlay this invocation, combined with a skip
         # (a completed run with a matching run_id already on disk), can mean

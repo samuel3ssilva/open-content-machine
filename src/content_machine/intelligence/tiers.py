@@ -60,6 +60,25 @@ from content_machine.intelligence.models import (
 
 TOP_N = 10
 
+# R2 (2026-08-01, post-merge-gate round): a version marker OWNED BY THIS
+# MODULE'S CONFIDENCE SEMANTICS -- distinct from ranking.RUBRIC_VERSION (the
+# six-dimension scoring rubric, which this module never touches) and from
+# brief.BRIEF_VERSION (the rendered-document schema). Bumped whenever
+# ``_assess_confidence``'s corroboration semantics change -- as they did
+# across the Part B / Part C / round-3 Fable rulings folded into that
+# function (see its docstring) -- even when no ``WeeklyBrief`` field or
+# rendered-Markdown template changes as a result. Recorded ADDITIVELY on
+# both ``brief.WeeklyBrief.confidence_rubric_version`` and
+# ``weekly.RunManifest.confidence_rubric_version``; deliberately EXCLUDED
+# from ``weekly.compute_run_id``/``compute_input_fingerprint`` (Fable
+# ruling 2026-08-01, R1/R2: semantics must never enter run identity, since
+# that would silently un-guard every historical output directory and make
+# past run_ids non-recomputable). Its job is purely diagnostic: when
+# ``write_weekly_run_outputs``'s idempotency-skip byte-compare (R1) finds a
+# stale on-disk run, the manifest delta on this field is the human-readable
+# "why" that complements the byte-level "that".
+CONFIDENCE_RUBRIC_VERSION = "gate-b-tiers-2"
+
 _TIER_LABELS: dict[TierName, str] = {
     "tier_1": "Must Understand",
     "tier_2": "Should Know",
@@ -165,6 +184,29 @@ _CORROBORATED_ANCHORS = frozenset(
 )
 
 
+def has_cross_source_corroboration(
+    evidence_anchor_id: str, independent_publisher_count: int
+) -> bool:
+    """Whether a topic has genuine cross-source corroboration -- the exact
+    predicate ``_assess_confidence`` uses internally to gate ``high``
+    confidence for fact claims (Fable ruling 2026-08-01, Part B / round-3
+    final recheck). Public (not a private helper) so callers OUTSIDE this
+    module -- specifically ``brief.py``'s executive-summary and
+    content-opportunity single-source disclosures (G1/G3, product review
+    round 4) -- can ask the SAME question this module already answers
+    internally, instead of re-deriving or approximating it from
+    ``independent_publisher_count`` alone. That would be wrong: a topic
+    reached via ``evid_4_first_party_plus_independent`` with
+    ``independent_publisher_count == 1`` (a first-party leg plus one
+    independent leg) IS genuinely cross-source corroborated even though its
+    independent-publisher count alone is only 1 -- counting it as
+    "single-sourced" would contradict its own ``high``-confidence
+    classification a few lines away in the same rendered document."""
+    return independent_publisher_count >= 2 or (
+        evidence_anchor_id in _CORROBORATED_ANCHORS and independent_publisher_count >= 1
+    )
+
+
 def _assess_confidence(
     claim_class: ClaimClass, inputs: RankingInputs, independent_publisher_count: int
 ) -> tuple[ConfidenceLevel, str]:
@@ -200,8 +242,8 @@ def _assess_confidence(
     ``independent_publisher_count >= 1`` alongside the anchor closes that
     gap: the anchor alone no longer manufactures a second source out of a
     leg the registry has explicitly forbidden from supplying independence."""
-    has_cross_source_corroboration = independent_publisher_count >= 2 or (
-        inputs.evidence_anchor_id in _CORROBORATED_ANCHORS and independent_publisher_count >= 1
+    cross_source_corroborated = has_cross_source_corroboration(
+        inputs.evidence_anchor_id, independent_publisher_count
     )
     if claim_class != "fact":
         return (
@@ -209,7 +251,7 @@ def _assess_confidence(
             f"claim_class={claim_class} (not 'fact'): confidence is low regardless of "
             "evidence_level.",
         )
-    if inputs.evidence_level >= 4 and has_cross_source_corroboration:
+    if inputs.evidence_level >= 4 and cross_source_corroborated:
         return (
             "high",
             (

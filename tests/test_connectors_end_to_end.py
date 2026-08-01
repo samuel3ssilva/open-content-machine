@@ -269,11 +269,54 @@ def test_golden_existing_synthetic_fixture_output_is_unchanged_by_gate_d() -> No
     # (pre-round-3):
     # markdown "76f856ea357fc931a029b05ba110f3477ed5e00a4918e701f565d868df9eea45",
     # json "3e782c404ca69aab5ced740d2667c0b4bca565d992f002a57c28a20249c20b34".
+    #
+    # Post-merge-gate round (2026-08-01, ADR 0007/0009) re-pin: the hashes
+    # below changed again, and MUST have -- this round bumped both version
+    # markers that a prior round left unbumped despite changing rendering
+    # semantics (brief.BRIEF_VERSION "gate-e0-m5-2" -> "gate-e0-m5-3"; the new
+    # additive tiers.CONFIDENCE_RUBRIC_VERSION field), and fixed rendering
+    # itself: P1 (Tier 2's principal-evidence line was ungrammatical --
+    # _human_principal_evidence renamed to the shared _human_evidence_sentence
+    # with a verb-clause independence phrase instead of a comma-spliced noun
+    # phrase), P2 (Tier 1's evidence_and_confidence now routes through that
+    # same builder instead of piping tiers.py's raw confidence_reason audit
+    # string into reader-facing prose), G1 (the executive summary's marketing
+    # sentence dropped its corroboration-scoping trailing clause and gained a
+    # new Top-N single-source sentence), and G3 (single-sourced content
+    # opportunities now disclose it in their own reason line) all change
+    # brief.md text on this fixture, and the new
+    # confidence_rubric_version/corroboration_methodology_note fields (G2)
+    # change brief.json. Re-verified directly, same method as every prior
+    # re-pin comment above: clusters/ranked/tiered/tier1 counts and the top
+    # topic's id+score are UNCHANGED (see the asserts above this one) --
+    # nothing in cluster.py/ranking.py/tiers.py's admission or scoring logic
+    # moved; only rendered prose and additive schema fields did. Old hashes
+    # (pre-this-round):
+    # markdown "50b221d238e6bc29107798ca34104ed91c8c7ac2c4adb63924d1a56b915da151",
+    # json "2bae3f0a4910a2e1b8196b60288d932eb853b4a34ec6c86e9aefe5eed817e8c7".
+    #
+    # Same-round correction: the FIRST version of G1/G3's single-source
+    # predicate above approximated "single-sourced" as
+    # independent_publisher_count <= 1, which wrongly counted this
+    # fixture's own top-ranked, high-confidence topic (corroborated via the
+    # evid_4_first_party_plus_independent anchor with
+    # independent_publisher_count == 1 -- a first-party leg plus one
+    # independent leg) as single-sourced, contradicting the "high
+    # confidence" it is given one sentence earlier in the same executive
+    # summary. Fixed by delegating to the new
+    # tiers.has_cross_source_corroboration (the exact predicate
+    # tiers._assess_confidence already uses to gate 'high' confidence)
+    # instead of re-deriving an approximation -- on this fixture the
+    # Top-10 single-source count changed from 10/10 to 8/10, correctly
+    # excluding the two anchor-corroborated topics. Old hashes (pre-fix,
+    # same round):
+    # markdown "b58d377fd9d6c4fb7947f2f895e58251c97bd0d79d87bfdd6104ba5811d40e48",
+    # json "31d4c1822d1b41191cd37f95290af6297f35e4095dde2122c5757e4f72bc900f".
     assert (
         hashlib.sha256(markdown.encode("utf-8")).hexdigest()
-        == "50b221d238e6bc29107798ca34104ed91c8c7ac2c4adb63924d1a56b915da151"
+        == "232f204e03c74cbb49f5e134c786671a2688e9b9f9355919f38575af219978ac"
     )
     assert (
         hashlib.sha256(brief.model_dump_json().encode("utf-8")).hexdigest()
-        == "2bae3f0a4910a2e1b8196b60288d932eb853b4a34ec6c86e9aefe5eed817e8c7"
+        == "8a2b830f28e5065198e6f076caab9bdc3f4e2fbda61e56c9793687c33f1d8442"
     )

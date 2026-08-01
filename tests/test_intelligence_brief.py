@@ -501,7 +501,11 @@ def test_human_evidence_phrase_reports_two_or_more_distinct_sources() -> None:
 
     target = next(item for item in brief.tier2 if item.topic_id == target_topic_id)
     assert target.confidence == "medium"
-    assert "independent evidence from two or more distinct sources" in target.principal_evidence
+    # P1 (product review round 4): the independence clause is now a full verb
+    # clause ("the claim is supported by...") rather than a noun phrase, to
+    # fix a comma-splice/repeated-noun-phrase grammar regression -- see
+    # brief._human_evidence_sentence's docstring.
+    assert "the claim is supported by two or more independent sources" in target.principal_evidence
     assert "single source" not in target.principal_evidence
 
 
@@ -843,12 +847,13 @@ def test_brief_single_reference_topics_never_claim_corroboration() -> None:
         for phrase in affirmative_corroboration_phrases:
             assert phrase not in topic.claim.confidence_reason
 
-    # Structured Tier 1/2 fields interpolate confidence_reason verbatim into
-    # the rendered Markdown block (see brief._render_tier1_section's
-    # evidence_and_confidence line and _render_tier2_section's
-    # principal_evidence line) -- re-check at the rendered-text level too, so
-    # this proves the DOCUMENT a Founder actually reads, not just the
-    # structured object it was built from.
+    # Structured Tier 1/2 fields are built from claim.confidence via the
+    # shared human-prose builder (P2, product review round 4:
+    # brief._human_evidence_sentence -- Tier 1's evidence_and_confidence no
+    # longer interpolates confidence_reason verbatim; see its own docstring)
+    # -- re-check at the rendered-text level too, so this proves the
+    # DOCUMENT a Founder actually reads, not just the structured object it
+    # was built from.
     single_reference_titles = {
         topic.canonical_title for topic in single_reference_fact_topics
     }
@@ -1605,3 +1610,126 @@ def test_p5_governed_source_counts_reflect_real_may_supply_independence_values()
     assert "Of 3 source item(s) considered" in line
     assert "2 are registry-governed" in line
     assert "only 1 of those are authorised" in line
+
+
+# --- product review round 4 (2026-08-01, post-merge-gate) -------------------
+# --- G1: executive summary no longer scopes corroboration-need to marketing
+
+
+def test_g1_marketing_sentence_no_longer_implies_only_marketing_needs_corroboration() -> None:
+    brief = _brief_from_real_fixture()
+    marketing_sentence = next(
+        s for s in brief.executive_summary if "marketing-risk claims" in s
+    )
+    # The old trailing clause scoped the corroboration need to marketing
+    # claims only -- it must be gone.
+    assert "before acting" not in marketing_sentence
+    assert "corroborat" not in marketing_sentence.lower()
+
+
+def test_g1_executive_summary_states_top_n_single_source_count_with_negated_wording() -> None:
+    brief = _brief_from_real_fixture()
+    single_source_sentence = next(
+        s for s in brief.executive_summary if "no second, distinct independent source" in s
+    )
+    assert f"Top {len(brief.tier1) + len(brief.tier2) + len(brief.tier3)}" in single_source_sentence
+    # Part B's ban on affirmative corroborat* phrasing: this must state an
+    # ABSENCE, never claim corroboration is present.
+    assert "no independent corroboration has been found" in single_source_sentence
+    assert "is corroborated" not in single_source_sentence
+    assert "genuine independent corroboration is present" not in single_source_sentence
+
+
+def test_g1_single_source_count_excludes_anchor_corroborated_high_confidence_topics() -> None:
+    """Regression for a same-round defect: approximating "single-sourced" as
+    independent_publisher_count <= 1 wrongly counted a topic corroborated
+    via the evid_4_first_party_plus_independent/evid_5_... anchor path
+    (which can reach independent_publisher_count == 1) as single-sourced,
+    even though it is rendered high-confidence a sentence earlier. The
+    count must never exceed the number of topics that are NOT high
+    confidence, and must be strictly less than the Top-N size whenever at
+    least one topic is high confidence via the anchor path."""
+    clusters, items_by_id, ranked = _real_fixture_pipeline()
+    clusters_by_topic_id = {c.topic_id: c for c in clusters}
+    tiered = assign_tiers(ranked, clusters_by_topic_id, items_by_id)
+    brief = build_weekly_brief(tiered, ranked, clusters_by_topic_id, items_by_id, WEEK_LABEL)
+
+    high_confidence_count = sum(1 for t in tiered if t.claim.confidence == "high")
+    assert high_confidence_count > 0  # sanity: the real fixture has one
+
+    single_source_sentence = next(
+        s for s in brief.executive_summary if "no second, distinct independent source" in s
+    )
+    single_source_count = int(single_source_sentence.split(" of the Top", 1)[0])
+    assert single_source_count <= len(tiered) - high_confidence_count
+
+
+# --- G2: static corroboration-counting methodology disclosure --------------
+
+
+def test_g2_corroboration_methodology_note_present_in_brief_and_appendix() -> None:
+    brief = _brief_from_real_fixture()
+    assert "publisher/venue granularity" in brief.corroboration_methodology_note
+    assert "arxiv" in brief.corroboration_methodology_note.lower()
+    # Fable explicitly refused to certify "high is permanently unreachable"
+    # -- the note must never AFFIRM that (a negated refutation, "does not
+    # make high confidence unreachable", is fine -- it directly says the
+    # opposite of the banned claim).
+    assert "permanently unreachable" not in brief.corroboration_methodology_note.lower()
+    assert "does not make high confidence unreachable" in brief.corroboration_methodology_note
+
+    markdown = render_markdown(brief)
+    assert "Confidence & Corroboration Methodology" in markdown
+    assert brief.corroboration_methodology_note in markdown
+
+    parsed = json.loads(render_json(brief))
+    assert parsed["corroboration_methodology_note"] == brief.corroboration_methodology_note
+
+
+# --- G3: single-sourced content opportunities disclose it in their reason --
+
+
+def test_g3_single_sourced_content_opportunity_discloses_it_with_negated_wording() -> None:
+    clusters, items_by_id, ranked = _real_fixture_pipeline()
+    clusters_by_topic_id = {c.topic_id: c for c in clusters}
+    tiered = assign_tiers(ranked, clusters_by_topic_id, items_by_id)
+    brief = build_weekly_brief(tiered, ranked, clusters_by_topic_id, items_by_id, WEEK_LABEL)
+    confidence_by_topic_id = {t.topic_id: t.claim.confidence for t in tiered}
+
+    assert brief.content_opportunities.opportunities  # sanity: fixture has some
+    for opp in brief.content_opportunities.opportunities:
+        if "single-sourced" in opp.reason:
+            # Advisory/negated wording only -- never an affirmative
+            # corroboration claim.
+            assert "corroborate before publishing" in opp.reason
+        else:
+            # Only a topic that IS cross-source corroborated may omit the
+            # disclosure -- i.e. it must be 'high' confidence via genuine
+            # corroboration, never silently omitted for a medium topic.
+            assert confidence_by_topic_id[opp.topic_id] == "high"
+
+
+# --- P3: the limitation renders above Recommended action, as a blockquote --
+
+
+def test_p3_limitation_line_renders_above_recommended_action_in_tier1_and_tier2() -> None:
+    clusters, _items_by_id, _ranked = _real_fixture_pipeline()
+    brief = _brief_from_real_fixture()
+    item_topic_map = {
+        item_id: cluster.topic_id for cluster in clusters for item_id in cluster.member_ids
+    }
+    rendered = {*[i.topic_id for i in brief.tier1], *[i.topic_id for i in brief.tier2]}
+    _target_item_id, target_topic_id = next(
+        (item_id, topic_id) for item_id, topic_id in item_topic_map.items() if topic_id in rendered
+    )
+    markdown = render_markdown(
+        brief, limitations_overlay={target_topic_id: ["a synthetic invented limitation"]}
+    )
+    limitation_index = markdown.index("> **Founder-noted limitation (human-authored):**")
+    # Find the "Recommended action" line belonging to the SAME topic block
+    # (the next "Recommended action" line after the limitation).
+    recommended_action_index = markdown.index("**Recommended action:**", limitation_index)
+    assert limitation_index < recommended_action_index
+    # Visually distinguishable from the six machine bullets (P3): a
+    # blockquote, not a plain "- **Label:**" bullet.
+    assert "- **Founder-noted limitation" not in markdown
