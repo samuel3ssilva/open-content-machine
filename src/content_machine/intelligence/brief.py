@@ -580,15 +580,23 @@ def _human_principal_evidence(inputs: RankingInputs, claim: ClaimAssessment) -> 
     already-computed structured fields (evidence_level in words,
     has_independent_evidence, claim_class, confidence) -- never the
     dimension's raw rationale ("evidence_level=N (...); "
-    "has_independent_evidence=..., marketing_risk=...")."""
+    "has_independent_evidence=..., marketing_risk=...").
+
+    Fable ruling 2026-08-01 (Part B): ``independence_phrase`` is keyed off
+    ``claim.confidence`` (not the raw ``has_independent_evidence`` flag) so a
+    single independent source is never described the same way as two or more
+    distinct corroborating sources -- ``confidence == "high"`` is the only
+    case that now implies genuine cross-source corroboration (see
+    ``tiers._assess_confidence``)."""
     evidence_phrase = _EVIDENCE_LEVEL_HUMAN_PHRASE.get(
         inputs.evidence_level, f"evidence level {inputs.evidence_level}"
     )
-    independence_phrase = (
-        "independently corroborated"
-        if inputs.has_independent_evidence
-        else "not independently corroborated"
-    )
+    if claim.confidence == "high":
+        independence_phrase = "corroborated across multiple distinct sources"
+    elif inputs.has_independent_evidence:
+        independence_phrase = "independent evidence from a single source"
+    else:
+        independence_phrase = "no independent evidence"
     return (
         f"{evidence_phrase.capitalize()}, {independence_phrase}. "
         f"Classified as {claim.claim_class} at {claim.confidence} confidence."
@@ -1264,7 +1272,23 @@ def build_weekly_brief(
     )
 
 
-def _render_tier1_section(brief: WeeklyBrief) -> list[str]:
+# --- Founder-approved limitations overlay (private, run-specific; see -------
+# content_machine.intelligence.limitations_overlay). Composed ONLY into the
+# rendered Markdown -- never into WeeklyBrief itself, so brief.json and every
+# other structured field are completely unaffected by whether an overlay was
+# supplied. Never merged with, concatenated to, or falling back from
+# change_class_rationale -- the two concepts stay distinct.
+_FOUNDER_LIMITATION_LABEL = "Founder-noted limitation (human-authored)"
+
+
+def _limitation_line(topic_id: str, limitations_overlay: dict[str, str]) -> str | None:
+    text = limitations_overlay.get(topic_id)
+    if not text:
+        return None
+    return f"- **{_FOUNDER_LIMITATION_LABEL}:** {text}"
+
+
+def _render_tier1_section(brief: WeeklyBrief, limitations_overlay: dict[str, str]) -> list[str]:
     lines = ["## Tier 1 -- Must Understand"]
     if brief.tier1_short_reason:
         lines.append(f"_{brief.tier1_short_reason}_")
@@ -1286,10 +1310,13 @@ def _render_tier1_section(brief: WeeklyBrief) -> list[str]:
             lines.append(
                 "- **Security flags:** " + ", ".join(item.adversarial_security_flags)
             )
+        limitation_line = _limitation_line(item.topic_id, limitations_overlay)
+        if limitation_line is not None:
+            lines.append(limitation_line)
     return lines
 
 
-def _render_tier2_section(brief: WeeklyBrief) -> list[str]:
+def _render_tier2_section(brief: WeeklyBrief, limitations_overlay: dict[str, str]) -> list[str]:
     lines = ["## Should Know"]
     if not brief.tier2:
         lines.append("No topics in this tier this week.")
@@ -1304,15 +1331,25 @@ def _render_tier2_section(brief: WeeklyBrief) -> list[str]:
             lines.append(
                 "- **Security flags:** " + ", ".join(item.adversarial_security_flags)
             )
+        limitation_line = _limitation_line(item.topic_id, limitations_overlay)
+        if limitation_line is not None:
+            lines.append(limitation_line)
     return lines
 
 
-def _render_tier3_section(brief: WeeklyBrief) -> list[str]:
+def _render_tier3_section(brief: WeeklyBrief, limitations_overlay: dict[str, str]) -> list[str]:
     lines = ["## Radar"]
     if not brief.tier3:
         lines.append("No topics in this tier this week.")
     for item in brief.tier3:
         lines.append(f"- **{item.rank}. {item.canonical_title}** -- {item.signal_paragraph}")
+        # Tier 3 items are single-line list entries with no bulleted
+        # sub-block of their own (unlike Tier 1/2) -- a limitation is
+        # rendered as a nested bullet directly under that item's own line so
+        # it stays visibly attached to it.
+        limitation_line = _limitation_line(item.topic_id, limitations_overlay)
+        if limitation_line is not None:
+            lines.append(f"  {limitation_line}")
     return lines
 
 
@@ -1442,11 +1479,26 @@ def _render_appendix_section(brief: WeeklyBrief) -> list[str]:
     return lines
 
 
-def render_markdown(brief: WeeklyBrief) -> str:
+def render_markdown(
+    brief: WeeklyBrief, limitations_overlay: dict[str, str] | None = None
+) -> str:
     """Render the Markdown Intelligence Brief FROM the structured
     :class:`WeeklyBrief` object -- never re-derived from raw pipeline output,
     so the Markdown and the JSON (``brief.model_dump_json()``) can never
-    diverge. Pure and deterministic: same ``brief``, same string, always."""
+    diverge. Pure and deterministic: same ``brief`` and same
+    ``limitations_overlay``, same string, always.
+
+    ``limitations_overlay`` (Fable ruling 2026-08-01, Part C) is an OPTIONAL,
+    caller-supplied ``{topic_id: limitation_text}`` mapping -- a private,
+    run-specific, human-authored overlay validated by the caller (see
+    ``content_machine.intelligence.limitations_overlay``) BEFORE it ever
+    reaches this function. It is composed ONLY into this rendered Markdown
+    string, inside each named topic's own Tier 1/2/3 block -- it is never
+    added to ``WeeklyBrief`` itself, so ``render_json``/``brief.json`` and
+    every other structured field are completely unaffected by whether an
+    overlay was supplied. Defaults to no overlay (``{}``) when omitted, which
+    reproduces the pre-overlay rendering byte-for-byte."""
+    limitations_overlay = limitations_overlay or {}
     lines: list[str] = []
     lines.append(f"# Intelligence Brief -- Week {brief.week_label}")
     lines.append("")
@@ -1468,11 +1520,11 @@ def render_markdown(brief: WeeklyBrief) -> str:
     for sentence in brief.executive_summary:
         lines.append(sentence)
     lines.append("")
-    lines.extend(_render_tier1_section(brief))
+    lines.extend(_render_tier1_section(brief, limitations_overlay))
     lines.append("")
-    lines.extend(_render_tier2_section(brief))
+    lines.extend(_render_tier2_section(brief, limitations_overlay))
     lines.append("")
-    lines.extend(_render_tier3_section(brief))
+    lines.extend(_render_tier3_section(brief, limitations_overlay))
     lines.append("")
     lines.extend(_render_study_section(brief))
     lines.append("")

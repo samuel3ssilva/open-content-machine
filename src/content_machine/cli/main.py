@@ -40,7 +40,15 @@ from content_machine.audience.public_report import to_markdown as public_to_mark
 from content_machine.audience.report import AudienceReport, analyze, to_json, to_markdown
 from content_machine.config.settings import get_settings
 from content_machine.ingestion.csv_loader import CsvLoadError, LoadResult, load_csv
+from content_machine.intelligence.brief import render_markdown
 from content_machine.intelligence.library import load_topics
+from content_machine.intelligence.limitations_overlay import (
+    OVERLAY_FILENAME,
+    LimitationsOverlayError,
+    corpus_topic_ids,
+    load_limitations_overlay,
+    rendered_topic_ids,
+)
 from content_machine.intelligence.loader import (
     DEFAULT_PROFILE_PATH,
     ProfileLoadError,
@@ -51,6 +59,7 @@ from content_machine.intelligence.loader import (
 from content_machine.intelligence.weekly import (
     DEFAULT_CADENCE_DESCRIPTION,
     DEFAULT_TIMEZONE,
+    LimitationsOverlayManifest,
     derive_week_label,
     resolve_window,
     run_weekly,
@@ -833,6 +842,47 @@ def intelligence_weekly_run(
         raise typer.Exit(code=0)
 
     assert output_dir is not None  # guarded above
+
+    # Fable ruling 2026-08-01 (Part C): the Founder-approved, per-item
+    # limitations overlay -- a private, run-specific, human-authored JSON
+    # sidecar a human places at <output_dir>/limitations-overlay.json BEFORE
+    # this command runs. Absent file is NOT a failure (the run proceeds with
+    # no limitations composed); any other validation failure aborts the
+    # ENTIRE render -- nothing is written -- so this must run BEFORE
+    # write_weekly_run_outputs is ever called. Composed ONLY into the
+    # rendered brief.md string (never into result.brief / brief.json, the
+    # pipeline, or a model boundary).
+    overlay_path = output_dir / OVERLAY_FILENAME
+    try:
+        overlay_result = load_limitations_overlay(
+            overlay_path,
+            run_id=result.manifest.run_id,
+            corpus_topic_ids=corpus_topic_ids(result.brief),
+            rendered_topic_ids=rendered_topic_ids(result.brief),
+        )
+    except LimitationsOverlayError as exc:
+        typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from None
+
+    if overlay_result is not None:
+        result = result.model_copy(
+            update={
+                "brief_markdown": render_markdown(
+                    result.brief, limitations_overlay=overlay_result.limitations
+                ),
+                "manifest": result.manifest.model_copy(
+                    update={
+                        "limitations_overlay": LimitationsOverlayManifest(
+                            present=True,
+                            item_count=overlay_result.item_count,
+                            overlay_sha256=overlay_result.overlay_sha256,
+                            provenance=overlay_result.provenance,
+                        )
+                    }
+                ),
+            }
+        )
+
     outcome = write_weekly_run_outputs(result, output_dir, regenerate=regenerate)
 
     typer.echo("\n".join(summary_lines))

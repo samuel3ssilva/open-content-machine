@@ -151,46 +151,96 @@ def _classify_claim_class(inputs: RankingInputs) -> tuple[ClaimClass, str]:
     )
 
 
+# Fable ruling 2026-08-01 (Part B, "independence must stop being rendered as
+# corroboration"): the evidence anchors that, on their own, already establish
+# TWO distinct sources -- a first-party artifact plus independent evidence, or
+# an authoritative source plus independent analysis plus independent rigor.
+# ``evid_4_independent_rigorous_alone`` is deliberately NOT a member: it is
+# reached by a SINGLE independent source, zero corroboration.
+_CORROBORATED_ANCHORS = frozenset(
+    {
+        "evid_5_authoritative_plus_analysis_plus_independent_rigor",
+        "evid_4_first_party_plus_independent",
+    }
+)
+
+
 def _assess_confidence(
-    claim_class: ClaimClass, inputs: RankingInputs
+    claim_class: ClaimClass, inputs: RankingInputs, independent_publisher_count: int
 ) -> tuple[ConfidenceLevel, str]:
     """Deterministic confidence, built only from ``evidence_level``,
-    ``has_independent_evidence``, and whether ``claim_class == "fact"`` -- no
-    new inputs invented. A non-``fact`` claim (hypothesis or marketing) is
-    always ``low`` confidence, regardless of evidence_level: an unestablished
-    or self-serving claim does not become more trustworthy just because its
-    evidence_level happens to be high (e.g. a marketing_risk topic can still
-    reach evidence_level 3+, see D4/hardening)."""
+    ``has_independent_evidence``, ``independent_publisher_count``, and
+    whether ``claim_class == "fact"`` -- no new inputs invented. A non-
+    ``fact`` claim (hypothesis or marketing) is always ``low`` confidence,
+    regardless of evidence_level: an unestablished or self-serving claim does
+    not become more trustworthy just because its evidence_level happens to be
+    high (e.g. a marketing_risk topic can still reach evidence_level 3+, see
+    D4/hardening).
+
+    Fable ruling 2026-08-01 (Part B): ``evidence_level >= 4`` alone does NOT
+    imply cross-source corroboration -- the anchor
+    ``evid_4_independent_rigorous_alone`` reaches evidence_level 4 with a
+    SINGLE source. ``high`` confidence now additionally requires
+    ``has_cross_source_corroboration`` (either a corroborating evidence
+    anchor, or two-or-more distinct independent publishers). A single-source
+    independent topic is capped at ``medium`` and says so explicitly, rather
+    than being rendered as "genuine independent corroboration is present"."""
+    has_cross_source_corroboration = (
+        inputs.evidence_anchor_id in _CORROBORATED_ANCHORS or independent_publisher_count >= 2
+    )
     if claim_class != "fact":
         return (
             "low",
             f"claim_class={claim_class} (not 'fact'): confidence is low regardless of "
             "evidence_level.",
         )
-    if inputs.evidence_level >= 4 and inputs.has_independent_evidence:
+    if inputs.evidence_level >= 4 and has_cross_source_corroboration:
         return (
             "high",
             (
                 f"claim_class=fact, evidence_level={inputs.evidence_level} >= 4 AND "
-                "has_independent_evidence=True: genuine independent corroboration is "
-                "present."
+                f"cross-source corroboration is present (evidence_anchor_id="
+                f"{inputs.evidence_anchor_id}, independent_publisher_count="
+                f"{independent_publisher_count}): at least two distinct sources "
+                "support the claim."
+            ),
+        )
+    if inputs.has_independent_evidence and independent_publisher_count == 1:
+        return (
+            "medium",
+            (
+                f"claim_class=fact, evidence_level={inputs.evidence_level}, "
+                f"independent_publisher_count=1: single-source independent evidence "
+                "-- one publisher structurally independent of the subject, on its "
+                "own. No second, distinct source supports the claim; confidence is "
+                "capped at medium."
             ),
         )
     return (
         "medium",
         (
             f"claim_class=fact, evidence_level={inputs.evidence_level}, "
-            f"has_independent_evidence={inputs.has_independent_evidence}: attested by an "
-            "artifact but not (yet) independently corroborated at the high-confidence bar."
+            f"has_independent_evidence={inputs.has_independent_evidence}, "
+            f"independent_publisher_count={independent_publisher_count}: attested "
+            "by an artifact, but no second, distinct source supports the claim at "
+            "the high-confidence bar."
         ),
     )
 
 
-def build_claim_assessment(inputs: RankingInputs) -> ClaimAssessment:
+def build_claim_assessment(
+    inputs: RankingInputs, *, independent_publisher_count: int
+) -> ClaimAssessment:
     """Build the full M4 claim assessment (classification + confidence) for
-    one topic's ``RankingInputs``. Pure and deterministic."""
+    one topic's ``RankingInputs``. Pure and deterministic.
+
+    ``independent_publisher_count`` is threaded in directly from the topic's
+    ``TopicCluster`` (never added to ``RankingInputs`` itself -- see
+    ``build_tiered_topic``, the only caller within this module)."""
     claim_class, claim_reason = _classify_claim_class(inputs)
-    confidence, confidence_reason = _assess_confidence(claim_class, inputs)
+    confidence, confidence_reason = _assess_confidence(
+        claim_class, inputs, independent_publisher_count
+    )
     return ClaimAssessment(
         claim_class=claim_class,
         claim_class_reason=claim_reason,
@@ -318,8 +368,8 @@ def _recommend_action(
     if claim_class == "fact" and confidence == "medium":
         return (
             "save",
-            "claim_class=fact, confidence=medium: attested by an artifact but not "
-            "independently corroborated -- save for later review.",
+            "claim_class=fact, confidence=medium: attested by an artifact but lacking a "
+            "second, distinct supporting source -- save for later review.",
         )
     if claim_class == "hypothesis" and tier == "tier_2":
         return (
@@ -403,7 +453,9 @@ def build_tiered_topic(
     """Build the full M4 view of one already-ranked topic. ``rank`` must be
     the topic's position (1-indexed) in the final, already tie-broken order
     produced by ``ranking.rank_topics`` -- this function never re-sorts."""
-    claim = build_claim_assessment(inputs)
+    claim = build_claim_assessment(
+        inputs, independent_publisher_count=cluster.independent_publisher_count
+    )
     tier_assignment = _build_tier_assignment(rank, anchor, inputs, breakdown, claim)
     return TieredTopic(
         rank=rank,

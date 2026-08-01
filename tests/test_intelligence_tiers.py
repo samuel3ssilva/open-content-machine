@@ -603,7 +603,10 @@ def test_fact_classification_on_a_representative_fixture_topic() -> None:
     _anchor, inputs, _breakdown = _anchor_and_inputs_for_item_id(
         ranked, clusters_by_topic_id, items_by_id, "item007"
     )
-    claim = build_claim_assessment(inputs)
+    cluster = clusters_by_topic_id[inputs.topic_id]
+    claim = build_claim_assessment(
+        inputs, independent_publisher_count=cluster.independent_publisher_count
+    )
     assert claim.claim_class == "fact"
     assert claim.confidence == "medium"
     assert claim.claim_class_reason
@@ -620,7 +623,10 @@ def test_marketing_classification_on_a_representative_fixture_topic() -> None:
         ranked, clusters_by_topic_id, items_by_id, "item005"
     )
     assert inputs.marketing_risk is True
-    claim = build_claim_assessment(inputs)
+    cluster = clusters_by_topic_id[inputs.topic_id]
+    claim = build_claim_assessment(
+        inputs, independent_publisher_count=cluster.independent_publisher_count
+    )
     assert claim.claim_class == "marketing"
     assert claim.confidence == "low"
     assert claim.claim_class_reason
@@ -635,7 +641,10 @@ def test_hypothesis_classification_on_a_representative_fixture_topic() -> None:
     _anchor, inputs, _breakdown = _anchor_and_inputs_for_item_id(
         ranked, clusters_by_topic_id, items_by_id, "item040"
     )
-    claim = build_claim_assessment(inputs)
+    cluster = clusters_by_topic_id[inputs.topic_id]
+    claim = build_claim_assessment(
+        inputs, independent_publisher_count=cluster.independent_publisher_count
+    )
     assert claim.claim_class == "hypothesis"
     assert claim.confidence == "low"
     assert claim.claim_class_reason
@@ -652,9 +661,218 @@ def test_hypothesis_classification_for_all_roundup_relay_cluster() -> None:
         ranked, clusters_by_topic_id, items_by_id, "item020"
     )
     assert inputs.evidence_level == 0
-    claim = build_claim_assessment(inputs)
+    cluster = clusters_by_topic_id[inputs.topic_id]
+    claim = build_claim_assessment(
+        inputs, independent_publisher_count=cluster.independent_publisher_count
+    )
     assert claim.claim_class == "hypothesis"
     assert claim.confidence == "low"
+
+
+# --- Fable ruling 2026-08-01 (Part B): "independence" must stop being ------
+# --- rendered as "corroboration" --------------------------------------------
+#
+# Defect: evidence_level >= 4 does NOT imply cross-source corroboration --
+# the anchor evid_4_independent_rigorous_alone reaches level 4 with a SINGLE
+# source. These tests pin the fixed behaviour directly against
+# _assess_confidence's inputs (evidence_anchor_id, independent_publisher_count)
+# rather than the old, incorrect has_independent_evidence-only rule.
+
+
+def test_confidence_single_independent_rigorous_source_is_medium() -> None:
+    """evid_4_independent_rigorous_alone with independent_publisher_count=1
+    (a SINGLE structurally-independent publisher, zero corroboration) must be
+    capped at medium, not high -- this is the exact defect the ruling
+    fixes."""
+    inputs = _make_inputs(
+        change_class="material_change",
+        action_required="none",
+        evidence_level=4,
+        evidence_anchor_id="evid_4_independent_rigorous_alone",
+        has_independent_evidence=True,
+        has_direct_artifact_or_independent_source=True,
+        marketing_risk=False,
+    )
+    claim = build_claim_assessment(inputs, independent_publisher_count=1)
+    assert claim.claim_class == "fact"
+    assert claim.confidence == "medium"
+    assert "single-source independent evidence" in claim.confidence_reason
+    assert "corrobor" not in claim.confidence_reason
+
+
+def test_confidence_two_distinct_independent_publishers_is_high() -> None:
+    """The SAME anchor (evid_4_independent_rigorous_alone) reaches high
+    confidence once independent_publisher_count >= 2 -- two distinct,
+    structurally-independent publishers is genuine cross-source
+    corroboration, even though the anchor itself is not in
+    _CORROBORATED_ANCHORS."""
+    inputs = _make_inputs(
+        change_class="material_change",
+        action_required="none",
+        evidence_level=4,
+        evidence_anchor_id="evid_4_independent_rigorous_alone",
+        has_independent_evidence=True,
+        has_direct_artifact_or_independent_source=True,
+        marketing_risk=False,
+    )
+    claim = build_claim_assessment(inputs, independent_publisher_count=2)
+    assert claim.claim_class == "fact"
+    assert claim.confidence == "high"
+    assert "cross-source corroboration is present" in claim.confidence_reason
+
+
+def test_confidence_first_party_only_is_medium() -> None:
+    """A single first-party-authoritative source (evidence_level 3, no
+    independent evidence at all) is attested by an artifact but has no
+    second, distinct supporting source -- medium, never high."""
+    inputs = _make_inputs(
+        change_class="breaking_change",
+        action_required="migration_required",
+        evidence_level=3,
+        evidence_anchor_id="evid_3_first_party_authoritative",
+        has_independent_evidence=False,
+        has_direct_artifact_or_independent_source=True,
+        marketing_risk=False,
+    )
+    claim = build_claim_assessment(inputs, independent_publisher_count=0)
+    assert claim.claim_class == "fact"
+    assert claim.confidence == "medium"
+    assert "no second, distinct source supports the claim" in claim.confidence_reason
+
+
+def test_confidence_first_party_plus_independent_is_high() -> None:
+    """evid_4_first_party_plus_independent already combines a first-party
+    artifact AND independent evidence -- two distinct sources -- so it stays
+    high even with independent_publisher_count == 1 (only one of the two
+    sources is the 'independent' one; the first-party source is the other)."""
+    inputs = _make_inputs(
+        change_class="material_change",
+        action_required="new_option_available",
+        evidence_level=4,
+        evidence_anchor_id="evid_4_first_party_plus_independent",
+        has_independent_evidence=True,
+        has_direct_artifact_or_independent_source=True,
+        marketing_risk=False,
+    )
+    claim = build_claim_assessment(inputs, independent_publisher_count=1)
+    assert claim.claim_class == "fact"
+    assert claim.confidence == "high"
+    assert "cross-source corroboration is present" in claim.confidence_reason
+
+
+def test_confidence_no_independent_evidence_is_low() -> None:
+    """No artifact and no independent source at all: claim_class is
+    'hypothesis' (not 'fact'), so confidence is low regardless of the
+    independent-publisher count."""
+    inputs = _make_inputs(
+        change_class="incremental_update",
+        action_required="none",
+        evidence_level=1,
+        evidence_anchor_id="evid_1_rumor",
+        has_independent_evidence=False,
+        has_direct_artifact_or_independent_source=False,
+        marketing_risk=False,
+    )
+    claim = build_claim_assessment(inputs, independent_publisher_count=0)
+    assert claim.claim_class == "hypothesis"
+    assert claim.confidence == "low"
+
+
+def test_confidence_same_publisher_twice_counts_once_stays_medium() -> None:
+    """Integration test through the REAL (untouched) cluster.py publisher
+    counting: two DISTINCT, non-syndicated independent_implementation
+    members from the SAME publisher_id must collapse to
+    independent_publisher_count == 1 (a set, not a member count) -- so
+    confidence stays capped at medium, never inflated to high by simply
+    having two member records from one publisher."""
+    item_a = _make_item(
+        item_id="samepub-a",
+        publisher_id="indy-samepub",
+        subject_entity_ids=["vendor-samepub"],
+        title="SamePub Rigor Test Event",
+        summary_normalized="an implementation write-up describing one specific reproduction",
+        stable_reference="https://example.com/samepub/a",
+        evidence_type="independent_implementation",
+        topic_tags=["agents"],
+    )
+    item_b = _make_item(
+        item_id="samepub-b",
+        publisher_id="indy-samepub",
+        subject_entity_ids=["vendor-samepub"],
+        title="SamePub Rigor Test Event",
+        summary_normalized="a completely unrelated follow-up benchmark covering different metrics",
+        stable_reference="https://example.com/samepub/b",
+        evidence_type="benchmark_with_methodology",
+        topic_tags=["agents"],
+    )
+    items_by_id = {item_a.item_id: item_a, item_b.item_id: item_b}
+    clusters = cluster_items([item_a, item_b])
+    assert len(clusters) == 1
+    cluster = clusters[0]
+    assert cluster.cluster_size == 2
+    assert cluster.evidence_anchor_id == "evid_4_independent_rigorous_alone"
+    assert cluster.independent_publisher_count == 1
+
+    inputs = to_ranking_inputs(cluster, items_by_id)
+    claim = build_claim_assessment(
+        inputs, independent_publisher_count=cluster.independent_publisher_count
+    )
+    assert claim.claim_class == "fact"
+    assert claim.confidence == "medium"
+    assert "corrobor" not in claim.confidence_reason
+
+
+def test_confidence_syndicated_copy_never_creates_second_source() -> None:
+    """Integration test through the REAL (untouched) cluster.py syndication
+    exclusion: a near-identical restatement of the same independent evidence
+    -- even from a DIFFERENT publisher_id -- is excluded from evidence
+    counting entirely (role='syndicated'), so it must never create a second
+    distinct source. independent_publisher_count stays 1 and confidence
+    stays capped at medium."""
+    item_origin = _make_item(
+        item_id="synd-origin",
+        publisher_id="indy-orig",
+        subject_entity_ids=["vendor-synd"],
+        title="Synd Rigor Test Event",
+        summary_normalized=(
+            "the independent lab reproduced the benchmark and confirmed the reported numbers"
+        ),
+        stable_reference="https://example.com/synd/origin",
+        evidence_type="independent_implementation",
+        topic_tags=["agents"],
+        publication_date=date(2026, 1, 1),
+        detection_date=date(2026, 1, 1),
+    )
+    item_copy = _make_item(
+        item_id="synd-copy",
+        publisher_id="indy-copy",
+        subject_entity_ids=["vendor-synd"],
+        title="Synd Rigor Test Event",
+        summary_normalized=(
+            "the independent lab reproduced the benchmark and confirmed the reported numbers"
+        ),
+        stable_reference="https://example.com/synd/copy",
+        evidence_type="independent_implementation",
+        topic_tags=["agents"],
+        publication_date=date(2026, 1, 2),
+        detection_date=date(2026, 1, 2),
+    )
+    items_by_id = {item_origin.item_id: item_origin, item_copy.item_id: item_copy}
+    clusters = cluster_items([item_origin, item_copy])
+    assert len(clusters) == 1
+    cluster = clusters[0]
+    assert cluster.cluster_size == 2
+    assert cluster.member_roles["synd-copy"] == "syndicated"
+    assert cluster.evidence_anchor_id == "evid_4_independent_rigorous_alone"
+    assert cluster.independent_publisher_count == 1
+
+    inputs = to_ranking_inputs(cluster, items_by_id)
+    claim = build_claim_assessment(
+        inputs, independent_publisher_count=cluster.independent_publisher_count
+    )
+    assert claim.claim_class == "fact"
+    assert claim.confidence == "medium"
+    assert "corrobor" not in claim.confidence_reason
 
 
 # --- confidence explainability -----------------------------------------------

@@ -200,11 +200,27 @@ def test_golden_existing_synthetic_fixture_output_is_unchanged_by_gate_d() -> No
     # the unchanged structural counts above prove. Old hashes (pre-Gate-E0):
     # markdown "695a5f6854654e8ef4b09a77258083efe43daee21c54e60cd64eb3b4c46f4d7b",
     # json "860ac9d6c85896fba281925fbc1afd66cdab5b8cd0312766bfbb6bcb6c070bfe".
+    #
+    # Fable ruling 2026-08-01 (Part B, "independence must stop being rendered
+    # as corroboration") re-pin: the hashes below changed again, and MUST
+    # have, because this is exactly the defect the ruling fixes -- on this
+    # real fixture, the rank-3 topic ("Independent Benchmark Study Measures
+    # VendorA Harness Reliability", evidence_anchor_id
+    # evid_4_independent_rigorous_alone, a SINGLE independent source) used to
+    # be scored confidence=high with the reason text "genuine independent
+    # corroboration is present", even though it has zero cross-source
+    # corroboration. It now correctly scores confidence=medium. Score, tier
+    # admission, claim_class, and the evidence rubric are unchanged (see the
+    # unchanged structural counts above and unchanged
+    # ranked[0][1].score == 80): only the confidence/independence PROSE and
+    # the one topic's confidence LEVEL changed. Old hashes (pre-Part-B):
+    # markdown "dced152158d2c669e7dd0cf624b2c5c4df5a46106ae3effe466b635d7f4ce30d",
+    # json "6ffa84f2440007140a02a5c6b8731792feb85541952277b4a587dee481e65cbf".
     assert (
         hashlib.sha256(markdown.encode("utf-8")).hexdigest()
-        == "dced152158d2c669e7dd0cf624b2c5c4df5a46106ae3effe466b635d7f4ce30d"
+        == "a83aa65ea1c38b987bca8b64403e9a2c478540ab3686799b7250e567857c89be"
     )
     assert (
         hashlib.sha256(brief.model_dump_json().encode("utf-8")).hexdigest()
-        == "6ffa84f2440007140a02a5c6b8731792feb85541952277b4a587dee481e65cbf"
+        == "348db9d34fed658ee92bdc96e9e85899b9ad1a102ce412bfdca98f5f367cd5e0"
     )

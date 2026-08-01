@@ -308,6 +308,24 @@ def _resolve_code_version(code_version: str | None) -> str:
     return code_version if code_version is not None else _PACKAGE_VERSION
 
 
+class LimitationsOverlayManifest(BaseModel):
+    """Fable ruling 2026-08-01 (Part C): the ONE additive
+    :class:`RunManifest` field recording whether a private, run-specific,
+    Founder-approved limitations overlay was applied to this run's rendered
+    ``brief.md`` -- never the limitation text itself, and never anything that
+    feeds ``run_id``/``input_fingerprint`` (see :class:`RunManifest`'s own
+    field below). Absent file: every field takes its "nothing was applied"
+    default (``present=False``, ``item_count=0``, ``overlay_sha256=None``,
+    ``provenance=None``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    present: bool = False
+    item_count: int = 0
+    overlay_sha256: str | None = None
+    provenance: str | None = None
+
+
 class RunManifest(BaseModel):
     """Auditable record of one weekly run (see the module docstring's #2).
     Every field is deterministic given the same inputs EXCEPT
@@ -339,6 +357,16 @@ class RunManifest(BaseModel):
     library_score_change_count: int
     library_rejected_reappearance_count: int
     review_status: str = REVIEW_STATUS
+    # Fable ruling 2026-08-01 (Part C): additive only -- computed and set by
+    # the caller (cli/main.py) AFTER run_weekly returns, from the overlay
+    # file's own bytes/parsed content. run_weekly itself never reads this
+    # file and never sets this field to anything but the "absent" default,
+    # so it can never feed run_id/input_fingerprint (both already computed
+    # before this field could possibly be known) or change idempotency
+    # semantics.
+    limitations_overlay: LimitationsOverlayManifest = Field(
+        default_factory=LimitationsOverlayManifest
+    )
 
 
 class WeeklyRunResult(BaseModel):

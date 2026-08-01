@@ -703,6 +703,98 @@ def test_discarded_topics_empty_is_representable() -> None:
     assert brief.discarded == []
 
 
+# --- Fable ruling 2026-08-01 (Part B): single-reference topics must never --
+# --- claim corroboration in the rendered brief ------------------------------
+
+
+def test_brief_single_reference_topics_never_claim_corroboration() -> None:
+    """The real 2026-W31 defect this ruling fixes: topics whose cluster has
+    exactly ONE member ('each have exactly one reference', in Fable's own
+    words) can structurally never combine two distinct sources -- at most one
+    publisher can ever be independent, and evid_4_first_party_plus_independent
+    (which needs a first-party member too) is impossible with a single
+    member. Confidence must therefore never be 'high' for such a topic, and
+    neither the structured claim reason nor the rendered Markdown may ever
+    contain an affirmative cross-source-corroboration claim for it."""
+    clusters, items_by_id, ranked = _real_fixture_pipeline()
+    clusters_by_topic_id = {c.topic_id: c for c in clusters}
+    tiered = assign_tiers(ranked, clusters_by_topic_id, items_by_id)
+    brief = build_weekly_brief(tiered, ranked, clusters_by_topic_id, items_by_id, WEEK_LABEL)
+    markdown = render_markdown(brief)
+
+    single_reference_topic_ids = {
+        topic_id
+        for topic_id, cluster in clusters_by_topic_id.items()
+        if cluster.cluster_size == 1
+    }
+    assert single_reference_topic_ids  # the real fixture has single-item clusters
+
+    affirmative_corroboration_phrases = (
+        "genuine independent corroboration is present",
+        "cross-source corroboration is present",
+        "corroborated across multiple distinct sources",
+    )
+
+    single_reference_fact_topics = [
+        topic
+        for topic in tiered
+        if topic.topic_id in single_reference_topic_ids and topic.claim.claim_class == "fact"
+    ]
+    assert single_reference_fact_topics  # the real fixture exercises this path
+
+    for topic in single_reference_fact_topics:
+        assert topic.claim.confidence != "high"
+        for phrase in affirmative_corroboration_phrases:
+            assert phrase not in topic.claim.confidence_reason
+
+    # Structured Tier 1/2 fields interpolate confidence_reason verbatim into
+    # the rendered Markdown block (see brief._render_tier1_section's
+    # evidence_and_confidence line and _render_tier2_section's
+    # principal_evidence line) -- re-check at the rendered-text level too, so
+    # this proves the DOCUMENT a Founder actually reads, not just the
+    # structured object it was built from.
+    single_reference_titles = {
+        topic.canonical_title for topic in single_reference_fact_topics
+    }
+    for item in brief.tier1:
+        if item.canonical_title in single_reference_titles:
+            for phrase in affirmative_corroboration_phrases:
+                assert phrase not in item.evidence_and_confidence
+    for item in brief.tier2:
+        if item.canonical_title in single_reference_titles:
+            for phrase in affirmative_corroboration_phrases:
+                assert phrase not in item.principal_evidence
+
+    # Defense-in-depth: re-check at the level of each item's OWN rendered
+    # Markdown block (### heading up to the next heading of the same or
+    # higher level), not just the structured fields it was assembled from.
+    # Tier 3/Radar items render as a single "- **N. Title**" list line, not a
+    # "### " heading (see brief._render_tier3_section) -- their
+    # signal_paragraph is built by a wholly separate template
+    # (_radar_future_event) that structurally never emits these phrases, so
+    # only Tier 1/2 topics (the ones with a "### " block) are checked here.
+    markdown_lines = markdown.splitlines()
+    tier1_and_tier2_titles = {item.canonical_title for item in brief.tier1} | {
+        item.canonical_title for item in brief.tier2
+    }
+    for rank_title in (
+        f"{topic.rank}. {topic.canonical_title}"
+        for topic in single_reference_fact_topics
+        if topic.canonical_title in tier1_and_tier2_titles
+    ):
+        heading = f"### {rank_title}"
+        start = next((i for i, line in enumerate(markdown_lines) if line == heading), None)
+        assert start is not None, f"heading {heading!r} not found in rendered brief.md"
+        end = len(markdown_lines)
+        for j in range(start + 1, len(markdown_lines)):
+            if markdown_lines[j].startswith("#"):
+                end = j
+                break
+        block = "\n".join(markdown_lines[start:end])
+        for phrase in affirmative_corroboration_phrases:
+            assert phrase not in block
+
+
 # --- D1 first-party-authoritative exception (ADR 0004, Founder final -------
 # --- decision, Gate C: real admission at evidence_level >= 3) --------------
 
