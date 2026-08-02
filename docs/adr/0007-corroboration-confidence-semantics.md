@@ -315,6 +315,111 @@ finds the disclosure insufficient even once both lines state their own
 why/when, that alternative (and the `library.py` lifecycle-state work it
 requires) remains the next escalation.
 
+### Round 8 (2026-08-01, this branch): fact/medium has two causes
+
+**The root principle, stated by Fable, tying all three of this round's
+defects together:**
+
+> fact/medium has TWO causes — missing cross-source corroboration OR
+> missing level-4 rigor — and rendered reasons must never presume the
+> first.
+
+`tiers._assess_confidence` classifies a `fact` claim `medium` in two
+structurally different states:
+
+1. **Missing corroboration**: exactly one independent publisher
+   (`independent_publisher_count == 1`, `has_independent_evidence`) —
+   genuinely single-sourced, whatever the evidence level.
+2. **Missing rigor**: `independent_publisher_count >= 2` (or a
+   `_CORROBORATED_ANCHORS` member with a countable independent leg) —
+   genuinely cross-source corroborated — but `evidence_level < 4`. `high`
+   requires **both** `evidence_level >= 4` **and**
+   `has_cross_source_corroboration` (Part B); state 2 clears the second
+   conjunct and fails only the first.
+
+Both reviewers (Fable and product review) converged independently on the
+same defect: three pieces of rendered prose, in three different files,
+each collapsed this two-cause branch back down to one cause (state 1),
+exactly the defect Part C's fix to `_assess_confidence`'s own catch-all
+text was supposed to have eliminated for good. The counterexample both
+built is state 2, constructed through the real `cluster.py` pipeline: two
+PERMITTED, non-subject `independent_analysis` members from distinct
+publishers → `evid_3_independent_only`, `independent_publisher_count == 2`,
+`has_cross_source_corroboration == True`, `evidence_level == 3` → `medium`.
+
+- **F8** (`CORROBORATION_METHODOLOGY_NOTE`'s final clause): round 7's F6
+  fixed the note's first defect (the anchor clause) and left a second one
+  standing — the final clause said a genuinely cross-venue corpus (state 2,
+  precisely) "reaches it [high] outright," with no `evidence_level`
+  conjunct at all. On the counterexample corpus this is directly
+  contradicted by the very document it sits in, which classifies that exact
+  corpus `medium` a few sections below. Fixed by adding the missing
+  conjunct, mirroring the two-part-bar formula
+  `_assess_confidence`'s own catch-all reason already uses
+  ("evidence_level >= 4 together with cross-source corroboration"). The
+  anchor clause (independent_publisher_count >= 1 on the countable leg) is
+  unchanged.
+- **F9** (`tiers._recommend_action`'s fact/medium reason and
+  `brief._light_study_reason`'s save-branch paraphrase): neither function
+  takes a corroboration input, so both asserted "no second, independent
+  source corroborates it"/"further corroboration" unconditionally — true
+  only in state 1, false in state 2 (where two independent sources exist
+  and DO corroborate, and where further corroboration could never lift the
+  topic to `high` anyway, since it is the level bar, not the corroboration
+  bar, that failed).
+
+  Fable offered two options:
+
+  - **(a) Cause-neutral wording** that presumes neither cause — the same
+    two-part-bar formula used everywhere else this ADR's rulings already
+    require it.
+  - **(b) Branch on the corroboration predicate**, threaded through
+    `_build_tier_assignment` at the point `tiers.build_tiered_topic` joins
+    a `TopicCluster` to its ranked position (the sanctioned route, mirroring
+    the existing P4 `single_sourced` plumbing — an explicit dict/parameter
+    threaded through call sites, never added as a field on `RankingInputs`).
+
+  **Decision: (a).** `_recommend_action` is deliberately a pure function of
+  `(tier, claim_class, confidence)` only — its own docstring calls the rule
+  chain "exhaustive by construction" over exactly those three inputs, and
+  every existing branch already reads as true regardless of *which*
+  corroboration/rigor state produced `medium`. Option (b) would thread
+  `independent_publisher_count`/`has_cross_source_corroboration` through
+  `_build_tier_assignment` and then again through every `brief.py` call
+  site that renders a Tier 2 or light-study reason — a materially larger
+  edit for a wording-truthfulness ticket to make unreviewed, for the same
+  reason round 5 and round 7 both rejected the analogous gate-on-action
+  alternative for the Study Queue. Option (b) remains available if a future
+  round wants the reason text to name the SPECIFIC failing conjunct rather
+  than stating the bar itself.
+
+  Product review separately flagged a scope defect in the old save line:
+  "hold **it** for later review" left the referent ambiguous (the whole
+  topic, or only the deeper follow-up?), while the Study Queue's own line
+  already described the deferral as scoped to "the deeper follow-up." The
+  fix folds this in for free: the new save reason says "save the deeper
+  follow-up for later review," so `_light_study_reason`'s line is now an
+  accurate paraphrase of the save line's own scoping, not a competing,
+  differently-scoped claim.
+
+- **F10** (the F4 denial-fallback phrase): round 6's F4 neutral fallback —
+  used only when a `evid_4_first_party_plus_independent` anchor's sole
+  "independent" leg is a Gate E0.3 registry-DENIED member
+  (`may_supply_independence=False`) — itself read "...plus **independent**
+  analysis or rigorous evidence," affirming the exact independence the
+  registry denied, two sentences before `_human_evidence_sentence`'s own
+  independence clause negates it ("No independent source corroborates
+  it."). Fixed: `independent` → `third-party` — accurate (that leg is
+  non-subject by construction) without affirming registry-denied
+  independence. Zero marginal cost in the same round F8/F9 already forced
+  the golden-hash re-pin.
+
+`BRIEF_VERSION` bumped (`"gate-e0-m5-6"` → `"gate-e0-m5-7"`, document
+wording only). `CONFIDENCE_RUBRIC_VERSION` is unchanged — none of F8/F9/F10
+touch `_assess_confidence`'s confidence-LEVEL semantics, only rendered
+prose around it (the note, the two action-reason strings, and the one
+evidence-phrase fallback).
+
 ## Consequences
 
 ### Golden-hash re-pin rationale

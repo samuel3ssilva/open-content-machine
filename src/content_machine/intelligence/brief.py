@@ -112,7 +112,28 @@ from content_machine.intelligence.tiers import (
 # already present in the same dimension_breakdown); S6 (the Study Queue and
 # content-opportunity selection-rule strings no longer cite internal module
 # names/self-referential "Founder spec" pointers).
-BRIEF_VERSION = "gate-e0-m5-6"
+#
+# Round 8 (2026-08-01, this branch): bumped again from "gate-e0-m5-6" --
+# document wording only, no confidence-level semantics moved
+# (``CONFIDENCE_RUBRIC_VERSION`` unchanged). Fable's root principle tying all
+# three fixes: fact/medium has TWO causes -- missing cross-source
+# corroboration OR missing level-4 rigor -- and rendered reasons must never
+# presume the first (see ADR 0007 Round 8). F8 (``CORROBORATION_
+# METHODOLOGY_NOTE``'s final clause added the missing evidence_level >= 4
+# conjunct -- round 7's F6 fixed the anchor clause and left the cross-venue
+# clause claiming a corpus that is only cross-source-corroborated, without
+# also clearing evidence_level >= 4, "reaches it [high] outright"); F9
+# (``tiers._recommend_action``'s fact/medium reason and
+# ``_light_study_reason``'s save-branch paraphrase both rewritten to the
+# same cause-neutral two-part-bar wording, since neither took a
+# corroboration input and both asserted "no independent source
+# corroborates it"/"further corroboration" unconditionally -- false
+# whenever independent_publisher_count >= 2); F10 (the F4 denial-fallback
+# phrase's "plus independent analysis" changed to "plus third-party
+# analysis" -- it was affirming the independence
+# ``may_supply_independence=False`` denied, two sentences before the
+# independence clause's own negation of it).
+BRIEF_VERSION = "gate-e0-m5-7"
 
 REVIEW_STATUS = "awaiting_founder_review"
 
@@ -185,6 +206,25 @@ ESTIMATED_STUDY_TIME_METHOD = (
 # refused to certify "high confidence is permanently unreachable" -- the D1
 # anchor path and mixed-publisher corpora both still reach it -- so this
 # note states the counting rule only, never that conclusion.
+#
+# F8 (round 8, this branch, Fable + product review, converged independently):
+# the final clause used to say a genuinely cross-venue corpus "reaches it
+# [high] outright" -- FALSE. Both reviewers built the counterexample through
+# the real cluster.py pipeline: two PERMITTED, non-subject
+# ``independent_analysis`` members from distinct publishers ->
+# ``evid_3_independent_only``, ``independent_publisher_count == 2``,
+# ``has_cross_source_corroboration == True`` (the count->=2 branch) -- yet
+# ``evidence_level == 3 < 4``, so ``tiers._assess_confidence`` classifies it
+# 'medium', never 'high' (``high`` additionally requires
+# ``evidence_level >= 4`` -- Fable ruling 2026-08-01, Part B). The note told
+# the Founder that exact corpus reaches high while the same document
+# classifies it medium two sections below. Fixed by adding the missing
+# conjunct, mirroring the two-part-bar formula
+# ``tiers._assess_confidence``'s own catch-all reason already states
+# ("evidence_level >= 4 together with cross-source corroboration"). The
+# anchor clause immediately above (independent_publisher_count >= 1 on the
+# countable leg) is unchanged -- Fable verified it exact. See ADR 0007
+# Round 8, "fact/medium has two causes."
 CORROBORATION_METHODOLOGY_NOTE = (
     "Corroboration is counted at publisher/venue granularity, not at author or research-group "
     "granularity: independent_publisher_count counts distinct publishers/venues, so two "
@@ -195,7 +235,9 @@ CORROBORATION_METHODOLOGY_NOTE = (
     "a first-party-plus-independent anchor reaches it only when its independent leg is "
     "actually countable (independent_publisher_count >= 1 on that leg, not a registry-denied "
     "source standing in alone), and a genuinely cross-venue corpus (two or more distinct "
-    "independent publishers) reaches it outright."
+    "independent publishers) reaches it only together with evidence_level >= 4 -- "
+    "cross-source corroboration alone is not sufficient; high confidence always requires "
+    "evidence_level >= 4 together with cross-source corroboration."
 )
 
 # --- human phrase for action_required, used by the Tier 1/2 lean "why it ----
@@ -272,8 +314,16 @@ _EVIDENCE_LEVEL_4_PHRASE_BY_ANCHOR: dict[str, str] = {
 # non-corroboration wording used ONLY in that denial-driven state; every
 # other ``evid_4_first_party_plus_independent`` topic (registry-permitted or
 # no registry opinion) keeps the affirmative phrase above unchanged.
+#
+# F10 (round 8, this branch, Fable): the fallback text itself still said
+# "...plus INDEPENDENT analysis or rigorous evidence" -- affirming the very
+# independence ``may_supply_independence=False`` denied, two sentences
+# before ``_human_evidence_sentence``'s own independence clause states "No
+# independent source corroborates it." Fixed: 'independent' -> 'third-party'
+# -- accurate (that leg is non-subject by construction) without affirming
+# the registry-denied independence. See ADR 0007 Round 8.
 _EVIDENCE_LEVEL_4_FIRST_PARTY_PLUS_INDEPENDENT_UNCOUNTABLE_PHRASE = (
-    "strong evidence: a first-party source plus independent analysis or rigorous evidence"
+    "strong evidence: a first-party source plus third-party analysis or rigorous evidence"
 )
 
 
@@ -1041,6 +1091,21 @@ def _build_appendix_record(
 # the topic's own ``recommended_action`` keeps this line true for both,
 # instead of assuming every light-study pick is a 'save' topic. See ADR
 # 0007's "Study Queue / Tier 2 action, revisited (round 7)" decision.
+#
+# F9 (round 8, this branch, Fable + product review): the non-'read' branch
+# said "still waits on further corroboration" unconditionally -- the exact
+# falsehood the Part C follow-up removed from ``_assess_confidence``'s
+# catch-all, reintroduced here. This is now a plain paraphrase of the fixed
+# ``tiers._recommend_action`` 'save' reason (same two-part-bar formula,
+# "evidence_level >= 4 together with cross-source corroboration") rather
+# than a competing, cause-presuming claim -- see ADR 0007 Round 8. Product
+# review also noted the OLD save line's scope defect ("hold it for later
+# review" left the referent ambiguous between the whole topic and the
+# deeper follow-up) leaked into this line too, since it had to describe the
+# same deferral in different words to avoid literally repeating the false
+# claim; now that the save line itself scopes the deferral to "the deeper
+# follow-up" explicitly, this line is an accurate paraphrase of it, not a
+# corrective one.
 def _light_study_reason(topic: TieredTopic) -> str:
     base = (
         f"Tier 2 fact-classified topic, rank {topic.rank}, {topic.claim.confidence} "
@@ -1050,7 +1115,8 @@ def _light_study_reason(topic: TieredTopic) -> str:
         return f"{base}; already well-attested, so this light read covers it in full."
     return (
         f"{base}; the deeper follow-up this topic's own 'save' action defers still "
-        "waits on further corroboration."
+        "waits on confidence reaching the high bar (evidence_level >= 4 together with "
+        "cross-source corroboration)."
     )
 
 

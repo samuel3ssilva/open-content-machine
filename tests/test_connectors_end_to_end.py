@@ -430,11 +430,51 @@ def test_golden_existing_synthetic_fixture_output_is_unchanged_by_gate_d() -> No
     # unchanged ranked[0][1].score == 80. Old hashes (pre-round-7):
     # markdown "98b9609314cf60e2f6b9d0df6e332d66e09eded987a235c5098b0faafc846493",
     # json "2eafaa91a695a100cbb8768e0848cfe40b6dfe487d774e829c6064a7e0ed0feb".
+    #
+    # Round 8 re-pin (2026-08-01, this branch): BOTH hashes changed, and MUST
+    # have -- this round bumped BRIEF_VERSION ("gate-e0-m5-6" ->
+    # "gate-e0-m5-7", document wording only, CONFIDENCE_RUBRIC_VERSION
+    # unchanged) and fixed three real rendering defects, per Fable's root
+    # principle tying them together: fact/medium has TWO causes -- missing
+    # cross-source corroboration OR missing level-4 rigor -- and rendered
+    # reasons must never presume the first (see ADR 0007 Round 8). Verified
+    # per-topic against this exact fixture, the same way as every prior
+    # re-pin (structural counts/top-topic id+score unchanged, see the
+    # asserts above -- nothing in cluster.py/ranking.py/tiers.py's admission
+    # or scoring logic moved), and by direct diff of the full rendered
+    # Markdown/JSON against the pre-round-8 output:
+    #   - F8: CORROBORATION_METHODOLOGY_NOTE's final clause gained the
+    #     missing evidence_level >= 4 conjunct (run-level, prints once in
+    #     the appendix and once in brief.json's
+    #     corroboration_methodology_note) -- it used to claim a genuinely
+    #     cross-venue corpus "reaches it [high] outright" with no level
+    #     conjunct, contradicted by the real
+    #     independent_publisher_count>=2/evidence_level=3 counterexample
+    #     (see test_ipc2_level3_corpus_note_action_reason_and_light_study_
+    #     reason_agree in test_intelligence_brief.py).
+    #   - F9: tiers._recommend_action's fact/medium reason and
+    #     _light_study_reason's save-branch paraphrase both rewritten to the
+    #     same cause-neutral two-part-bar wording (this fixture's only
+    #     fact/medium Tier 2 topic is rank 5, "VendorC Deprecates Legacy
+    #     Harness Plugin API" -- its Tier 2 body "Recommended action" line
+    #     and its Study Queue light-study line both change; nothing else on
+    #     this fixture reaches the fact/medium Tier 2 branch, confirmed by
+    #     direct diff against the pre-round-8 rendered output).
+    #   - F10: the F4 denial-fallback phrase's "plus independent analysis"
+    #     changed to "plus third-party analysis" -- a verified NO-OP on this
+    #     fixture (same proof method as round 6's own F4 no-op comment
+    #     above): this fixture has no may_supply_independence=False items,
+    #     so the fallback branch is never reached here, confirmed by the
+    #     direct diff finding exactly the three changes named above and
+    #     nothing else.
+    # Old hashes (pre-round-8):
+    # markdown "c595500f06cbf45aa37ff2ec00831fc6f7f1a11ca5fc0aee3ad9b9d76677f25d",
+    # json "49cfdaa1cd4066bc03d49021e9283ebf553f5cbcacf6507ccf9f0039e22d0172".
     assert (
         hashlib.sha256(markdown.encode("utf-8")).hexdigest()
-        == "c595500f06cbf45aa37ff2ec00831fc6f7f1a11ca5fc0aee3ad9b9d76677f25d"
+        == "7780b7ed0d3dd7fa77f581236e8c9fff36da35877c1d16561f4902b7e63162b2"
     )
     assert (
         hashlib.sha256(brief.model_dump_json().encode("utf-8")).hexdigest()
-        == "49cfdaa1cd4066bc03d49021e9283ebf553f5cbcacf6507ccf9f0039e22d0172"
+        == "8d6364c892b07bd8daf18baeac02f9be2d98ffe8cfa48094e0bdeb4d1e1c16e5"
     )

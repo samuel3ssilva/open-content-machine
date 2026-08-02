@@ -476,10 +476,45 @@ def _recommend_action(
         # revisited (round 7)" decision for how this reason now also
         # coexists with the Study Queue's own light-study line for the SAME
         # topic.
+        #
+        # F9 (round 8, this branch, Fable + product review): round 7's
+        # rewrite was STILL a constant -- this function takes no
+        # corroboration input, so the text asserted "no second, independent
+        # source corroborates it yet" for every fact/medium topic
+        # regardless of the real state. That is false whenever
+        # independent_publisher_count >= 2 (two independent, corroborating
+        # sources DO exist and DO corroborate -- has_cross_source_
+        # corroboration is True) -- and even then, further corroboration
+        # alone could never lift the topic to 'high', because in that state
+        # it is the evidence_level >= 4 bar that failed, not the
+        # corroboration bar. "Attested by an artifact" is additionally
+        # wrong for authoritative-source-only fact states.
+        #
+        # Fable's two options (see ADR 0007 Round 8): (a) cause-neutral
+        # two-part-bar wording that presumes neither cause, or (b) branch on
+        # the corroboration predicate threaded at the tiers join (the P4
+        # single_sourced plumbing pattern, never through RankingInputs).
+        # Chosen: (a) -- this function is deliberately a pure function of
+        # (tier, claim_class, confidence) only (see its own docstring); (b)
+        # would thread independent_publisher_count/
+        # has_cross_source_corroboration through _build_tier_assignment and
+        # every brief.py call site that renders a Tier 2/light-study reason,
+        # a materially larger edit for a wording-truthfulness ticket to make
+        # unreviewed, mirroring round 5's own reasoning for rejecting the
+        # gate-on-action alternative. The two-part bar
+        # ("evidence_level >= 4 together with cross-source corroboration")
+        # mirrors the exact phrase this module's own catch-all
+        # confidence_reason already uses (see _assess_confidence, Part C) --
+        # true regardless of WHICH conjunct failed, so it never presumes
+        # missing corroboration. "Save the deeper follow-up" (not "hold it")
+        # also closes the scope defect product review flagged: the referent
+        # is now explicit, so brief._light_study_reason's paraphrase of this
+        # same deferral is accurate rather than corrective.
         return (
             "save",
-            "Attested by an artifact, but no second, independent source corroborates it "
-            "yet -- hold it for later review once further corroboration surfaces.",
+            "Attested by an artifact, but confidence has not reached the high bar "
+            "(evidence_level >= 4 together with cross-source corroboration) -- save the "
+            "deeper follow-up for later review as the evidence picture develops.",
         )
     if claim_class == "hypothesis" and tier == "tier_2":
         return (

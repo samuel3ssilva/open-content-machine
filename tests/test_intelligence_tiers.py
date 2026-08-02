@@ -1164,6 +1164,56 @@ def test_denied_independence_evidence_phrase_makes_no_corroboration_claim() -> N
     assert "No independent source corroborates it." in human_phrase
 
 
+# F10 (round 8, this branch, Fable): the F4 fallback phrase asserted directly
+# above by ``evidence_phrase`` used to read "...plus INDEPENDENT analysis or
+# rigorous evidence" -- affirming the independence
+# ``may_supply_independence=False`` denied, two sentences before
+# ``_human_evidence_sentence``'s own independence clause negates it ("No
+# independent source corroborates it."). Same denial-driven state as the
+# test above; this test isolates the fallback phrase itself and asserts it
+# makes no affirmative independence claim at all -- 'third-party' (accurate:
+# that leg is non-subject by construction) replaces 'independent'.
+def test_f10_denial_fallback_phrase_has_no_affirmative_independence_claim() -> None:
+    first_party_artifact = _make_item(
+        item_id="f10-first-party-artifact",
+        publisher_id="f10-vendor",
+        subject_entity_ids=["f10-vendor"],
+        title="F10 Round 8 First-Party Artifact Plus Denied Independence Event",
+        summary_normalized="the vendor published its own benchmark with full methodology",
+        stable_reference="https://example.com/f10-vendor/benchmark",
+        evidence_type="benchmark_with_methodology",
+        contains_benefit_or_performance_claim=False,
+    )
+    denied_analysis = _make_item(
+        item_id="f10-denied-analysis",
+        publisher_id="f10-analyst",
+        subject_entity_ids=["f10-vendor"],
+        title="F10 Round 8 First-Party Artifact Plus Denied Independence Event",
+        summary_normalized="an analyst wrote up an independent analysis of the vendor benchmark",
+        stable_reference="https://example.org/f10-analyst/analysis",
+        evidence_type="independent_analysis",
+        may_supply_independence=False,
+    )
+    items_by_id = {
+        first_party_artifact.item_id: first_party_artifact,
+        denied_analysis.item_id: denied_analysis,
+    }
+    clusters = cluster_items([first_party_artifact, denied_analysis])
+    assert len(clusters) == 1
+    cluster = clusters[0]
+    assert cluster.evidence_anchor_id == "evid_4_first_party_plus_independent"
+    assert cluster.independent_publisher_count == 0
+    assert cluster.independence_denied_by_registry is True
+
+    inputs = to_ranking_inputs(cluster, items_by_id)
+    evidence_phrase = brief_module._evidence_level_phrase(inputs)
+    assert evidence_phrase == (
+        brief_module._EVIDENCE_LEVEL_4_FIRST_PARTY_PLUS_INDEPENDENT_UNCOUNTABLE_PHRASE
+    )
+    assert "independent" not in evidence_phrase
+    assert "third-party" in evidence_phrase
+
+
 def test_denied_independence_does_not_over_tighten_a_genuine_two_publisher_cluster() -> (
     None
 ):

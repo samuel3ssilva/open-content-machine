@@ -37,6 +37,7 @@ from content_machine.intelligence.tiers import (
     assign_tiers,
     build_tiered_topic,
     d1_exception_fires,
+    has_cross_source_corroboration,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -1751,3 +1752,110 @@ def test_p3_limitation_line_renders_above_recommended_action_in_tier1_and_tier2(
     # Visually distinguishable from the six machine bullets (P3): a
     # blockquote, not a plain "- **Label:**" bullet.
     assert "- **Founder-noted limitation" not in markdown
+
+
+# --- Round 8 (2026-08-01, this branch): F8/F9 -- fact/medium has TWO -------
+# --- causes (missing cross-source corroboration OR missing level-4 rigor) --
+# --- and rendered reasons must never presume the first (Fable's root -------
+# --- principle, ADR 0007 Round 8) -------------------------------------------
+
+
+def test_ipc2_level3_corpus_note_action_reason_and_light_study_reason_agree() -> None:
+    """F8/F9 regression: the exact counterexample both Fable and product
+    review built through the real cluster.py pipeline -- two PERMITTED,
+    non-subject ``independent_analysis`` members from DISTINCT publishers, no
+    first-party member at all. This reaches ``evid_3_independent_only``,
+    ``independent_publisher_count == 2``, ``has_cross_source_corroboration ==
+    True`` (the ``independent_publisher_count >= 2`` branch) -- genuinely
+    cross-source corroborated -- but ``evidence_level == 3 < 4``, so
+    confidence is 'medium', never 'high': ``high`` additionally requires
+    ``evidence_level >= 4`` (Fable ruling 2026-08-01, Part B).
+
+    Before this round's fix, three separate pieces of rendered text
+    disagreed with this exact, reachable state:
+
+    - ``CORROBORATION_METHODOLOGY_NOTE``'s final clause claimed a genuinely
+      cross-venue corpus (exactly what this corpus is) "reaches it [high]
+      outright" -- no evidence_level conjunct, directly contradicted by this
+      same corpus's own 'medium' classification a few sections below in the
+      same document.
+    - ``tiers._recommend_action``'s fact/medium reason said "no second,
+      independent source corroborates it yet" -- false: two independent,
+      corroborating sources exist here.
+    - ``brief._light_study_reason``'s non-'read' branch said "still waits on
+      further corroboration" -- the same falsehood, and further
+      corroboration could never lift this topic to 'high' anyway, since the
+      LEVEL bar (not the corroboration bar) is what failed here.
+
+    All three must now be simultaneously true of this corpus."""
+    shared_title = "F8 F9 Two Independent Publishers Level 3 Event"
+    analysis_one = _make_item(
+        item_id="f8-analysis-one",
+        publisher_id="f8-analyst-one",
+        subject_entity_ids=["f8-subject"],
+        may_supply_independence=True,
+        title=shared_title,
+        summary_normalized="an independent analyst reviewed the f8 subject in detail, first",
+        stable_reference="https://example.com/f8-analyst-one/review",
+        evidence_type="independent_analysis",
+    )
+    analysis_two = _make_item(
+        item_id="f8-analysis-two",
+        publisher_id="f8-analyst-two",
+        subject_entity_ids=["f8-subject"],
+        may_supply_independence=True,
+        title=shared_title,
+        summary_normalized="an independent analyst reviewed the f8 subject in detail, second",
+        stable_reference="https://example.org/f8-analyst-two/review",
+        evidence_type="independent_analysis",
+    )
+    items = [analysis_one, analysis_two]
+    items_by_id = {item.item_id: item for item in items}
+    clusters = cluster_items(items)
+    assert len(clusters) == 1
+    cluster = clusters[0]
+    assert cluster.evidence_anchor_id == "evid_3_independent_only"
+    assert cluster.evidence_level == 3
+    assert cluster.independent_publisher_count == 2
+
+    inputs_list = [to_ranking_inputs(cluster, items_by_id)]
+    ranked = rank_topics(inputs_list, _profile())
+    clusters_by_topic_id = {cluster.topic_id: cluster}
+    tiered = assign_tiers(ranked, clusters_by_topic_id, items_by_id)
+    brief = build_weekly_brief(tiered, ranked, clusters_by_topic_id, items_by_id, WEEK_LABEL)
+
+    assert len(tiered) == 1
+    topic = tiered[0]
+    assert topic.claim.claim_class == "fact"
+    assert topic.claim.confidence == "medium"
+    assert (
+        has_cross_source_corroboration(
+            inputs_list[0].evidence_anchor_id, cluster.independent_publisher_count
+        )
+        is True
+    )
+    assert topic.tier_assignment.tier == "tier_2"
+    assert topic.tier_assignment.recommended_action == "save"
+
+    # -- the methodology note must not claim this exact corpus shape reaches
+    # high outright; the two-part bar (level AND corroboration) must be
+    # stated, so the note never contradicts this corpus's own classification.
+    note = brief.corroboration_methodology_note
+    assert "reaches it outright" not in note
+    assert "evidence_level >= 4" in note
+
+    # -- the Tier 2 action reason must not assert missing corroboration for a
+    # topic that has it, and must state the real (two-part) bar instead.
+    tier2_item = next(i for i in brief.tier2 if i.topic_id == topic.topic_id)
+    reason = tier2_item.recommended_action_reason
+    assert reason == topic.tier_assignment.recommended_action_reason
+    assert "no second" not in reason
+    assert "no independent source" not in reason
+    assert "corroborates it" not in reason
+    assert "evidence_level >= 4" in reason
+
+    # -- the light-study reason has the identical defect and the identical
+    # fix -- it must not claim missing corroboration either.
+    light = next(t for t in brief.study_queue.light if t.topic_id == topic.topic_id)
+    assert "further corroboration" not in light.reason
+    assert "evidence_level >= 4" in light.reason
