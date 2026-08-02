@@ -82,7 +82,37 @@ from content_machine.intelligence.tiers import (
 # DELIBERATELY unchanged -- none of this round's fixes touch
 # ``tiers._assess_confidence``'s confidence-level semantics, only rendered
 # prose and additive schema fields around it.
-BRIEF_VERSION = "gate-e0-m5-4"
+#
+# Round 6 (2026-08-01, this branch): bumped again from "gate-e0-m5-4" -- F4's
+# gate on ``_evidence_level_phrase`` for ``evid_4_first_party_plus_
+# independent`` (affirmative "corroborated by independent evidence" wording
+# now requires ``inputs.has_independent_evidence``, falling back to neutral
+# wording otherwise). A rendered wording template changed, even though the
+# golden fixture's bytes do not move (both its level-4 anchor topics have
+# ``independent_publisher_count == 1``, so they take the unchanged
+# affirmative branch). ``CONFIDENCE_RUBRIC_VERSION`` stays untouched -- this
+# is prose-layer only, no confidence-level semantics moved.
+#
+# Round 7 (2026-08-01, this branch): bumped again from "gate-e0-m5-5" --
+# document wording/structure only, no confidence-level semantics moved
+# (``CONFIDENCE_RUBRIC_VERSION`` unchanged): F6 (``CORROBORATION_
+# METHODOLOGY_NOTE``'s final sentence corrected to state that a
+# first-party-plus-independent anchor reaches high confidence only when its
+# independent leg is countable, per round 3's F1); F7
+# (``tiers._recommend_action``'s fact/medium reason text reshaped to drop
+# the P1-style colon/double-action defect, and ``_build_study_queue``'s
+# light-study reason now states WHEN as well as WHY -- see ADR 0007's
+# "Study Queue / Tier 2 action, revisited (round 7)"); S1/S2 (``_build_
+# tldr``'s per-topic line no longer embeds a literal "{rank}." inside the
+# bullet or repeats the same constant Tier-1 reason for every topic); S3
+# (Tier 2/3 headings now match the executive summary's "Tier N (Label)"
+# naming); S4 (the appendix heading now names its methodology subsections,
+# not only "Full Tier 1 Records"); S5 (the appendix evidence-dimension line
+# resolves ``evid_4_independent_rigorous_alone``'s disjunction using data
+# already present in the same dimension_breakdown); S6 (the Study Queue and
+# content-opportunity selection-rule strings no longer cite internal module
+# names/self-referential "Founder spec" pointers).
+BRIEF_VERSION = "gate-e0-m5-6"
 
 REVIEW_STATUS = "awaiting_founder_review"
 
@@ -161,8 +191,11 @@ CORROBORATION_METHODOLOGY_NOTE = (
     "artifacts from the same venue (e.g. two arXiv papers, both publisher_id='arxiv') never "
     "count as corroborating each other for confidence purposes, even when authored by "
     "different, unaffiliated research groups. This makes the bar for high confidence stricter "
-    "than a same-venue reading would suggest -- it does not make high confidence unreachable; "
-    "a first-party-plus-independent anchor or a genuinely cross-venue corpus still reaches it."
+    "than a same-venue reading would suggest -- it does not make high confidence unreachable: "
+    "a first-party-plus-independent anchor reaches it only when its independent leg is "
+    "actually countable (independent_publisher_count >= 1 on that leg, not a registry-denied "
+    "source standing in alone), and a genuinely cross-venue corpus (two or more distinct "
+    "independent publishers) reaches it outright."
 )
 
 # --- human phrase for action_required, used by the Tier 1/2 lean "why it ----
@@ -219,6 +252,30 @@ _EVIDENCE_LEVEL_4_PHRASE_BY_ANCHOR: dict[str, str] = {
     "evid_4_independent_rigorous_alone": "strong evidence: rigorous independent evidence",
 }
 
+# F4 (round 6, Fable MUST-FIX): the pre-round-3 defect ("trust
+# _CORROBORATED_ANCHORS membership alone, without independent_publisher_count
+# >= 1") reintroduced one layer up, at the PROSE layer instead of the
+# confidence layer. cluster._evidence_level_and_marketing_risk sets
+# ``evid_4_first_party_plus_independent`` from ``has_independent_analysis``/
+# ``has_independent_rigorous`` -- flags derived from evidence_type/by_subject
+# ALONE, never from ``_is_independent``'s registry check
+# (``may_supply_independence is not False``). So a Gate E0.3 registry-DENIED
+# member (``may_supply_independence=False``) can be the SOLE source of the
+# "independent" leg: it drives the anchor to
+# ``evid_4_first_party_plus_independent`` while being excluded from
+# ``independent_publishers`` (the registry-respecting set), leaving
+# ``independent_publisher_count == 0`` and ``has_independent_evidence ==
+# False``. The old unconditional phrase above then asserted "corroborated by
+# independent evidence" with no countable independent leg behind it -- an
+# affirmative ``corroborat*`` claim ADR 0007 Decision #1 bans outside of
+# ``has_cross_source_corroboration``. This fallback phrase is the neutral,
+# non-corroboration wording used ONLY in that denial-driven state; every
+# other ``evid_4_first_party_plus_independent`` topic (registry-permitted or
+# no registry opinion) keeps the affirmative phrase above unchanged.
+_EVIDENCE_LEVEL_4_FIRST_PARTY_PLUS_INDEPENDENT_UNCOUNTABLE_PHRASE = (
+    "strong evidence: a first-party source plus independent analysis or rigorous evidence"
+)
+
 
 def _evidence_level_phrase(inputs: RankingInputs) -> str:
     """P1 (product review round 5, MUST-FIX): the evidence-level phrase used
@@ -228,8 +285,26 @@ def _evidence_level_phrase(inputs: RankingInputs) -> str:
     keeps its existing, non-disjunctive phrase from
     :data:`_EVIDENCE_LEVEL_HUMAN_PHRASE` unchanged. Falls back to the
     generic ``evidence level N`` text for an evidence_level this dict does
-    not cover (defensive only -- ``cluster.py`` only ever produces 0-5)."""
+    not cover (defensive only -- ``cluster.py`` only ever produces 0-5).
+
+    F4 (round 6, Fable MUST-FIX): for ``evid_4_first_party_plus_independent``
+    specifically, the affirmative "corroborated by independent evidence"
+    phrase is only used when ``inputs.has_independent_evidence`` is True --
+    i.e. when the independent leg is backed by at least one registry-
+    permitted publisher (``independent_publisher_count >= 1``,
+    registry-respecting; see ``cluster._evidence_level_and_marketing_risk``).
+    When it is False (the anchor was reached SOLELY via a registry-denied
+    member), this falls back to
+    :data:`_EVIDENCE_LEVEL_4_FIRST_PARTY_PLUS_INDEPENDENT_UNCOUNTABLE_PHRASE`,
+    which makes no corroboration claim -- mirroring how
+    ``_human_evidence_sentence``'s ``independence_clause`` already gates on
+    the same flag."""
     if inputs.evidence_level == 4:
+        if (
+            inputs.evidence_anchor_id == "evid_4_first_party_plus_independent"
+            and not inputs.has_independent_evidence
+        ):
+            return _EVIDENCE_LEVEL_4_FIRST_PARTY_PLUS_INDEPENDENT_UNCOUNTABLE_PHRASE
         return _EVIDENCE_LEVEL_4_PHRASE_BY_ANCHOR.get(
             inputs.evidence_anchor_id,
             "strong evidence: a first-party source or rigorous independent evidence",
@@ -248,18 +323,18 @@ LIBRARY_MOVEMENTS_DEFERRED_NOTE = (
 # --- editorial-gate proxy for content opportunities (Founder spec example) --
 CONTENT_OPPORTUNITY_SELECTION_RULE = (
     "Tier 1 admitted AND claim_class == 'fact' AND confidence in {high, medium} AND "
-    "the relevance dimension's effective_value >= 4 (on-territory) -- the exact proxy "
-    "named in the Founder spec. At most 3 topics are selected, in rank order; zero is a "
-    "valid outcome and is stated explicitly rather than backfilled."
+    "the relevance dimension's effective_value >= 4 (on-territory). At most 3 topics "
+    "are selected, in rank order; zero is a valid outcome and is stated explicitly "
+    "rather than backfilled."
 )
 
 STUDY_SELECTION_RULE = (
     "Deep-study: the highest-ranked (lowest rank number) Tier 1 topic whose "
-    "recommended_action == 'study' (only Tier 1 topics ever recommend 'study', per "
-    "tiers.py's recommended-action rule chain). Light-study: the next two Tier 2 "
-    "topics, in rank order, whose claim_class == 'fact' (marketing and hypothesis "
-    "claims are excluded from the light-study queue) -- Tier 1 topics are excluded "
-    "from the light picks since they already receive full 'study' treatment above."
+    "recommended_action == 'study' (only Tier 1 topics ever recommend 'study'). "
+    "Light-study: the next two Tier 2 topics, in rank order, whose claim_class == "
+    "'fact' (marketing and hypothesis claims are excluded from the light-study "
+    "queue) -- Tier 1 topics are excluded from the light picks since they already "
+    "receive full 'study' treatment above."
 )
 
 EXPERIMENT_SELECTION_RULE = (
@@ -593,13 +668,54 @@ def _dimension(breakdown: RankingBreakdown, name: str) -> DimensionScore:
     return next(d for d in breakdown.dimensions if d.dimension == name)
 
 
+# S5 (round 7, document coherence): ranking._EVIDENCE_ANCHOR_TEXT (owned by
+# ranking.py, outside this round's scope fence) renders the
+# ``evid_4_independent_rigorous_alone`` anchor as an unresolved disjunction
+# -- "a non-subject benchmark_with_methodology, research_paper, or
+# independent_implementation is present on its own" -- without saying which
+# of the three actually applies to a given topic. The data to resolve it is
+# already rendered two lines below, in the SAME appendix dimension_breakdown:
+# the "experiment" dimension's own rationale states
+# ``evidence_types=[...]`` for this exact topic. This resolves the "evidence"
+# line for DISPLAY only, from data already present in ``breakdown`` -- it
+# never touches ranking.py's stored anchor_text/rationale strings themselves
+# (those remain the unresolved disjunction verbatim, e.g. in any caller that
+# reads ``breakdown`` directly instead of through this function).
+_EVID_4_INDEPENDENT_RIGOROUS_ALONE_DISJUNCTS = (
+    "benchmark_with_methodology",
+    "research_paper",
+    "independent_implementation",
+)
+_EVID_4_INDEPENDENT_RIGOROUS_ALONE_UNRESOLVED_PHRASE = (
+    "a non-subject benchmark_with_methodology, research_paper, or "
+    "independent_implementation is present on its own"
+)
+
+
+def _resolve_evid_4_independent_rigorous_alone(breakdown: RankingBreakdown, line: str) -> str:
+    if _EVID_4_INDEPENDENT_RIGOROUS_ALONE_UNRESOLVED_PHRASE not in line:
+        return line
+    experiment = _dimension(breakdown, "experiment")
+    present_types = {
+        t for t in experiment.inputs.get("evidence_types", "").split(",") if t
+    }
+    resolved = [t for t in _EVID_4_INDEPENDENT_RIGOROUS_ALONE_DISJUNCTS if t in present_types]
+    if not resolved:
+        return line
+    resolved_phrase = f"a non-subject {' or '.join(resolved)} is present on its own"
+    return line.replace(_EVID_4_INDEPENDENT_RIGOROUS_ALONE_UNRESOLVED_PHRASE, resolved_phrase)
+
+
 def _dimension_summary_line(breakdown: RankingBreakdown) -> list[str]:
     lines = []
     for d in breakdown.dimensions:
-        lines.append(
+        line = (
             f"{d.dimension}: raw={d.raw_value} effective={d.effective_value} "
             f"({d.points} pts, weight {d.weight}) -- {d.rationale}"
         )
+        if d.dimension == "evidence" and d.anchor_id == "evid_4_independent_rigorous_alone":
+            line = _resolve_evid_4_independent_rigorous_alone(breakdown, line)
+        lines.append(line)
     return lines
 
 
@@ -910,6 +1026,34 @@ def _build_appendix_record(
     )
 
 
+# F7 (round 7, product review -- "study it now vs. save it for later, about
+# the same topic"): a Tier 2 fact-classified topic's own "Recommended
+# action" line explains WHY its evidence stands where it does (see
+# tiers._recommend_action's fact branches); this reason now also states
+# WHEN, so the two no longer read as scheduling conflicts about the same
+# topic. "Light study" here always means a short read now, for awareness --
+# the light-study gate is claim_class == 'fact' alone (no confidence/action
+# gate, see STUDY_SELECTION_RULE), so a light-study pick can be EITHER a
+# 'read' topic (high confidence, already fully corroborated -- the light
+# read already covers it in full) OR a 'save' topic (medium confidence,
+# still awaiting a second, independent source -- the light read is
+# awareness only, not the fuller follow-up that action defers). Branching on
+# the topic's own ``recommended_action`` keeps this line true for both,
+# instead of assuming every light-study pick is a 'save' topic. See ADR
+# 0007's "Study Queue / Tier 2 action, revisited (round 7)" decision.
+def _light_study_reason(topic: TieredTopic) -> str:
+    base = (
+        f"Tier 2 fact-classified topic, rank {topic.rank}, {topic.claim.confidence} "
+        "confidence -- worth a short read now to stay current"
+    )
+    if topic.tier_assignment.recommended_action == "read":
+        return f"{base}; already well-attested, so this light read covers it in full."
+    return (
+        f"{base}; the deeper follow-up this topic's own 'save' action defers still "
+        "waits on further corroboration."
+    )
+
+
 def _build_study_queue(
     tier1_topics: list[TieredTopic], tier2_topics: list[TieredTopic]
 ) -> StudyQueue:
@@ -940,10 +1084,7 @@ def _build_study_queue(
             topic_id=t.topic_id,
             canonical_title=t.canonical_title,
             rank=t.rank,
-            reason=(
-                f"Tier 2 fact-classified topic, rank {t.rank}, "
-                f"{t.claim.confidence} confidence"
-            ),
+            reason=_light_study_reason(t),
         )
         for t in light_selected
     ]
@@ -1301,9 +1442,26 @@ def _build_tldr(tier1_topics: list[TieredTopic], items_by_id: dict[str, SourceIt
             "those are authorised to supply it -- see the appendix's registry-denied-"
             "independence exclusion category for which topics that blocks."
         ]
+    # S1/S2 (round 7, document coherence): the old line, f"{rank}. {title} --
+    # {action}: {reason}", had two defects. (1) It embedded a literal
+    # "{rank}." INSIDE the bullet text, which render_markdown then prefixes
+    # with its own "- " -- so the FIRST thing the Founder reads is a bullet
+    # containing a redundant, bullet-shaped "1." Rank is now stated
+    # parenthetically instead. (2) It piped tiers.py's
+    # ``recommended_action_reason`` straight in after the f-string's own
+    # colon -- and that reason text is ITSELF the SAME constant sentence
+    # for every Tier 1 topic ("Tier 1 (Must Understand): admitted to the
+    # highest-priority tier -- study in full.", see
+    # ``tiers._recommend_action``'s ``tier_1`` branch), so this section
+    # (meant to survive triage) rendered three DIFFERENT titles glued to
+    # the exact same boilerplate sentence, and did so behind two colons in
+    # one clause -- the same construction P1 removed from the body. This
+    # line now differentiates on data that actually varies per topic (rank,
+    # score) and points to the Tier 1 section below for the reason, instead
+    # of repeating the one reason string every Tier 1 topic shares.
     return [
-        f"{t.rank}. {t.canonical_title} -- {t.tier_assignment.recommended_action}: "
-        f"{t.tier_assignment.recommended_action_reason}"
+        f"{t.canonical_title} (rank {t.rank}, score {t.score}/100) -- study in full; "
+        "see the Tier 1 section below for what changed and why it matters."
         for t in tier1_topics
     ]
 
@@ -1616,7 +1774,12 @@ def _render_tier1_section(
 def _render_tier2_section(
     brief: WeeklyBrief, limitations_overlay: dict[str, list[str]]
 ) -> list[str]:
-    lines = ["## Should Know"]
+    # S3 (round 7, document coherence): the executive summary and tldr both
+    # name this section "Tier 2 (Should Know)" -- a reader scanning for
+    # "Tier 2" found no matching heading, since this one used to be the bare
+    # "## Should Know", inconsistent with Tier 1's "## Tier 1 -- Must
+    # Understand". Same "## Tier N -- Label" shape as Tier 1/3 now.
+    lines = ["## Tier 2 -- Should Know"]
     if not brief.tier2:
         lines.append("No topics in this tier this week.")
     for item in brief.tier2:
@@ -1654,7 +1817,9 @@ def _render_tier2_section(
 def _render_tier3_section(
     brief: WeeklyBrief, limitations_overlay: dict[str, list[str]]
 ) -> list[str]:
-    lines = ["## Radar"]
+    # S3 (round 7, document coherence): same heading-scheme fix as Tier 2 --
+    # see _render_tier2_section.
+    lines = ["## Tier 3 -- Radar"]
     if not brief.tier3:
         lines.append("No topics in this tier this week.")
     for item in brief.tier3:
@@ -1762,7 +1927,16 @@ def _render_library_movements_section(brief: WeeklyBrief) -> list[str]:
 
 
 def _render_appendix_section(brief: WeeklyBrief) -> list[str]:
-    lines = ["## Appendix -- Full Tier 1 Records"]
+    # S4 (round 7, document coherence): this section also hosts "Reading &
+    # Study Time Method", "Confidence & Corroboration Methodology", and
+    # "Security Flag Summary" -- none of which are Tier 1 records, and two
+    # of which are the exact subsections the body's "(see appendix for
+    # method)" pointers send the reader to. The old heading ("## Appendix --
+    # Full Tier 1 Records") named only the first part of what is here,
+    # which reads especially wrong when Tier 1 is empty: the section then
+    # opens with "No Tier 1 topics were admitted this week" and carries all
+    # of this methodology anyway.
+    lines = ["## Appendix -- Tier 1 Records & Methodology Notes"]
     if not brief.appendix:
         lines.append("No Tier 1 topics were admitted this week.")
     for record in brief.appendix:

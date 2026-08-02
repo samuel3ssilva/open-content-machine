@@ -1082,6 +1082,88 @@ def test_denied_independence_never_yields_high_confidence() -> None:
         assert phrase not in human_phrase
 
 
+# --- F4 (round 6, Fable MUST-FIX): the pre-round-3 defect reintroduced one --
+# --- layer up, at the PROSE layer instead of the confidence layer ----------
+#
+# Round 3's F1 (see test_denied_independence_never_yields_high_confidence
+# above) closed the CONFIDENCE-layer gap: a registry-denied member can no
+# longer buy 'high' confidence off _CORROBORATED_ANCHORS membership alone.
+# But brief._EVIDENCE_LEVEL_4_PHRASE_BY_ANCHOR's entry for
+# evid_4_first_party_plus_independent -- added by round 5's P1 -- selected
+# its affirmative "corroborated by independent evidence" wording off the
+# ANCHOR ALONE too, with no gate on independent_publisher_count. That old S2
+# test above did not catch it: its affirmative_corroboration_phrases tuple
+# checks "corroborated across multiple distinct sources" (the confidence=high
+# clause) but never "corroborated by independent evidence" (the
+# evidence_level=4 clause) -- the exact phrase the evidence-level branch of
+# _human_evidence_sentence emits regardless of claim.confidence. This test
+# closes that gap directly, through the same real cluster.py pipeline S1/S2
+# use (may_supply_independence=False on the denied member, not a hand-built
+# RankingInputs).
+def test_denied_independence_evidence_phrase_makes_no_corroboration_claim() -> None:
+    """F4: a denial-driven evid_4_first_party_plus_independent cluster
+    (independent_publisher_count == 0, the sole 'independent' leg supplied by
+    a Gate-E0.3-registry-denied member) must render NO affirmative
+    ``corrobor*`` claim anywhere in the Tier 1/2 body text -- neither in the
+    evidence-level phrase (brief._evidence_level_phrase) nor in the
+    independence clause (already correctly gated pre-F4). Before the F4 fix,
+    _evidence_level_phrase ignored has_independent_evidence entirely and
+    always rendered "a first-party source corroborated by independent
+    evidence" for this anchor -- an affirmative corroboration claim
+    immediately contradicted by the next sentence, "No independent source
+    corroborates it.\""""
+    first_party_artifact = _make_item(
+        item_id="f4-first-party-artifact",
+        publisher_id="f4-vendor",
+        subject_entity_ids=["f4-vendor"],
+        title="F4 Round 6 First-Party Artifact Plus Denied Independence Event",
+        summary_normalized="the vendor published its own benchmark with full methodology",
+        stable_reference="https://example.com/f4-vendor/benchmark",
+        evidence_type="benchmark_with_methodology",
+        contains_benefit_or_performance_claim=False,
+    )
+    denied_analysis = _make_item(
+        item_id="f4-denied-analysis",
+        publisher_id="f4-analyst",
+        subject_entity_ids=["f4-vendor"],
+        title="F4 Round 6 First-Party Artifact Plus Denied Independence Event",
+        summary_normalized="an analyst wrote up an independent analysis of the vendor benchmark",
+        stable_reference="https://example.org/f4-analyst/analysis",
+        evidence_type="independent_analysis",
+        may_supply_independence=False,
+    )
+    items_by_id = {
+        first_party_artifact.item_id: first_party_artifact,
+        denied_analysis.item_id: denied_analysis,
+    }
+    clusters = cluster_items([first_party_artifact, denied_analysis])
+    assert len(clusters) == 1
+    cluster = clusters[0]
+
+    # Pin the reachable state this test depends on.
+    assert cluster.evidence_level == 4
+    assert cluster.evidence_anchor_id == "evid_4_first_party_plus_independent"
+    assert cluster.independent_publisher_count == 0
+    assert cluster.has_independent_evidence is False
+    assert cluster.independence_denied_by_registry is True
+
+    inputs = to_ranking_inputs(cluster, items_by_id)
+    claim = build_claim_assessment(
+        inputs, independent_publisher_count=cluster.independent_publisher_count
+    )
+    assert claim.claim_class == "fact"
+    assert claim.confidence == "medium"
+
+    evidence_phrase = brief_module._evidence_level_phrase(inputs)
+    assert "corrobor" not in evidence_phrase
+
+    human_phrase = brief_module._human_evidence_sentence(
+        inputs, claim, cluster.independent_publisher_count
+    )
+    assert "corrobor" not in human_phrase.split(". ")[0]
+    assert "No independent source corroborates it." in human_phrase
+
+
 def test_denied_independence_does_not_over_tighten_a_genuine_two_publisher_cluster() -> (
     None
 ):

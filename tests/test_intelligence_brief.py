@@ -1464,7 +1464,7 @@ def test_p1_tier3_and_discarded_adversarial_flags_are_appendix_count_only() -> N
     markdown = render_markdown(brief)
     # Named nowhere in the Radar section itself -- only counted in the
     # Appendix's security flag summary.
-    radar_section = _extract_markdown_section(markdown, "## Radar")
+    radar_section = _extract_markdown_section(markdown, "## Tier 3")
     assert "instruction_shaped_text" not in radar_section
 
 

@@ -356,11 +356,85 @@ def test_golden_existing_synthetic_fixture_output_is_unchanged_by_gate_d() -> No
     # unchanged ranked[0][1].score == 80. Old hashes (pre-round-5):
     # markdown "232f204e03c74cbb49f5e134c786671a2688e9b9f9355919f38575af219978ac",
     # json "8a2b830f28e5065198e6f076caab9bdc3f4e2fbda61e56c9793687c33f1d8442".
+    #
+    # Round 6 re-pin (2026-08-01, F4 -- gate ``_evidence_level_phrase`` on
+    # ``inputs.has_independent_evidence`` for ``evid_4_first_party_plus_
+    # independent``): the JSON hash below changed, the markdown hash did
+    # NOT. Verified directly (not merely asserted): (1) the markdown hash is
+    # BYTE-IDENTICAL to its pre-round-6 value, which is the mechanical proof
+    # F4's gate is a genuine no-op on this fixture's rendered Markdown --
+    # both of this fixture's level-4 anchor topics (ranks 1 and 4,
+    # ``evid_4_first_party_plus_independent``) have
+    # ``independent_publisher_count == 1`` (registry-permitted, not
+    # denied), so ``inputs.has_independent_evidence`` is True for both and
+    # they take the same affirmative phrase branch as before F4 -- F4 only
+    # changes behavior for a registry-DENIED sole independent leg, which
+    # this fixture does not contain. (2) The JSON hash moved SOLELY because
+    # ``WeeklyBrief.brief_version`` embeds ``BRIEF_VERSION``, bumped
+    # ``"gate-e0-m5-4"`` -> ``"gate-e0-m5-5"`` (F5, document-version-marker
+    # bookkeeping only) -- confirmed by substituting the single token
+    # ``"gate-e0-m5-5"`` back to ``"gate-e0-m5-4"`` in the current
+    # ``brief.model_dump_json()`` output (the token occurs exactly once) and
+    # reproducing the prior pinned JSON hash below byte-for-byte, with ZERO
+    # other differing bytes. Structural counts, top topic id/score, and the
+    # markdown hash are all unchanged (see the asserts above and this
+    # comment) -- nothing in cluster.py/ranking.py/tiers.py's admission or
+    # scoring logic moved, and no rendered Markdown prose moved either; only
+    # the JSON-embedded version marker did. Old JSON hash (pre-round-6):
+    # "36433ca24801bce184e842e13ed851531d0e7d8961e4f22f01e1a5482290060e"
+    # (markdown hash unchanged, still "98b9609314cf...846493" below).
+    #
+    # Round 7 re-pin (2026-08-01, this branch): BOTH hashes changed, and
+    # MUST have -- this round bumped BRIEF_VERSION ("gate-e0-m5-5" ->
+    # "gate-e0-m5-6", document wording/structure only,
+    # CONFIDENCE_RUBRIC_VERSION unchanged) and fixed real rendering defects,
+    # verified per-topic against this exact fixture the same way as every
+    # prior re-pin (structural counts/top-topic id+score unchanged, see the
+    # asserts above -- nothing in cluster.py/ranking.py/tiers.py's admission
+    # or scoring logic moved):
+    #   - F6: CORROBORATION_METHODOLOGY_NOTE's final sentence corrected (run
+    #     -level, prints once in the appendix and once in brief.json's
+    #     corroboration_methodology_note).
+    #   - F7: tiers._recommend_action's fact/medium reason text reshaped
+    #     (this fixture's only fact/medium Tier 2 topic is rank 5, "VendorC
+    #     Deprecates Legacy Harness Plugin API" -- its Tier 2 body
+    #     "Recommended action" line and its tldr/appendix-adjacent uses
+    #     change); _build_study_queue's light-study reason now states WHEN
+    #     as well as WHY, and branches correctly on the topic's OWN
+    #     recommended_action instead of assuming every light-study pick is
+    #     a 'save' topic (this fixture's two light-study picks are rank 4,
+    #     fact/high/'read', and rank 5, fact/medium/'save' -- both lines
+    #     change, each with the text appropriate to its own action).
+    #   - S1/S2: _build_tldr's three Tier 1 lines (ranks 1-3) no longer
+    #     embed a literal "{rank}." inside the bullet or repeat the one
+    #     constant Tier-1 reason verbatim -- each now states its own rank
+    #     and score.
+    #   - S3: Tier 2/3 headings changed from "## Should Know"/"## Radar" to
+    #     "## Tier 2 -- Should Know"/"## Tier 3 -- Radar".
+    #   - S4: the appendix heading changed from "## Appendix -- Full Tier 1
+    #     Records" to "## Appendix -- Tier 1 Records & Methodology Notes".
+    #   - S5: the appendix "evidence" dimension line for rank 3
+    #     ("Independent Benchmark Study Measures VendorA Harness
+    #     Reliability", evidence_anchor_id evid_4_independent_rigorous_
+    #     alone -- this fixture's only topic reaching that anchor) now
+    #     resolves its disjunction to the one type this topic's own
+    #     experiment-dimension line already names (evidence_types=
+    #     ['benchmark_with_methodology']) instead of listing all three
+    #     possible types.
+    #   - S6: STUDY_SELECTION_RULE and CONTENT_OPPORTUNITY_SELECTION_RULE
+    #     (both run-level, printed once each as the Study Queue/Content
+    #     Opportunities "Selection rule" lines) no longer cite "tiers.py"/
+    #     "the Founder spec" by name.
+    # Confidence LEVEL, claim_class, score, and tier admission are unchanged
+    # for every topic -- see the unchanged structural counts above and
+    # unchanged ranked[0][1].score == 80. Old hashes (pre-round-7):
+    # markdown "98b9609314cf60e2f6b9d0df6e332d66e09eded987a235c5098b0faafc846493",
+    # json "2eafaa91a695a100cbb8768e0848cfe40b6dfe487d774e829c6064a7e0ed0feb".
     assert (
         hashlib.sha256(markdown.encode("utf-8")).hexdigest()
-        == "98b9609314cf60e2f6b9d0df6e332d66e09eded987a235c5098b0faafc846493"
+        == "c595500f06cbf45aa37ff2ec00831fc6f7f1a11ca5fc0aee3ad9b9d76677f25d"
     )
     assert (
         hashlib.sha256(brief.model_dump_json().encode("utf-8")).hexdigest()
-        == "36433ca24801bce184e842e13ed851531d0e7d8961e4f22f01e1a5482290060e"
+        == "49cfdaa1cd4066bc03d49021e9283ebf553f5cbcacf6507ccf9f0039e22d0172"
     )

@@ -130,14 +130,14 @@ def _classify_claim_class(inputs: RankingInputs) -> tuple[ClaimClass, str]:
     one publisher structurally independent of the subject.
 
     Fable ruling 2026-08-01 (reversing an earlier "it's just a disjunction"
-    classification): the third disjunct of ``has_direct_artifact_or_
+    classification): the fourth disjunct of ``has_direct_artifact_or_
     independent_source`` is ``independent_publisher_count > 0`` --
     ``has_genuine_independent_evidence`` in ``cluster.py`` -- and that is
     independent EVIDENCE, not independent CORROBORATION: a single source
     suffices, no second source is required. For the anchor
     ``evid_4_independent_rigorous_alone``, the first three disjuncts
     (first-party authoritative, non-subject authoritative, first-party
-    artifact) are all false by construction, so this third disjunct is the
+    artifact) are all false by construction, so this fourth disjunct is the
     ONLY one that holds -- and only under the "evidence" reading. Calling it
     "corroboration" here would be false for exactly that anchor.
 
@@ -459,10 +459,27 @@ def _recommend_action(
             "corroborated -- read in full.",
         )
     if claim_class == "fact" and confidence == "medium":
+        # F7 (round 7, product review -- "structurally the same construction
+        # P1 spent a round removing from the line directly above"): the old
+        # text, "claim_class=fact, confidence=medium: attested by an
+        # artifact but lacking a second, distinct supporting source -- save
+        # for later review.", said the action word twice (the recommended
+        # action itself, plus "save for later review" inside its own
+        # reason), embedded two raw key=value diagnostic tokens in
+        # reader-facing prose, and buried the operative caveat behind a
+        # colon that opens an explanatory scope with the limitation
+        # (`"but lacking..."`) sitting inside it -- the exact P1 defect
+        # (see brief._human_evidence_sentence's docstring). Rewritten as two
+        # plain clauses, no key=value tokens, no colon-opened scope, and the
+        # deferral instruction stated once (not restated with the action
+        # word again) -- see ADR 0007's "Study Queue / Tier 2 action,
+        # revisited (round 7)" decision for how this reason now also
+        # coexists with the Study Queue's own light-study line for the SAME
+        # topic.
         return (
             "save",
-            "claim_class=fact, confidence=medium: attested by an artifact but lacking a "
-            "second, distinct supporting source -- save for later review.",
+            "Attested by an artifact, but no second, independent source corroborates it "
+            "yet -- hold it for later review once further corroboration surfaces.",
         )
     if claim_class == "hypothesis" and tier == "tier_2":
         return (

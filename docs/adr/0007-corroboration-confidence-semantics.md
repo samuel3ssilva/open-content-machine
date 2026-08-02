@@ -162,7 +162,7 @@ computation:
 
 - **F1** (Fable, reversing an earlier "it's just a disjunction"
   classification): `tiers._classify_claim_class`'s fact-branch reason text
-  called `has_direct_artifact_or_independent_source`'s third disjunct
+  called `has_direct_artifact_or_independent_source`'s fourth disjunct
   (`independent_publisher_count > 0`, i.e. `has_genuine_independent_
   evidence` in `cluster.py`) "genuine independent corroboration" — but that
   disjunct requires only ONE independent publisher, not two; "corroboration"
@@ -265,6 +265,55 @@ the previous bare action word. Rationale:
 If a future round finds this still reads as contradictory in practice, the
 gate-on-action alternative above remains available — it was not rejected on
 technical grounds, only deferred as the larger, riskier edit for this round.
+
+### Round 7 (2026-08-01, this branch): Study Queue / Tier 2 action, revisited
+
+Product review reproduced exactly the failure mode the paragraph above
+anticipated: round 5's `recommended_action_reason` fix stated *why* the
+evidence is thin, not *when* to act on it, so the rendered Tier 2 line still
+read "save — ... — save for later review" while the Study Queue's own line,
+three lines below, scheduled the SAME topic for a light study now and
+billed minutes for it against the run's `Estimated study time`. Since every
+Tier 2 `fact`/`medium` topic hits both rules by construction (`_recommend_
+action` returns `save` for that exact combination; `_build_study_queue`'s
+light-study gate is `claim_class == "fact"`), this was not an edge case —
+the apparent "study it now vs. save it for later" contradiction is
+guaranteed to render together for every such topic.
+
+**Decision: still (b), not gate-on-action — refine the disclosure instead
+of widening the edit.** The gate-on-action alternative remains available and
+was reconsidered, but rejected again for the same reason round 5 gave: it
+requires changing `library._derive_current_status`'s persisted `study_queue`
+lifecycle state in lockstep (its docstring commits to mirroring this
+module's light-study criterion), which is a persisted-contract change this
+codebase's routing rules ask to be reviewed above the daily-execution level,
+not folded into a same-round wording fix. Two changes, both confined to
+rendered prose, close the actual gap instead:
+
+- `_build_study_queue`'s light-study `reason` now states WHEN as well as
+  WHY: a light-study pick is framed explicitly as "a short read now to stay
+  current," distinct from the deeper follow-up that the same topic's own
+  `save` action defers pending further corroboration. "Light study" was
+  always the lighter-weight queue (as opposed to "deep study") — this makes
+  that distinction legible next to the topic's own recommended action
+  instead of leaving the reader to infer it.
+- `tiers._recommend_action`'s fact/medium (`save`) reason text is
+  rewritten to drop the P1-style defect the same reviewer flagged in the
+  same breath: it said "save" twice, embedded two raw `key=value`
+  diagnostic tokens in reader-facing prose, and buried its caveat behind a
+  colon that opened an explanatory scope with the limitation sitting
+  inside it — structurally the same construction P1 (round 5) removed from
+  the evidence line directly above it. The new text is two plain clauses,
+  no `key=value` tokens, no colon-opened scope, and states the deferral
+  once.
+
+This keeps the same "give the reader the reason, not just the label"
+pattern the original decision (b) established, applied a second time to
+close the gap that pattern's first application left open. The gate-on-action
+alternative is still not rejected on technical grounds — if a future round
+finds the disclosure insufficient even once both lines state their own
+why/when, that alternative (and the `library.py` lifecycle-state work it
+requires) remains the next escalation.
 
 ## Consequences
 
