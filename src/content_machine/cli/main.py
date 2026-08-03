@@ -7,6 +7,7 @@ rows by index and columns by name, never personal field values.
 
 from __future__ import annotations
 
+import json
 import os
 from collections import Counter
 from datetime import UTC, datetime
@@ -40,7 +41,14 @@ from content_machine.audience.public_report import to_markdown as public_to_mark
 from content_machine.audience.report import AudienceReport, analyze, to_json, to_markdown
 from content_machine.config.settings import get_settings
 from content_machine.ingestion.csv_loader import CsvLoadError, LoadResult, load_csv
+from content_machine.intelligence.brief import render_markdown
 from content_machine.intelligence.library import load_topics
+from content_machine.intelligence.limitations_overlay import (
+    OVERLAY_FILENAME,
+    LimitationsOverlayError,
+    load_limitations_overlay,
+    rendered_topic_ids,
+)
 from content_machine.intelligence.loader import (
     DEFAULT_PROFILE_PATH,
     ProfileLoadError,
@@ -51,6 +59,7 @@ from content_machine.intelligence.loader import (
 from content_machine.intelligence.weekly import (
     DEFAULT_CADENCE_DESCRIPTION,
     DEFAULT_TIMEZONE,
+    LimitationsOverlayManifest,
     derive_week_label,
     resolve_window,
     run_weekly,
@@ -680,7 +689,21 @@ _WEEKLY_RUN_EPILOG = (
     "ONLY -- nothing here installs this):\n\n"
     "  0 18 * * 6 cd /path/to/repo && content-machine intelligence weekly-run "
     "--signals /path/to/signals.json --library /path/to/library.jsonl "
-    '--reference-date "$(date +\\%F)" --output-dir /path/to/output'
+    '--reference-date "$(date +\\%F)" --output-dir /path/to/output\n\n'
+    "RE-RUNNING AN EXISTING WEEK (ADR 0009): re-invoking this command over an "
+    "output-dir that already has a completed run (same run_id) is a no-op by "
+    "default -- nothing is overwritten. If the installed code's rendering or "
+    "confidence semantics changed since that run was written (e.g. after "
+    "upgrading), the on-disk run can go STALE -- it still exists, but no longer "
+    "matches what current code would produce -- and this command prints a loud "
+    "WARNING to stderr naming the differing file(s) on every such re-run, "
+    "whether or not a limitations-overlay.json is present. Applying a fix to an "
+    "EXISTING week's output-dir therefore requires an explicit --regenerate. "
+    "BEFORE passing --regenerate, ARCHIVE A COPY OF output-dir FIRST: the "
+    "'.bak.tmp' move-asides this command uses internally are rollback staging "
+    "for a single write operation, deleted automatically once that write "
+    "succeeds -- they are NOT a backup and will not let you recover the "
+    "pre-regenerate content afterwards."
 )
 
 
@@ -833,6 +856,52 @@ def intelligence_weekly_run(
         raise typer.Exit(code=0)
 
     assert output_dir is not None  # guarded above
+
+    # Fable ruling 2026-08-01 (Part C; rekeyed by item_id under Part A of the
+    # 2026-08-01 follow-up ruling): the Founder-approved, per-item
+    # limitations overlay -- a private, run-specific, human-authored JSON
+    # sidecar a human places at <output_dir>/limitations-overlay.json BEFORE
+    # this command runs, keyed by SourceItem.item_id (never topic_id -- a
+    # topic_id is run-scoped and would not exist yet at authoring time).
+    # Absent file is NOT a failure (the run proceeds with no limitations
+    # composed); any other validation failure aborts the ENTIRE render --
+    # nothing is written -- so this must run BEFORE write_weekly_run_outputs
+    # is ever called. load_limitations_overlay validates each item_id
+    # against result.item_topic_map and resolves it to its containing
+    # topic_id BEFORE render_markdown is ever called with it -- composed
+    # ONLY into the rendered brief.md string (never into result.brief /
+    # brief.json, the pipeline, or a model boundary).
+    overlay_path = output_dir / OVERLAY_FILENAME
+    try:
+        overlay_result = load_limitations_overlay(
+            overlay_path,
+            run_id=result.manifest.run_id,
+            item_topic_map=result.item_topic_map,
+            rendered_topic_ids=rendered_topic_ids(result.brief),
+        )
+    except LimitationsOverlayError as exc:
+        typer.secho(f"Error: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from None
+
+    if overlay_result is not None:
+        result = result.model_copy(
+            update={
+                "brief_markdown": render_markdown(
+                    result.brief, limitations_overlay=overlay_result.limitations
+                ),
+                "manifest": result.manifest.model_copy(
+                    update={
+                        "limitations_overlay": LimitationsOverlayManifest(
+                            present=True,
+                            item_count=overlay_result.item_count,
+                            overlay_sha256=overlay_result.overlay_sha256,
+                            provenance=overlay_result.provenance,
+                        )
+                    }
+                ),
+            }
+        )
+
     outcome = write_weekly_run_outputs(result, output_dir, regenerate=regenerate)
 
     typer.echo("\n".join(summary_lines))
@@ -843,6 +912,72 @@ def intelligence_weekly_run(
             typer.echo(f"  - {name}")
     else:
         typer.echo(f"Skipped write: {outcome.skipped_reason}")
+        # R1 (2026-08-01 post-merge-gate round, ADR 0009 -- "an idempotent
+        # skip must verify its premise, not assume it"): UNCONDITIONAL --
+        # NOT gated on overlay_result, unlike the overlay-specific warning
+        # below. write_weekly_run_outputs byte-compares every output this
+        # invocation would have written against what is already on disk
+        # before it ever skips (see its docstring); outcome.stale is True
+        # when at least one differs, meaning the on-disk run under
+        # output_dir no longer matches what CURRENT code would produce for
+        # it -- most likely because rendering/confidence semantics changed
+        # (see brief.BRIEF_VERSION / tiers.CONFIDENCE_RUBRIC_VERSION in the
+        # on-disk run-manifest.json vs. the current package) without a
+        # code_version/run_id change to catch it on its own. A Founder with
+        # NO limitations-overlay file must still see this -- it is not a
+        # special case of the overlay warning, the overlay warning below is
+        # a special case of THIS one.
+        if outcome.stale:
+            typer.secho(
+                f"WARNING: the run already completed on disk at {output_dir} "
+                f"(run_id={outcome.run_id}) does NOT match what the CURRENT code would "
+                f"produce for it -- {len(outcome.stale_files)} file(s) differ: "
+                f"{', '.join(outcome.stale_files)}. This run was left in place unchanged "
+                "(no output is ever overwritten without --regenerate). Pass --regenerate to "
+                "redo this run's outputs with the current code.",
+                fg=typer.colors.YELLOW,
+                err=True,
+            )
+        # Fable ruling 2026-08-01 (Part B, follow-up: "idempotency skip
+        # gap"): a validated overlay this invocation, combined with a skip
+        # (a completed run with a matching run_id already on disk), can mean
+        # the Founder believes the overlay was applied when it was not --
+        # write_weekly_run_outputs never re-writes brief.md on a skip, so an
+        # overlay validated THIS run never reaches a prior run's on-disk
+        # brief.md. Detect the divergence by reading the ON-DISK manifest's
+        # own limitations_overlay.present (never assumed from this
+        # invocation's overlay_result, which describes the FILE, not what
+        # was actually written to brief.md) and warn loudly -- a WARNING,
+        # not an error, since a prior run that already applied the same
+        # overlay is a legitimate, non-divergent idempotent skip.
+        if overlay_result is not None:
+            on_disk_overlay_present = False
+            manifest_path = output_dir / "run-manifest.json"
+            try:
+                on_disk_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                on_disk_overlay_present = bool(
+                    on_disk_manifest.get("limitations_overlay", {}).get("present", False)
+                )
+            except (OSError, json.JSONDecodeError, AttributeError):
+                # Unreadable/malformed manifest: treat as "not confirmed
+                # applied" -- the conservative, warn-worthy assumption below.
+                # Round 3 (Fable final recheck): the warning text must stay
+                # true on THIS path too -- an unreadable/malformed manifest
+                # never actually "records" present=false, it simply cannot be
+                # read, so the wording below is phrased to hold in both the
+                # readable-and-false and the unreadable/malformed cases.
+                on_disk_overlay_present = False
+            if not on_disk_overlay_present:
+                typer.secho(
+                    "WARNING: a valid limitations overlay was supplied for this run, but "
+                    f"the existing run already completed on disk at {output_dir} "
+                    f"(run_id={outcome.run_id}) does NOT carry it -- its brief.md has no "
+                    "limitations text and run-manifest.json does not record the overlay as "
+                    "applied. The overlay was NOT applied. Pass --regenerate to redo this "
+                    "run's outputs with the overlay applied.",
+                    fg=typer.colors.YELLOW,
+                    err=True,
+                )
     raise typer.Exit(code=0)
 
 

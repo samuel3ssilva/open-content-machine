@@ -37,6 +37,7 @@ from content_machine.intelligence.tiers import (
     assign_tiers,
     build_tiered_topic,
     d1_exception_fires,
+    has_cross_source_corroboration,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -409,6 +410,109 @@ def test_tier2_practical_consequence_and_principal_evidence_are_human_not_rubric
         assert item.confidence in item.principal_evidence
 
 
+def _independent_two_source_topic(
+    topic_id: str, first_seen: date
+) -> tuple[SourceItem, TopicCluster, RankingInputs]:
+    """A Tier-2-eligible topic with evidence_level=3
+    (evid_3_independent_only) and independent_publisher_count=2 -- the QA
+    real case (Fable ruling 2026-08-01, follow-up, Part C): two
+    independent_analysis items from DIFFERENT publishers, no first-party
+    member. Confidence is 'medium' (evidence_level < 4 blocks 'high'), but
+    the claim carries genuine two-source independence -- distinct from the
+    single-source case ``_synthetic_topic(..., qualifies=True)`` already
+    covers (evid_4_independent_rigorous_alone, count=1)."""
+    anchor = _make_item(
+        item_id=f"{topic_id}-anchor",
+        subject_entity_ids=[f"{topic_id}-subject"],
+        evidence_type="independent_analysis",
+        topic_tags=["agents"],
+        publication_date=first_seen,
+        detection_date=first_seen,
+        stable_reference=f"https://example.com/{topic_id}",
+        title=f"Synthetic Topic {topic_id}",
+    )
+    cluster = _make_cluster(
+        topic_id=topic_id,
+        cluster_fingerprint=f"fp_{topic_id}",
+        canonical_title=f"Synthetic Topic {topic_id}",
+        anchor_item_id=anchor.item_id,
+        member_ids=[anchor.item_id],
+        member_roles={anchor.item_id: "primary"},
+        independent_publisher_count=2,
+        has_independent_evidence=True,
+        has_direct_artifact_or_independent_source=True,
+        evidence_level=3,
+        evidence_anchor_id="evid_3_independent_only",
+        marketing_risk=False,
+        first_seen=first_seen,
+        last_seen=first_seen,
+        cluster_size=2,
+        topic_tags=["agents"],
+        evidence_types=["independent_analysis"],
+    )
+    inputs = _make_inputs(
+        topic_id=topic_id,
+        topic_tags=["agents"],
+        change_class="material_change",
+        action_required="new_option_available",
+        evidence_level=3,
+        evidence_anchor_id="evid_3_independent_only",
+        has_independent_evidence=True,
+        has_direct_artifact_or_independent_source=True,
+        marketing_risk=False,
+        experiment_affordance="not_testable",
+        first_seen=first_seen,
+    )
+    return anchor, cluster, inputs
+
+
+def test_human_evidence_phrase_reports_two_or_more_distinct_sources() -> None:
+    """DEVIATION from Fable's literal Part B text (flagged for Fable to
+    ratify or correct): a topic with independent_publisher_count >= 2 but
+    evidence_level < 4 is medium confidence, never high -- but the OLD
+    two-branch phrasing rendered "independent evidence from a single
+    source" for it, which is false (there are two). The fixed phrase must
+    say "two or more distinct sources" and must never call it a single
+    source."""
+    profile = _profile()
+    clusters_by_topic_id: dict[str, TopicCluster] = {}
+    items_by_id: dict[str, SourceItem] = {}
+    ranked: list[tuple[RankingInputs, RankingBreakdown]] = []
+    # Ranks 1-3: simple non-qualifying filler topics (Tier 1 candidates that
+    # fall through to Tier 2 by rank) -- irrelevant to this test, just
+    # occupying the ranks ahead of the rank-4 target so it lands in the
+    # ALWAYS-Tier-2 rank-4-7 band (tiers.py: never Tier-1 dependent).
+    for i in range(1, 4):
+        topic_id = f"t_filler{i}"
+        anchor, cluster, inputs = _synthetic_topic(
+            topic_id, qualifies=False, first_seen=date(2026, 1, i)
+        )
+        clusters_by_topic_id[topic_id] = cluster
+        items_by_id[anchor.item_id] = anchor
+        ranked.append((inputs, score_topic(inputs, profile)))
+
+    target_topic_id = "t_two_indep"
+    anchor, cluster, inputs = _independent_two_source_topic(target_topic_id, date(2026, 1, 4))
+    clusters_by_topic_id[target_topic_id] = cluster
+    items_by_id[anchor.item_id] = anchor
+    ranked.append((inputs, score_topic(inputs, profile)))
+
+    tiered = assign_tiers(ranked, clusters_by_topic_id, items_by_id)
+    brief = build_weekly_brief(tiered, ranked, clusters_by_topic_id, items_by_id, WEEK_LABEL)
+
+    target = next(item for item in brief.tier2 if item.topic_id == target_topic_id)
+    assert target.confidence == "medium"
+    # P1 (product review round 4): the independence clause is now a full verb
+    # clause ("the claim is supported by...") rather than a noun phrase, to
+    # fix a comma-splice/repeated-noun-phrase grammar regression -- see
+    # brief._human_evidence_sentence's docstring.
+    # P1 (product review round 5): the evidence phrase and the independence
+    # clause are now two separate sentences (no longer comma/"and"-joined),
+    # so the independence clause starts its own sentence and is capitalized.
+    assert "The claim is supported by two or more independent sources" in target.principal_evidence
+    assert "single source" not in target.principal_evidence
+
+
 def test_dimension_rationales_for_tier2_still_live_in_the_appendix_dimension_breakdown() -> None:
     """F-B: the raw consequence/evidence rationale strings must not be LOST
     -- Tier 2 topics that also happen to be Tier 1 don't exist (disjoint
@@ -701,6 +805,99 @@ def test_discarded_topics_listed_with_reasons_on_real_fixture() -> None:
 def test_discarded_topics_empty_is_representable() -> None:
     brief = _brief_for([True, False, False])  # only 3 topics total, none discarded
     assert brief.discarded == []
+
+
+# --- Fable ruling 2026-08-01 (Part B): single-reference topics must never --
+# --- claim corroboration in the rendered brief ------------------------------
+
+
+def test_brief_single_reference_topics_never_claim_corroboration() -> None:
+    """The real 2026-W31 defect this ruling fixes: topics whose cluster has
+    exactly ONE member ('each have exactly one reference', in Fable's own
+    words) can structurally never combine two distinct sources -- at most one
+    publisher can ever be independent, and evid_4_first_party_plus_independent
+    (which needs a first-party member too) is impossible with a single
+    member. Confidence must therefore never be 'high' for such a topic, and
+    neither the structured claim reason nor the rendered Markdown may ever
+    contain an affirmative cross-source-corroboration claim for it."""
+    clusters, items_by_id, ranked = _real_fixture_pipeline()
+    clusters_by_topic_id = {c.topic_id: c for c in clusters}
+    tiered = assign_tiers(ranked, clusters_by_topic_id, items_by_id)
+    brief = build_weekly_brief(tiered, ranked, clusters_by_topic_id, items_by_id, WEEK_LABEL)
+    markdown = render_markdown(brief)
+
+    single_reference_topic_ids = {
+        topic_id
+        for topic_id, cluster in clusters_by_topic_id.items()
+        if cluster.cluster_size == 1
+    }
+    assert single_reference_topic_ids  # the real fixture has single-item clusters
+
+    affirmative_corroboration_phrases = (
+        "genuine independent corroboration is present",
+        "cross-source corroboration is present",
+        "corroborated across multiple distinct sources",
+    )
+
+    single_reference_fact_topics = [
+        topic
+        for topic in tiered
+        if topic.topic_id in single_reference_topic_ids and topic.claim.claim_class == "fact"
+    ]
+    assert single_reference_fact_topics  # the real fixture exercises this path
+
+    for topic in single_reference_fact_topics:
+        assert topic.claim.confidence != "high"
+        for phrase in affirmative_corroboration_phrases:
+            assert phrase not in topic.claim.confidence_reason
+
+    # Structured Tier 1/2 fields are built from claim.confidence via the
+    # shared human-prose builder (P2, product review round 4:
+    # brief._human_evidence_sentence -- Tier 1's evidence_and_confidence no
+    # longer interpolates confidence_reason verbatim; see its own docstring)
+    # -- re-check at the rendered-text level too, so this proves the
+    # DOCUMENT a Founder actually reads, not just the structured object it
+    # was built from.
+    single_reference_titles = {
+        topic.canonical_title for topic in single_reference_fact_topics
+    }
+    for item in brief.tier1:
+        if item.canonical_title in single_reference_titles:
+            for phrase in affirmative_corroboration_phrases:
+                assert phrase not in item.evidence_and_confidence
+    for item in brief.tier2:
+        if item.canonical_title in single_reference_titles:
+            for phrase in affirmative_corroboration_phrases:
+                assert phrase not in item.principal_evidence
+
+    # Defense-in-depth: re-check at the level of each item's OWN rendered
+    # Markdown block (### heading up to the next heading of the same or
+    # higher level), not just the structured fields it was assembled from.
+    # Tier 3/Radar items render as a single "- **N. Title**" list line, not a
+    # "### " heading (see brief._render_tier3_section) -- their
+    # signal_paragraph is built by a wholly separate template
+    # (_radar_future_event) that structurally never emits these phrases, so
+    # only Tier 1/2 topics (the ones with a "### " block) are checked here.
+    markdown_lines = markdown.splitlines()
+    tier1_and_tier2_titles = {item.canonical_title for item in brief.tier1} | {
+        item.canonical_title for item in brief.tier2
+    }
+    for rank_title in (
+        f"{topic.rank}. {topic.canonical_title}"
+        for topic in single_reference_fact_topics
+        if topic.canonical_title in tier1_and_tier2_titles
+    ):
+        heading = f"### {rank_title}"
+        start = next((i for i, line in enumerate(markdown_lines) if line == heading), None)
+        assert start is not None, f"heading {heading!r} not found in rendered brief.md"
+        end = len(markdown_lines)
+        for j in range(start + 1, len(markdown_lines)):
+            if markdown_lines[j].startswith("#"):
+                end = j
+                break
+        block = "\n".join(markdown_lines[start:end])
+        for phrase in affirmative_corroboration_phrases:
+            assert phrase not in block
 
 
 # --- D1 first-party-authoritative exception (ADR 0004, Founder final -------
@@ -1268,7 +1465,7 @@ def test_p1_tier3_and_discarded_adversarial_flags_are_appendix_count_only() -> N
     markdown = render_markdown(brief)
     # Named nowhere in the Radar section itself -- only counted in the
     # Appendix's security flag summary.
-    radar_section = _extract_markdown_section(markdown, "## Radar")
+    radar_section = _extract_markdown_section(markdown, "## Tier 3")
     assert "instruction_shaped_text" not in radar_section
 
 
@@ -1417,3 +1614,248 @@ def test_p5_governed_source_counts_reflect_real_may_supply_independence_values()
     assert "Of 3 source item(s) considered" in line
     assert "2 are registry-governed" in line
     assert "only 1 of those are authorised" in line
+
+
+# --- product review round 4 (2026-08-01, post-merge-gate) -------------------
+# --- G1: executive summary no longer scopes corroboration-need to marketing
+
+
+def test_g1_marketing_sentence_no_longer_implies_only_marketing_needs_corroboration() -> None:
+    brief = _brief_from_real_fixture()
+    marketing_sentence = next(
+        s for s in brief.executive_summary if "marketing-risk claims" in s
+    )
+    # The old trailing clause scoped the corroboration need to marketing
+    # claims only -- it must be gone.
+    assert "before acting" not in marketing_sentence
+    assert "corroborat" not in marketing_sentence.lower()
+
+
+def test_g1_executive_summary_states_top_n_single_source_count_with_negated_wording() -> None:
+    brief = _brief_from_real_fixture()
+    single_source_sentence = next(
+        s for s in brief.executive_summary if "no second, distinct independent source" in s
+    )
+    assert f"Top {len(brief.tier1) + len(brief.tier2) + len(brief.tier3)}" in single_source_sentence
+    # Part B's ban on affirmative corroborat* phrasing: this must state an
+    # ABSENCE, never claim corroboration is present.
+    assert "no independent corroboration has been found" in single_source_sentence
+    assert "is corroborated" not in single_source_sentence
+    assert "genuine independent corroboration is present" not in single_source_sentence
+
+
+def test_g1_single_source_count_excludes_anchor_corroborated_high_confidence_topics() -> None:
+    """Regression for a same-round defect: approximating "single-sourced" as
+    independent_publisher_count <= 1 wrongly counted a topic corroborated
+    via the evid_4_first_party_plus_independent/evid_5_... anchor path
+    (which can reach independent_publisher_count == 1) as single-sourced,
+    even though it is rendered high-confidence a sentence earlier. The
+    count must never exceed the number of topics that are NOT high
+    confidence, and must be strictly less than the Top-N size whenever at
+    least one topic is high confidence via the anchor path."""
+    clusters, items_by_id, ranked = _real_fixture_pipeline()
+    clusters_by_topic_id = {c.topic_id: c for c in clusters}
+    tiered = assign_tiers(ranked, clusters_by_topic_id, items_by_id)
+    brief = build_weekly_brief(tiered, ranked, clusters_by_topic_id, items_by_id, WEEK_LABEL)
+
+    high_confidence_count = sum(1 for t in tiered if t.claim.confidence == "high")
+    assert high_confidence_count > 0  # sanity: the real fixture has one
+
+    single_source_sentence = next(
+        s for s in brief.executive_summary if "no second, distinct independent source" in s
+    )
+    single_source_count = int(single_source_sentence.split(" of the Top", 1)[0])
+    assert single_source_count <= len(tiered) - high_confidence_count
+
+
+# --- G2: static corroboration-counting methodology disclosure --------------
+
+
+def test_g2_corroboration_methodology_note_present_in_brief_and_appendix() -> None:
+    brief = _brief_from_real_fixture()
+    assert "publisher/venue granularity" in brief.corroboration_methodology_note
+    assert "arxiv" in brief.corroboration_methodology_note.lower()
+    # Fable explicitly refused to certify "high is permanently unreachable"
+    # -- the note must never AFFIRM that (a negated refutation, "does not
+    # make high confidence unreachable", is fine -- it directly says the
+    # opposite of the banned claim).
+    assert "permanently unreachable" not in brief.corroboration_methodology_note.lower()
+    assert "does not make high confidence unreachable" in brief.corroboration_methodology_note
+
+    markdown = render_markdown(brief)
+    assert "Confidence & Corroboration Methodology" in markdown
+    assert brief.corroboration_methodology_note in markdown
+
+    parsed = json.loads(render_json(brief))
+    assert parsed["corroboration_methodology_note"] == brief.corroboration_methodology_note
+
+
+# --- G3: single-sourced content opportunities disclose it on their own line -
+
+# P4 (product review round 5): the disclosure moved from a suffix baked into
+# `reason` to a structured `single_sourced: bool` field, rendered on its own
+# Markdown line (see `_render_content_opportunities_section`) instead of
+# appended to the tail of `reason` -- this test now checks the flag and the
+# rendered line separately, rather than substring-matching `reason`.
+
+
+def test_g3_single_sourced_content_opportunity_discloses_it_with_negated_wording() -> None:
+    clusters, items_by_id, ranked = _real_fixture_pipeline()
+    clusters_by_topic_id = {c.topic_id: c for c in clusters}
+    tiered = assign_tiers(ranked, clusters_by_topic_id, items_by_id)
+    brief = build_weekly_brief(tiered, ranked, clusters_by_topic_id, items_by_id, WEEK_LABEL)
+    confidence_by_topic_id = {t.topic_id: t.claim.confidence for t in tiered}
+    markdown = render_markdown(brief)
+    section = _extract_markdown_section(markdown, "## Content Opportunities")
+
+    assert brief.content_opportunities.opportunities  # sanity: fixture has some
+    assert any(opp.single_sourced for opp in brief.content_opportunities.opportunities)
+    for opp in brief.content_opportunities.opportunities:
+        # `reason` itself is now the base rationale only -- never carries the
+        # single-sourced suffix (P4).
+        assert "single-sourced" not in opp.reason
+        if opp.single_sourced:
+            # Advisory/negated wording only -- never an affirmative
+            # corroboration claim -- rendered on its OWN line, directly
+            # under this opportunity's rank/reason line.
+            opp_index = section.index(f"**{opp.canonical_title}** (rank {opp.rank}):")
+            following = section[opp_index : opp_index + 400]
+            assert "_Single-sourced: corroborate before publishing._" in following
+        else:
+            # Only a topic that IS cross-source corroborated may omit the
+            # disclosure -- i.e. it must be 'high' confidence via genuine
+            # corroboration, never silently omitted for a medium topic.
+            assert confidence_by_topic_id[opp.topic_id] == "high"
+
+
+# --- P3: the limitation renders above Recommended action, as a blockquote --
+
+
+def test_p3_limitation_line_renders_above_recommended_action_in_tier1_and_tier2() -> None:
+    clusters, _items_by_id, _ranked = _real_fixture_pipeline()
+    brief = _brief_from_real_fixture()
+    item_topic_map = {
+        item_id: cluster.topic_id for cluster in clusters for item_id in cluster.member_ids
+    }
+    rendered = {*[i.topic_id for i in brief.tier1], *[i.topic_id for i in brief.tier2]}
+    _target_item_id, target_topic_id = next(
+        (item_id, topic_id) for item_id, topic_id in item_topic_map.items() if topic_id in rendered
+    )
+    markdown = render_markdown(
+        brief, limitations_overlay={target_topic_id: ["a synthetic invented limitation"]}
+    )
+    limitation_index = markdown.index("> **Founder-noted limitation (human-authored):**")
+    # Find the "Recommended action" line belonging to the SAME topic block
+    # (the next "Recommended action" line after the limitation).
+    recommended_action_index = markdown.index("**Recommended action:**", limitation_index)
+    assert limitation_index < recommended_action_index
+    # Visually distinguishable from the six machine bullets (P3): a
+    # blockquote, not a plain "- **Label:**" bullet.
+    assert "- **Founder-noted limitation" not in markdown
+
+
+# --- Round 8 (2026-08-01, this branch): F8/F9 -- fact/medium has TWO -------
+# --- causes (missing cross-source corroboration OR missing level-4 rigor) --
+# --- and rendered reasons must never presume the first (Fable's root -------
+# --- principle, ADR 0007 Round 8) -------------------------------------------
+
+
+def test_ipc2_level3_corpus_note_action_reason_and_light_study_reason_agree() -> None:
+    """F8/F9 regression: the exact counterexample both Fable and product
+    review built through the real cluster.py pipeline -- two PERMITTED,
+    non-subject ``independent_analysis`` members from DISTINCT publishers, no
+    first-party member at all. This reaches ``evid_3_independent_only``,
+    ``independent_publisher_count == 2``, ``has_cross_source_corroboration ==
+    True`` (the ``independent_publisher_count >= 2`` branch) -- genuinely
+    cross-source corroborated -- but ``evidence_level == 3 < 4``, so
+    confidence is 'medium', never 'high': ``high`` additionally requires
+    ``evidence_level >= 4`` (Fable ruling 2026-08-01, Part B).
+
+    Before this round's fix, three separate pieces of rendered text
+    disagreed with this exact, reachable state:
+
+    - ``CORROBORATION_METHODOLOGY_NOTE``'s final clause claimed a genuinely
+      cross-venue corpus (exactly what this corpus is) "reaches it [high]
+      outright" -- no evidence_level conjunct, directly contradicted by this
+      same corpus's own 'medium' classification a few sections below in the
+      same document.
+    - ``tiers._recommend_action``'s fact/medium reason said "no second,
+      independent source corroborates it yet" -- false: two independent,
+      corroborating sources exist here.
+    - ``brief._light_study_reason``'s non-'read' branch said "still waits on
+      further corroboration" -- the same falsehood, and further
+      corroboration could never lift this topic to 'high' anyway, since the
+      LEVEL bar (not the corroboration bar) is what failed here.
+
+    All three must now be simultaneously true of this corpus."""
+    shared_title = "F8 F9 Two Independent Publishers Level 3 Event"
+    analysis_one = _make_item(
+        item_id="f8-analysis-one",
+        publisher_id="f8-analyst-one",
+        subject_entity_ids=["f8-subject"],
+        may_supply_independence=True,
+        title=shared_title,
+        summary_normalized="an independent analyst reviewed the f8 subject in detail, first",
+        stable_reference="https://example.com/f8-analyst-one/review",
+        evidence_type="independent_analysis",
+    )
+    analysis_two = _make_item(
+        item_id="f8-analysis-two",
+        publisher_id="f8-analyst-two",
+        subject_entity_ids=["f8-subject"],
+        may_supply_independence=True,
+        title=shared_title,
+        summary_normalized="an independent analyst reviewed the f8 subject in detail, second",
+        stable_reference="https://example.org/f8-analyst-two/review",
+        evidence_type="independent_analysis",
+    )
+    items = [analysis_one, analysis_two]
+    items_by_id = {item.item_id: item for item in items}
+    clusters = cluster_items(items)
+    assert len(clusters) == 1
+    cluster = clusters[0]
+    assert cluster.evidence_anchor_id == "evid_3_independent_only"
+    assert cluster.evidence_level == 3
+    assert cluster.independent_publisher_count == 2
+
+    inputs_list = [to_ranking_inputs(cluster, items_by_id)]
+    ranked = rank_topics(inputs_list, _profile())
+    clusters_by_topic_id = {cluster.topic_id: cluster}
+    tiered = assign_tiers(ranked, clusters_by_topic_id, items_by_id)
+    brief = build_weekly_brief(tiered, ranked, clusters_by_topic_id, items_by_id, WEEK_LABEL)
+
+    assert len(tiered) == 1
+    topic = tiered[0]
+    assert topic.claim.claim_class == "fact"
+    assert topic.claim.confidence == "medium"
+    assert (
+        has_cross_source_corroboration(
+            inputs_list[0].evidence_anchor_id, cluster.independent_publisher_count
+        )
+        is True
+    )
+    assert topic.tier_assignment.tier == "tier_2"
+    assert topic.tier_assignment.recommended_action == "save"
+
+    # -- the methodology note must not claim this exact corpus shape reaches
+    # high outright; the two-part bar (level AND corroboration) must be
+    # stated, so the note never contradicts this corpus's own classification.
+    note = brief.corroboration_methodology_note
+    assert "reaches it outright" not in note
+    assert "evidence_level >= 4" in note
+
+    # -- the Tier 2 action reason must not assert missing corroboration for a
+    # topic that has it, and must state the real (two-part) bar instead.
+    tier2_item = next(i for i in brief.tier2 if i.topic_id == topic.topic_id)
+    reason = tier2_item.recommended_action_reason
+    assert reason == topic.tier_assignment.recommended_action_reason
+    assert "no second" not in reason
+    assert "no independent source" not in reason
+    assert "corroborates it" not in reason
+    assert "evidence_level >= 4" in reason
+
+    # -- the light-study reason has the identical defect and the identical
+    # fix -- it must not claim missing corroboration either.
+    light = next(t for t in brief.study_queue.light if t.topic_id == topic.topic_id)
+    assert "further corroboration" not in light.reason
+    assert "evidence_level >= 4" in light.reason

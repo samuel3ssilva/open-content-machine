@@ -308,6 +308,24 @@ def _resolve_code_version(code_version: str | None) -> str:
     return code_version if code_version is not None else _PACKAGE_VERSION
 
 
+class LimitationsOverlayManifest(BaseModel):
+    """Fable ruling 2026-08-01 (Part C): the ONE additive
+    :class:`RunManifest` field recording whether a private, run-specific,
+    Founder-approved limitations overlay was applied to this run's rendered
+    ``brief.md`` -- never the limitation text itself, and never anything that
+    feeds ``run_id``/``input_fingerprint`` (see :class:`RunManifest`'s own
+    field below). Absent file: every field takes its "nothing was applied"
+    default (``present=False``, ``item_count=0``, ``overlay_sha256=None``,
+    ``provenance=None``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    present: bool = False
+    item_count: int = 0
+    overlay_sha256: str | None = None
+    provenance: str | None = None
+
+
 class RunManifest(BaseModel):
     """Auditable record of one weekly run (see the module docstring's #2).
     Every field is deterministic given the same inputs EXCEPT
@@ -339,6 +357,27 @@ class RunManifest(BaseModel):
     library_score_change_count: int
     library_rejected_reappearance_count: int
     review_status: str = REVIEW_STATUS
+    # R2 (2026-08-01, post-merge-gate round): additive markers only -- NEVER
+    # fed into compute_run_id/compute_input_fingerprint (Fable's explicit
+    # ruling: semantics must never enter run identity, since that would
+    # silently un-guard every historical output directory and make past
+    # run_ids non-recomputable). Mirrors brief.WeeklyBrief's own
+    # brief_version/confidence_rubric_version fields -- recorded here too so
+    # a stale on-disk manifest's DELTA against current code is
+    # human-readable without opening brief.json: this is the "why" that
+    # complements write_weekly_run_outputs' byte-compare "that" (R1).
+    brief_version: str
+    confidence_rubric_version: str
+    # Fable ruling 2026-08-01 (Part C): additive only -- computed and set by
+    # the caller (cli/main.py) AFTER run_weekly returns, from the overlay
+    # file's own bytes/parsed content. run_weekly itself never reads this
+    # file and never sets this field to anything but the "absent" default,
+    # so it can never feed run_id/input_fingerprint (both already computed
+    # before this field could possibly be known) or change idempotency
+    # semantics.
+    limitations_overlay: LimitationsOverlayManifest = Field(
+        default_factory=LimitationsOverlayManifest
+    )
 
 
 class WeeklyRunResult(BaseModel):
@@ -351,6 +390,21 @@ class WeeklyRunResult(BaseModel):
     week's tracked topic) and ``movements_markdown`` (the rendered
     ``movements.md`` content, from
     :func:`content_machine.intelligence.library.render_movements_markdown`).
+
+    ``item_topic_map`` (Fable ruling 2026-08-01, Part A -- the limitations
+    overlay must be keyed by ``item_id``, never ``topic_id``): every
+    ``SourceItem.item_id`` in this run's full corpus, mapped to the
+    ``topic_id`` of the :class:`TopicCluster` that contains it as a
+    ``member_id``. Built inside :func:`run_weekly` from EVERY cluster this
+    run produced (not only the Top ``TOP_N``), so it covers discarded topics
+    too. This field lives HERE ONLY: it is never added to
+    :class:`~content_machine.intelligence.brief.WeeklyBrief` (that would leak
+    raw ``item_id`` values into ``brief.json``) and is never written to any
+    output file -- see :func:`write_weekly_run_outputs`, whose staged output
+    set does not reference it. It exists solely so a caller (``cli/main.py``)
+    can validate a limitations-overlay file's item_id keys and resolve each
+    to its containing topic_id BEFORE calling
+    ``brief.render_markdown``.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -364,6 +418,7 @@ class WeeklyRunResult(BaseModel):
     new_audit_rows: list[AuditRow]
     deltas: list[WeeklyDelta]
     movements_markdown: str
+    item_topic_map: dict[str, str] = Field(default_factory=dict)
 
 
 def run_weekly(
@@ -444,6 +499,15 @@ def run_weekly(
         row.event_type for row in library_result.new_audit_rows
     )
 
+    # Fable ruling 2026-08-01 (Part A): item_id -> topic_id, over EVERY
+    # cluster this run produced (not only the Top TOP_N) -- so an overlay
+    # item naming a discarded topic's member still resolves to a real
+    # topic_id for the corpus check, even though that topic has no rendered
+    # block. Never on WeeklyBrief; see the WeeklyRunResult docstring.
+    item_topic_map: dict[str, str] = {
+        item_id: cluster.topic_id for cluster in clusters for item_id in cluster.member_ids
+    }
+
     manifest = RunManifest(
         run_id=run_id,
         input_fingerprint=input_fingerprint,
@@ -462,6 +526,11 @@ def run_weekly(
         library_lifecycle_transition_count=movement_counts.get("lifecycle_transition", 0),
         library_score_change_count=movement_counts.get("score_change", 0),
         library_rejected_reappearance_count=movement_counts.get("rejected_reappearance", 0),
+        # R2: mirrored from the brief this same call already built -- never
+        # re-derived, and never fed back into run_id/input_fingerprint
+        # (both already computed above, before this line runs).
+        brief_version=brief.brief_version,
+        confidence_rubric_version=brief.confidence_rubric_version,
     )
 
     return WeeklyRunResult(
@@ -474,12 +543,28 @@ def run_weekly(
         new_audit_rows=library_result.new_audit_rows,
         deltas=library_result.deltas,
         movements_markdown=movements_markdown,
+        item_topic_map=item_topic_map,
     )
 
 
 class WeeklyWriteOutcome(BaseModel):
     """What :func:`write_weekly_run_outputs` actually did -- reported by the
-    CLI command so a re-run's idempotent skip is visible, not silent."""
+    CLI command so a re-run's idempotent skip is visible, not silent.
+
+    ``stale``/``stale_files`` (R1, 2026-08-01 post-merge-gate round):
+    additive fields, populated only on the idempotency-skip path (``wrote``
+    is False). The skip's PREMISE -- that the existing on-disk run is what
+    current code would still produce -- is verified by byte-comparing every
+    staged output against its on-disk counterpart BEFORE skipping, rather
+    than assumed from the ``run_id`` match alone. ``stale`` is True and
+    ``stale_files`` lists the differing filenames when at least one staged
+    file's content differs from what is already on disk (e.g. rendering
+    semantics changed since that run was written without a
+    ``code_version``/``run_id`` change to catch it -- see
+    ``brief.BRIEF_VERSION``/``tiers.CONFIDENCE_RUBRIC_VERSION``). The write
+    is STILL skipped either way -- this never writes without
+    ``regenerate=True`` -- ``stale`` only controls whether the caller
+    (``cli/main.py``) prints a loud warning."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -487,6 +572,8 @@ class WeeklyWriteOutcome(BaseModel):
     skipped_reason: str | None = None
     files_written: list[str] = Field(default_factory=list)
     run_id: str
+    stale: bool = False
+    stale_files: list[str] = Field(default_factory=list)
 
 
 def _existing_manifest_run_id(output_dir: Path) -> str | None:
@@ -623,6 +710,94 @@ def _atomic_write_all(staged: dict[Path, str]) -> None:
             backup_path.unlink(missing_ok=True)
 
 
+#: Q1 (2026-08-01 QA blocker): the ONE ``RunManifest`` field that varies
+#: purely with wall-clock time, not with code or inputs -- see
+#: ``RunManifest``'s own docstring, which states this explicitly:
+#: ``execution_timestamp`` is "the ONE place a real timestamp is allowed"
+#: and every other field is a deterministic function of the run's inputs.
+#: Audited against every other ``RunManifest`` field for anything else
+#: derived from ``datetime.now()``/``date.today()`` -- there is nothing
+#: else (this module and every module it composes contain no such call
+#: anywhere; see the module docstring's #2 and ``test_module_source_never_
+#: reads_the_wall_clock``). Excluded ONLY from the R1 comparison below --
+#: never from the manifest content actually staged/written to disk, which
+#: still records the real ``execution_timestamp`` verbatim.
+_MANIFEST_COMPARISON_EXCLUDED_FIELDS = frozenset({"execution_timestamp"})
+
+
+def _manifest_content_differs(on_disk: str, staged: str) -> bool:
+    """Q1 (2026-08-01 QA blocker, "R1 cries wolf on every rerun"): whether
+    two ``run-manifest.json`` contents genuinely differ, comparing a
+    CANONICALISED view with every wall-clock-only field (see
+    :data:`_MANIFEST_COMPARISON_EXCLUDED_FIELDS`) normalised out of BOTH
+    sides before comparing -- the on-disk file itself is never touched or
+    rewritten by this function, only the value handed to the comparison.
+
+    Without this, ``execution_timestamp`` alone -- captured fresh on EVERY
+    CLI invocation (``cli/main.py``) and included verbatim in the staged
+    manifest's ``model_dump_json()`` -- made two back-to-back invocations of
+    the exact SAME run (same code, same inputs, nothing changed) ALWAYS
+    differ, so R1's byte-compare fired its loud staleness warning on every
+    routine rerun, training the Founder to ignore it or reflexively pass
+    ``--regenerate`` (destructive without a manual backup, per ADR 0009).
+    This defeated R1's entire purpose: a mechanism meant to catch genuine
+    semantic drift instead fired on every rerun regardless of drift.
+
+    Falls back to a plain string comparison when either side is not a JSON
+    object (e.g. a corrupt on-disk file, or content that is not the manifest
+    at all) -- that must still compare as differing against a well-formed
+    manifest, which a plain string comparison reliably does."""
+    try:
+        on_disk_data = json.loads(on_disk)
+        staged_data = json.loads(staged)
+    except json.JSONDecodeError:
+        return on_disk != staged
+    if not isinstance(on_disk_data, dict) or not isinstance(staged_data, dict):
+        return on_disk != staged
+    for field in _MANIFEST_COMPARISON_EXCLUDED_FIELDS:
+        on_disk_data.pop(field, None)
+        staged_data.pop(field, None)
+    return on_disk_data != staged_data
+
+
+def _staged_differs_from_disk(staged: dict[Path, str]) -> list[str]:
+    """R1 (2026-08-01 post-merge-gate round, ADR 0009): compare every
+    ``staged`` file's content against its on-disk counterpart (if any).
+    Returns the sorted filenames that differ -- ``[]`` means the idempotency
+    skip's premise holds (the on-disk run IS what current code would still
+    produce). A missing on-disk file counts as differing: a skip that leaves
+    a promised output absent is exactly the kind of stale state this check
+    exists to catch. Read-only -- never writes anything.
+
+    ``run-manifest.json`` is compared via :func:`_manifest_content_differs`
+    (Q1, 2026-08-01 QA blocker) -- a CANONICALISED comparison with wall-clock
+    -only fields normalised out, so two genuine reruns of the identical run
+    compare equal despite each capturing its own real
+    ``execution_timestamp``. Every other staged file is still compared by
+    exact byte equality, unchanged.
+
+    F2 (2026-08-01 Fable blocker, "verify, don't assume"): an on-disk file
+    that exists but is not valid UTF-8 text raises ``UnicodeDecodeError``
+    (a ``ValueError``, not an ``OSError``) from ``read_text`` -- caught here
+    alongside ``OSError`` so an unreadable-as-text on-disk file counts as
+    DIFFERING (the same treatment as a missing file) instead of crashing the
+    skip path."""
+    differing: list[str] = []
+    for path, content in staged.items():
+        try:
+            on_disk = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            differing.append(path.name)
+            continue
+        if path.name == "run-manifest.json":
+            if _manifest_content_differs(on_disk, content):
+                differing.append(path.name)
+            continue
+        if on_disk != content:
+            differing.append(path.name)
+    return sorted(differing)
+
+
 def write_weekly_run_outputs(
     result: WeeklyRunResult, output_dir: str | Path, *, regenerate: bool = False
 ) -> WeeklyWriteOutcome:
@@ -631,15 +806,39 @@ def write_weekly_run_outputs(
 
     IDEMPOTENCY: if ``output_dir`` already contains a ``run-manifest.json``
     whose ``run_id`` matches ``result.manifest.run_id`` and ``regenerate``
-    is False (the default), this is a no-op: nothing is read or written
-    beyond the existing manifest, and ``outcome.wrote`` is False -- no
-    library/score-history/audit row is ever duplicated by re-running the
-    same week. Pass ``regenerate=True`` to redo it anyway; even then, this
-    week's score-history/audit rows REPLACE (never duplicate) any rows
-    already recorded for the SAME ``week_label`` (see
-    :func:`_jsonl_lines_excluding_week`), and ``topics.jsonl``/``brief.*``
-    are always the full current state, so they are naturally idempotent on
-    re-write.
+    is False (the default), this is normally a no-op: nothing is written,
+    and ``outcome.wrote`` is False -- no library/score-history/audit row is
+    ever duplicated by re-running the same week. Pass ``regenerate=True`` to
+    redo it anyway; even then, this week's score-history/audit rows REPLACE
+    (never duplicate) any rows already recorded for the SAME ``week_label``
+    (see :func:`_jsonl_lines_excluding_week`), and ``topics.jsonl``/
+    ``brief.*`` are always the full current state, so they are naturally
+    idempotent on re-write.
+
+    R1 (2026-08-01 post-merge-gate round, ADR 0009 -- "an idempotent skip
+    must verify its premise, not assume it"): a ``run_id`` match alone does
+    NOT prove the on-disk run still matches what CURRENT code would
+    produce -- a rendering/semantics change that never bumped ``code_version``
+    (see ``brief.BRIEF_VERSION``/``tiers.CONFIDENCE_RUBRIC_VERSION``) could
+    leave a stale on-disk run silently guarded forever. So ``staged`` (every
+    output this call WOULD write) is always built first -- from ``result``,
+    already fully computed by the caller, this is pure formatting, not extra
+    work -- and on the ``run_id``-match path it is byte-compared against
+    what is already on disk (:func:`_staged_differs_from_disk`) BEFORE
+    deciding to skip:
+
+    - every staged file byte-identical to its on-disk counterpart -> the
+      ordinary clean skip (``outcome.stale`` is False, ``skipped_reason``
+      text unchanged from before this round).
+    - ANY staged file differs -> STILL skipped (this never writes without
+      ``regenerate=True``), but ``outcome.stale`` is True and
+      ``outcome.stale_files`` names every differing file, so the caller
+      (``cli/main.py``) can warn loudly instead of silently serving a
+      stale run.
+
+    This changes neither ``run_id`` nor ``input_fingerprint`` computation,
+    and only ever READS against an existing ``output_dir`` -- it never
+    writes on the skip path, regenerate or not.
 
     ATOMICITY: delegated to :func:`_atomic_write_all` -- either all eight
     files land, or none of them change.
@@ -647,19 +846,6 @@ def write_weekly_run_outputs(
     output_dir = Path(output_dir)
     run_id = result.manifest.run_id
     week_label = result.manifest.week_label
-
-    if not regenerate and _existing_manifest_run_id(output_dir) == run_id:
-        return WeeklyWriteOutcome(
-            wrote=False,
-            skipped_reason=(
-                f"a completed run with run_id={run_id} already exists in {output_dir}; "
-                "pass --regenerate to redo it"
-            ),
-            files_written=[],
-            run_id=run_id,
-        )
-
-    output_dir.mkdir(parents=True, exist_ok=True)
 
     score_history_path = output_dir / "score-history.jsonl"
     audit_path = output_dir / "audit.jsonl"
@@ -683,6 +869,7 @@ def write_weekly_run_outputs(
     # already computed by brief.build_weekly_brief; never re-derived here.
     discarded_lines = [d.model_dump_json() for d in result.brief.discarded]
 
+    # R1: built BEFORE the skip decision -- see this function's docstring.
     staged: dict[Path, str] = {
         output_dir / "brief.md": result.brief_markdown,
         output_dir / "brief.json": result.brief_json,
@@ -693,6 +880,34 @@ def write_weekly_run_outputs(
         output_dir / "movements.md": result.movements_markdown,
         output_dir / "discarded.jsonl": _jsonl_text(discarded_lines),
     }
+
+    if not regenerate and _existing_manifest_run_id(output_dir) == run_id:
+        differing_files = _staged_differs_from_disk(staged)
+        if not differing_files:
+            return WeeklyWriteOutcome(
+                wrote=False,
+                skipped_reason=(
+                    f"a completed run with run_id={run_id} already exists in {output_dir}; "
+                    "pass --regenerate to redo it"
+                ),
+                files_written=[],
+                run_id=run_id,
+            )
+        return WeeklyWriteOutcome(
+            wrote=False,
+            skipped_reason=(
+                f"a completed run with run_id={run_id} already exists in {output_dir}; "
+                "pass --regenerate to redo it -- STALE: "
+                f"{len(differing_files)} on-disk file(s) no longer match what current code "
+                f"would produce for this run: {', '.join(differing_files)}"
+            ),
+            files_written=[],
+            run_id=run_id,
+            stale=True,
+            stale_files=differing_files,
+        )
+
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     _atomic_write_all(staged)
 

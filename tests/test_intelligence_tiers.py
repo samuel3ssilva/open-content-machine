@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from content_machine.intelligence import brief as brief_module
 from content_machine.intelligence.cluster import cluster_items, to_ranking_inputs
 from content_machine.intelligence.loader import load_profile, load_signals
 from content_machine.intelligence.models import (
@@ -603,7 +604,10 @@ def test_fact_classification_on_a_representative_fixture_topic() -> None:
     _anchor, inputs, _breakdown = _anchor_and_inputs_for_item_id(
         ranked, clusters_by_topic_id, items_by_id, "item007"
     )
-    claim = build_claim_assessment(inputs)
+    cluster = clusters_by_topic_id[inputs.topic_id]
+    claim = build_claim_assessment(
+        inputs, independent_publisher_count=cluster.independent_publisher_count
+    )
     assert claim.claim_class == "fact"
     assert claim.confidence == "medium"
     assert claim.claim_class_reason
@@ -620,7 +624,10 @@ def test_marketing_classification_on_a_representative_fixture_topic() -> None:
         ranked, clusters_by_topic_id, items_by_id, "item005"
     )
     assert inputs.marketing_risk is True
-    claim = build_claim_assessment(inputs)
+    cluster = clusters_by_topic_id[inputs.topic_id]
+    claim = build_claim_assessment(
+        inputs, independent_publisher_count=cluster.independent_publisher_count
+    )
     assert claim.claim_class == "marketing"
     assert claim.confidence == "low"
     assert claim.claim_class_reason
@@ -635,7 +642,10 @@ def test_hypothesis_classification_on_a_representative_fixture_topic() -> None:
     _anchor, inputs, _breakdown = _anchor_and_inputs_for_item_id(
         ranked, clusters_by_topic_id, items_by_id, "item040"
     )
-    claim = build_claim_assessment(inputs)
+    cluster = clusters_by_topic_id[inputs.topic_id]
+    claim = build_claim_assessment(
+        inputs, independent_publisher_count=cluster.independent_publisher_count
+    )
     assert claim.claim_class == "hypothesis"
     assert claim.confidence == "low"
     assert claim.claim_class_reason
@@ -652,9 +662,646 @@ def test_hypothesis_classification_for_all_roundup_relay_cluster() -> None:
         ranked, clusters_by_topic_id, items_by_id, "item020"
     )
     assert inputs.evidence_level == 0
-    claim = build_claim_assessment(inputs)
+    cluster = clusters_by_topic_id[inputs.topic_id]
+    claim = build_claim_assessment(
+        inputs, independent_publisher_count=cluster.independent_publisher_count
+    )
     assert claim.claim_class == "hypothesis"
     assert claim.confidence == "low"
+
+
+# --- Fable ruling 2026-08-01 (Part B): "independence" must stop being ------
+# --- rendered as "corroboration" --------------------------------------------
+#
+# Defect: evidence_level >= 4 does NOT imply cross-source corroboration --
+# the anchor evid_4_independent_rigorous_alone reaches level 4 with a SINGLE
+# source. These tests pin the fixed behaviour directly against
+# _assess_confidence's inputs (evidence_anchor_id, independent_publisher_count)
+# rather than the old, incorrect has_independent_evidence-only rule.
+
+
+def test_confidence_single_independent_rigorous_source_is_medium() -> None:
+    """evid_4_independent_rigorous_alone with independent_publisher_count=1
+    (a SINGLE structurally-independent publisher, zero corroboration) must be
+    capped at medium, not high -- this is the exact defect the ruling
+    fixes."""
+    inputs = _make_inputs(
+        change_class="material_change",
+        action_required="none",
+        evidence_level=4,
+        evidence_anchor_id="evid_4_independent_rigorous_alone",
+        has_independent_evidence=True,
+        has_direct_artifact_or_independent_source=True,
+        marketing_risk=False,
+    )
+    claim = build_claim_assessment(inputs, independent_publisher_count=1)
+    assert claim.claim_class == "fact"
+    assert claim.confidence == "medium"
+    assert "single-source independent evidence" in claim.confidence_reason
+    assert "corrobor" not in claim.confidence_reason
+
+
+def test_confidence_two_distinct_independent_publishers_is_high() -> None:
+    """The SAME anchor (evid_4_independent_rigorous_alone) reaches high
+    confidence once independent_publisher_count >= 2 -- two distinct,
+    structurally-independent publishers is genuine cross-source
+    corroboration, even though the anchor itself is not in
+    _CORROBORATED_ANCHORS."""
+    inputs = _make_inputs(
+        change_class="material_change",
+        action_required="none",
+        evidence_level=4,
+        evidence_anchor_id="evid_4_independent_rigorous_alone",
+        has_independent_evidence=True,
+        has_direct_artifact_or_independent_source=True,
+        marketing_risk=False,
+    )
+    claim = build_claim_assessment(inputs, independent_publisher_count=2)
+    assert claim.claim_class == "fact"
+    assert claim.confidence == "high"
+    assert "cross-source corroboration is present" in claim.confidence_reason
+
+
+def test_confidence_first_party_only_is_medium() -> None:
+    """A single first-party-authoritative source (evidence_level 3, no
+    independent evidence at all) is attested by an artifact but falls short
+    of the evidence_level >= 4 bar high confidence requires -- medium, never
+    high."""
+    inputs = _make_inputs(
+        change_class="breaking_change",
+        action_required="migration_required",
+        evidence_level=3,
+        evidence_anchor_id="evid_3_first_party_authoritative",
+        has_independent_evidence=False,
+        has_direct_artifact_or_independent_source=True,
+        marketing_risk=False,
+    )
+    claim = build_claim_assessment(inputs, independent_publisher_count=0)
+    assert claim.claim_class == "fact"
+    assert claim.confidence == "medium"
+    # Fable ruling 2026-08-01 (follow-up, Part C): the catch-all branch no
+    # longer asserts anything about single-sourcing (it used to say "no
+    # second, distinct source supports the claim", which is false whenever
+    # independent_publisher_count >= 2 -- see
+    # test_confidence_two_independent_publishers_below_level_4_does_not_claim_single_source
+    # for that exact defect). It states only the true, count-independent
+    # reason: evidence_level is below the >= 4 bar.
+    #
+    # Fable ruling 2026-08-01 (round 3, final recheck defect, F2): the old
+    # "evidence_level is below the >= 4 bar" wording was ALSO false once
+    # evidence_level == 4 could reach this branch (a registry-denied member
+    # can select a level-4 anchor with zero countable corroboration -- see
+    # test_denied_independence_plus_authoritative_does_not_contradict_itself).
+    # The wording now names the real, two-part bar instead.
+    assert (
+        "does not meet the high-confidence bar (evidence_level >= 4 together with "
+        "cross-source corroboration)." in claim.confidence_reason
+    )
+    assert "no second" not in claim.confidence_reason
+    assert "single source" not in claim.confidence_reason
+    assert "below the >= 4 bar" not in claim.confidence_reason
+
+
+def test_confidence_two_independent_publishers_below_level_4_does_not_claim_single_source() -> (
+    None
+):
+    """QA-constructed real case (Fable ruling 2026-08-01, follow-up, Part C):
+    two independent_analysis items from DIFFERENT publishers, no first-party
+    member -- evid_3_independent_only, independent_publisher_count=2,
+    evidence_level=3. Confidence is correctly 'medium' (the untouched
+    evidence_level >= 4 gate blocks 'high'), but the OLD catch-all text said
+    "no second, distinct source supports the claim" -- FALSE, there are two.
+    The fixed text must claim neither 'no second' single-sourcing NOR
+    (wrongly) 'high'-grade corroboration -- it states only the true,
+    count-independent reason evidence_level < 4."""
+    inputs = _make_inputs(
+        change_class="material_change",
+        action_required="none",
+        evidence_level=3,
+        evidence_anchor_id="evid_3_independent_only",
+        has_independent_evidence=True,
+        has_direct_artifact_or_independent_source=True,
+        marketing_risk=False,
+    )
+    claim = build_claim_assessment(inputs, independent_publisher_count=2)
+    assert claim.claim_class == "fact"
+    assert claim.confidence == "medium"
+    assert "no second" not in claim.confidence_reason
+    assert "single source" not in claim.confidence_reason
+    assert "independent_publisher_count=2" in claim.confidence_reason
+
+
+def test_confidence_first_party_plus_independent_is_high() -> None:
+    """evid_4_first_party_plus_independent already combines a first-party
+    artifact AND independent evidence -- two distinct sources -- so it stays
+    high even with independent_publisher_count == 1 (only one of the two
+    sources is the 'independent' one; the first-party source is the other)."""
+    inputs = _make_inputs(
+        change_class="material_change",
+        action_required="new_option_available",
+        evidence_level=4,
+        evidence_anchor_id="evid_4_first_party_plus_independent",
+        has_independent_evidence=True,
+        has_direct_artifact_or_independent_source=True,
+        marketing_risk=False,
+    )
+    claim = build_claim_assessment(inputs, independent_publisher_count=1)
+    assert claim.claim_class == "fact"
+    assert claim.confidence == "high"
+    assert "cross-source corroboration is present" in claim.confidence_reason
+
+
+def test_confidence_no_independent_evidence_is_low() -> None:
+    """No artifact and no independent source at all: claim_class is
+    'hypothesis' (not 'fact'), so confidence is low regardless of the
+    independent-publisher count."""
+    inputs = _make_inputs(
+        change_class="incremental_update",
+        action_required="none",
+        evidence_level=1,
+        evidence_anchor_id="evid_1_rumor",
+        has_independent_evidence=False,
+        has_direct_artifact_or_independent_source=False,
+        marketing_risk=False,
+    )
+    claim = build_claim_assessment(inputs, independent_publisher_count=0)
+    assert claim.claim_class == "hypothesis"
+    assert claim.confidence == "low"
+
+
+def test_confidence_same_publisher_twice_counts_once_stays_medium() -> None:
+    """Integration test through the REAL (untouched) cluster.py publisher
+    counting: two DISTINCT, non-syndicated independent_implementation
+    members from the SAME publisher_id must collapse to
+    independent_publisher_count == 1 (a set, not a member count) -- so
+    confidence stays capped at medium, never inflated to high by simply
+    having two member records from one publisher."""
+    item_a = _make_item(
+        item_id="samepub-a",
+        publisher_id="indy-samepub",
+        subject_entity_ids=["vendor-samepub"],
+        title="SamePub Rigor Test Event",
+        summary_normalized="an implementation write-up describing one specific reproduction",
+        stable_reference="https://example.com/samepub/a",
+        evidence_type="independent_implementation",
+        topic_tags=["agents"],
+    )
+    item_b = _make_item(
+        item_id="samepub-b",
+        publisher_id="indy-samepub",
+        subject_entity_ids=["vendor-samepub"],
+        title="SamePub Rigor Test Event",
+        summary_normalized="a completely unrelated follow-up benchmark covering different metrics",
+        stable_reference="https://example.com/samepub/b",
+        evidence_type="benchmark_with_methodology",
+        topic_tags=["agents"],
+    )
+    items_by_id = {item_a.item_id: item_a, item_b.item_id: item_b}
+    clusters = cluster_items([item_a, item_b])
+    assert len(clusters) == 1
+    cluster = clusters[0]
+    assert cluster.cluster_size == 2
+    assert cluster.evidence_anchor_id == "evid_4_independent_rigorous_alone"
+    assert cluster.independent_publisher_count == 1
+
+    inputs = to_ranking_inputs(cluster, items_by_id)
+    claim = build_claim_assessment(
+        inputs, independent_publisher_count=cluster.independent_publisher_count
+    )
+    assert claim.claim_class == "fact"
+    assert claim.confidence == "medium"
+    assert "corrobor" not in claim.confidence_reason
+
+
+def test_confidence_syndicated_copy_never_creates_second_source() -> None:
+    """Integration test through the REAL (untouched) cluster.py syndication
+    exclusion: a near-identical restatement of the same independent evidence
+    -- even from a DIFFERENT publisher_id -- is excluded from evidence
+    counting entirely (role='syndicated'), so it must never create a second
+    distinct source. independent_publisher_count stays 1 and confidence
+    stays capped at medium."""
+    item_origin = _make_item(
+        item_id="synd-origin",
+        publisher_id="indy-orig",
+        subject_entity_ids=["vendor-synd"],
+        title="Synd Rigor Test Event",
+        summary_normalized=(
+            "the independent lab reproduced the benchmark and confirmed the reported numbers"
+        ),
+        stable_reference="https://example.com/synd/origin",
+        evidence_type="independent_implementation",
+        topic_tags=["agents"],
+        publication_date=date(2026, 1, 1),
+        detection_date=date(2026, 1, 1),
+    )
+    item_copy = _make_item(
+        item_id="synd-copy",
+        publisher_id="indy-copy",
+        subject_entity_ids=["vendor-synd"],
+        title="Synd Rigor Test Event",
+        summary_normalized=(
+            "the independent lab reproduced the benchmark and confirmed the reported numbers"
+        ),
+        stable_reference="https://example.com/synd/copy",
+        evidence_type="independent_implementation",
+        topic_tags=["agents"],
+        publication_date=date(2026, 1, 2),
+        detection_date=date(2026, 1, 2),
+    )
+    items_by_id = {item_origin.item_id: item_origin, item_copy.item_id: item_copy}
+    clusters = cluster_items([item_origin, item_copy])
+    assert len(clusters) == 1
+    cluster = clusters[0]
+    assert cluster.cluster_size == 2
+    assert cluster.member_roles["synd-copy"] == "syndicated"
+    assert cluster.evidence_anchor_id == "evid_4_independent_rigorous_alone"
+    assert cluster.independent_publisher_count == 1
+
+    inputs = to_ranking_inputs(cluster, items_by_id)
+    claim = build_claim_assessment(
+        inputs, independent_publisher_count=cluster.independent_publisher_count
+    )
+    assert claim.claim_class == "fact"
+    assert claim.confidence == "medium"
+    assert "corrobor" not in claim.confidence_reason
+
+
+# --- Fable ruling 2026-08-01 (round 3, final recheck defect): a Gate E0.3 --
+# --- registry-denied member must never manufacture cross-source ------------
+# --- corroboration ----------------------------------------------------------
+#
+# Root cause (cluster._evidence_level_and_marketing_risk, unchanged in this
+# commit -- the deferral is deliberate, see the module's SCOPE FENCE):
+# has_independent_rigorous/has_independent_analysis are set off the raw
+# evidence_type/publisher check alone, never consulting _is_independent, so
+# a member with may_supply_independence=False still raises evidence_level
+# and can still select a _CORROBORATED_ANCHORS anchor, while being correctly
+# excluded from independent_publishers (independent_publisher_count stays
+# 0). These are integration tests through the REAL (untouched) cluster.py
+# pipeline -- may_supply_independence=False is set on the denied member --
+# so they exercise the actual disagreement between the evidence-level flags
+# and independent_publisher_count, not a hand-built RankingInputs.
+
+
+def test_denied_independence_plus_authoritative_does_not_contradict_itself() -> None:
+    """S1: a non-subject AUTHORITATIVE member (authoritative types are never
+    in _INDEPENDENT_EVIDENCE_TYPES, so it never counts as a publisher) plus
+    one Gate-E0.3-DENIED non-subject rigorous member. This reaches
+    evidence_level 4 via evid_4_independent_rigorous_alone (has_any_first_party
+    is False, so 'has_independent_rigorous alone' is what fires) with
+    independent_publisher_count == 0. Before this fix, the confidence
+    catch-all said "evidence_level is below the >= 4 bar that high
+    confidence requires" while evidence_level was literally 4 in the same
+    sentence -- self-contradictory. The F2 fix must state the true, two-part
+    bar instead."""
+    authoritative = _make_item(
+        item_id="s1-authoritative",
+        publisher_id="s1-standards-body",
+        subject_entity_ids=["s1-vendor"],
+        title="S1 Round 3 Non-Subject Authoritative Plus Denied Rigor Event",
+        summary_normalized="a standards body published a security advisory about the vendor",
+        stable_reference="https://example.com/s1-standards-body/advisory",
+        evidence_type="security_advisory",
+    )
+    denied_rigorous = _make_item(
+        item_id="s1-denied-rigorous",
+        publisher_id="s1-analyst",
+        subject_entity_ids=["s1-vendor"],
+        title="S1 Round 3 Non-Subject Authoritative Plus Denied Rigor Event",
+        summary_normalized="an analyst published a reproduction of the vendor's reported numbers",
+        stable_reference="https://example.org/s1-analyst/reproduction",
+        evidence_type="independent_implementation",
+        may_supply_independence=False,
+    )
+    items_by_id = {
+        authoritative.item_id: authoritative,
+        denied_rigorous.item_id: denied_rigorous,
+    }
+    clusters = cluster_items([authoritative, denied_rigorous])
+    assert len(clusters) == 1
+    cluster = clusters[0]
+
+    # Pin the reachable state this test depends on, so a future cluster.py
+    # change that shifts these facts fails loudly here rather than silently
+    # invalidating the assertions below.
+    assert cluster.evidence_level == 4
+    assert cluster.evidence_anchor_id == "evid_4_independent_rigorous_alone"
+    assert cluster.independent_publisher_count == 0
+    assert cluster.has_independent_evidence is False
+    assert cluster.independence_denied_by_registry is True
+
+    inputs = to_ranking_inputs(cluster, items_by_id)
+    claim = build_claim_assessment(
+        inputs, independent_publisher_count=cluster.independent_publisher_count
+    )
+    assert claim.claim_class == "fact"
+    assert claim.confidence == "medium"
+    assert "evidence_level=4" in claim.confidence_reason
+    # The old, self-contradictory wording must be gone.
+    assert "below the >= 4 bar" not in claim.confidence_reason
+    # The new F2 wording must be present, verbatim.
+    assert (
+        "does not meet the high-confidence bar (evidence_level >= 4 together with "
+        "cross-source corroboration)." in claim.confidence_reason
+    )
+
+
+def test_denied_independence_never_yields_high_confidence() -> None:
+    """S2 (the worse case, shipping with the round-2 merge before this fix):
+    the subject's own rigorous artifact (has_first_party_artifact, no promo
+    so marketing_risk stays False) plus one Gate-E0.3-DENIED non-subject
+    independent-analysis member. This selects evid_4_first_party_plus_
+    independent -- a _CORROBORATED_ANCHORS member -- with
+    independent_publisher_count == 0, because the second ('independent') leg
+    was explicitly denied by the registry. Before the F1 fix, the anchor
+    alone was sufficient for 'high' confidence and the brief rendered
+    "corroborated across multiple distinct sources" -- exactly the class of
+    false corroboration claim this branch exists to eliminate. After F1,
+    this must fall through to 'medium' with no affirmative corroboration
+    wording anywhere -- not in the structured confidence_reason, and not in
+    the brief's rendered human phrase (brief._human_evidence_sentence,
+    which is keyed off claim.confidence and therefore self-corrects once
+    confidence stops being 'high' -- untouched in this commit)."""
+    first_party_artifact = _make_item(
+        item_id="s2-first-party-artifact",
+        publisher_id="s2-vendor",
+        subject_entity_ids=["s2-vendor"],
+        title="S2 Round 3 First-Party Artifact Plus Denied Independence Event",
+        summary_normalized="the vendor published its own benchmark with full methodology",
+        stable_reference="https://example.com/s2-vendor/benchmark",
+        evidence_type="benchmark_with_methodology",
+        contains_benefit_or_performance_claim=False,
+    )
+    denied_analysis = _make_item(
+        item_id="s2-denied-analysis",
+        publisher_id="s2-analyst",
+        subject_entity_ids=["s2-vendor"],
+        title="S2 Round 3 First-Party Artifact Plus Denied Independence Event",
+        summary_normalized="an analyst wrote up an independent analysis of the vendor benchmark",
+        stable_reference="https://example.org/s2-analyst/analysis",
+        evidence_type="independent_analysis",
+        may_supply_independence=False,
+    )
+    items_by_id = {
+        first_party_artifact.item_id: first_party_artifact,
+        denied_analysis.item_id: denied_analysis,
+    }
+    clusters = cluster_items([first_party_artifact, denied_analysis])
+    assert len(clusters) == 1
+    cluster = clusters[0]
+
+    # Pin the reachable state this test depends on.
+    assert cluster.evidence_level == 4
+    assert cluster.evidence_anchor_id == "evid_4_first_party_plus_independent"
+    assert cluster.independent_publisher_count == 0
+    assert cluster.has_independent_evidence is False
+    assert cluster.marketing_risk is False
+    assert cluster.independence_denied_by_registry is True
+
+    inputs = to_ranking_inputs(cluster, items_by_id)
+    claim = build_claim_assessment(
+        inputs, independent_publisher_count=cluster.independent_publisher_count
+    )
+    assert claim.claim_class == "fact"
+    assert claim.confidence == "medium"
+
+    affirmative_corroboration_phrases = (
+        "genuine independent corroboration is present",
+        "cross-source corroboration is present",
+        "corroborated across multiple distinct sources",
+    )
+    for phrase in affirmative_corroboration_phrases:
+        assert phrase not in claim.confidence_reason
+
+    # P1/P2 (product review round 4): renamed to _human_evidence_sentence and
+    # shared by Tier 1 and Tier 2 (see brief.py) -- same semantics.
+    human_phrase = brief_module._human_evidence_sentence(
+        inputs, claim, cluster.independent_publisher_count
+    )
+    for phrase in affirmative_corroboration_phrases:
+        assert phrase not in human_phrase
+
+
+# --- F4 (round 6, Fable MUST-FIX): the pre-round-3 defect reintroduced one --
+# --- layer up, at the PROSE layer instead of the confidence layer ----------
+#
+# Round 3's F1 (see test_denied_independence_never_yields_high_confidence
+# above) closed the CONFIDENCE-layer gap: a registry-denied member can no
+# longer buy 'high' confidence off _CORROBORATED_ANCHORS membership alone.
+# But brief._EVIDENCE_LEVEL_4_PHRASE_BY_ANCHOR's entry for
+# evid_4_first_party_plus_independent -- added by round 5's P1 -- selected
+# its affirmative "corroborated by independent evidence" wording off the
+# ANCHOR ALONE too, with no gate on independent_publisher_count. That old S2
+# test above did not catch it: its affirmative_corroboration_phrases tuple
+# checks "corroborated across multiple distinct sources" (the confidence=high
+# clause) but never "corroborated by independent evidence" (the
+# evidence_level=4 clause) -- the exact phrase the evidence-level branch of
+# _human_evidence_sentence emits regardless of claim.confidence. This test
+# closes that gap directly, through the same real cluster.py pipeline S1/S2
+# use (may_supply_independence=False on the denied member, not a hand-built
+# RankingInputs).
+def test_denied_independence_evidence_phrase_makes_no_corroboration_claim() -> None:
+    """F4: a denial-driven evid_4_first_party_plus_independent cluster
+    (independent_publisher_count == 0, the sole 'independent' leg supplied by
+    a Gate-E0.3-registry-denied member) must render NO affirmative
+    ``corrobor*`` claim anywhere in the Tier 1/2 body text -- neither in the
+    evidence-level phrase (brief._evidence_level_phrase) nor in the
+    independence clause (already correctly gated pre-F4). Before the F4 fix,
+    _evidence_level_phrase ignored has_independent_evidence entirely and
+    always rendered "a first-party source corroborated by independent
+    evidence" for this anchor -- an affirmative corroboration claim
+    immediately contradicted by the next sentence, "No independent source
+    corroborates it.\""""
+    first_party_artifact = _make_item(
+        item_id="f4-first-party-artifact",
+        publisher_id="f4-vendor",
+        subject_entity_ids=["f4-vendor"],
+        title="F4 Round 6 First-Party Artifact Plus Denied Independence Event",
+        summary_normalized="the vendor published its own benchmark with full methodology",
+        stable_reference="https://example.com/f4-vendor/benchmark",
+        evidence_type="benchmark_with_methodology",
+        contains_benefit_or_performance_claim=False,
+    )
+    denied_analysis = _make_item(
+        item_id="f4-denied-analysis",
+        publisher_id="f4-analyst",
+        subject_entity_ids=["f4-vendor"],
+        title="F4 Round 6 First-Party Artifact Plus Denied Independence Event",
+        summary_normalized="an analyst wrote up an independent analysis of the vendor benchmark",
+        stable_reference="https://example.org/f4-analyst/analysis",
+        evidence_type="independent_analysis",
+        may_supply_independence=False,
+    )
+    items_by_id = {
+        first_party_artifact.item_id: first_party_artifact,
+        denied_analysis.item_id: denied_analysis,
+    }
+    clusters = cluster_items([first_party_artifact, denied_analysis])
+    assert len(clusters) == 1
+    cluster = clusters[0]
+
+    # Pin the reachable state this test depends on.
+    assert cluster.evidence_level == 4
+    assert cluster.evidence_anchor_id == "evid_4_first_party_plus_independent"
+    assert cluster.independent_publisher_count == 0
+    assert cluster.has_independent_evidence is False
+    assert cluster.independence_denied_by_registry is True
+
+    inputs = to_ranking_inputs(cluster, items_by_id)
+    claim = build_claim_assessment(
+        inputs, independent_publisher_count=cluster.independent_publisher_count
+    )
+    assert claim.claim_class == "fact"
+    assert claim.confidence == "medium"
+
+    evidence_phrase = brief_module._evidence_level_phrase(inputs)
+    assert "corrobor" not in evidence_phrase
+
+    human_phrase = brief_module._human_evidence_sentence(
+        inputs, claim, cluster.independent_publisher_count
+    )
+    assert "corrobor" not in human_phrase.split(". ")[0]
+    assert "No independent source corroborates it." in human_phrase
+
+
+# F10 (round 8, this branch, Fable): the F4 fallback phrase asserted directly
+# above by ``evidence_phrase`` used to read "...plus INDEPENDENT analysis or
+# rigorous evidence" -- affirming the independence
+# ``may_supply_independence=False`` denied, two sentences before
+# ``_human_evidence_sentence``'s own independence clause negates it ("No
+# independent source corroborates it."). Same denial-driven state as the
+# test above; this test isolates the fallback phrase itself and asserts it
+# makes no affirmative independence claim at all -- 'third-party' (accurate:
+# that leg is non-subject by construction) replaces 'independent'.
+def test_f10_denial_fallback_phrase_has_no_affirmative_independence_claim() -> None:
+    first_party_artifact = _make_item(
+        item_id="f10-first-party-artifact",
+        publisher_id="f10-vendor",
+        subject_entity_ids=["f10-vendor"],
+        title="F10 Round 8 First-Party Artifact Plus Denied Independence Event",
+        summary_normalized="the vendor published its own benchmark with full methodology",
+        stable_reference="https://example.com/f10-vendor/benchmark",
+        evidence_type="benchmark_with_methodology",
+        contains_benefit_or_performance_claim=False,
+    )
+    denied_analysis = _make_item(
+        item_id="f10-denied-analysis",
+        publisher_id="f10-analyst",
+        subject_entity_ids=["f10-vendor"],
+        title="F10 Round 8 First-Party Artifact Plus Denied Independence Event",
+        summary_normalized="an analyst wrote up an independent analysis of the vendor benchmark",
+        stable_reference="https://example.org/f10-analyst/analysis",
+        evidence_type="independent_analysis",
+        may_supply_independence=False,
+    )
+    items_by_id = {
+        first_party_artifact.item_id: first_party_artifact,
+        denied_analysis.item_id: denied_analysis,
+    }
+    clusters = cluster_items([first_party_artifact, denied_analysis])
+    assert len(clusters) == 1
+    cluster = clusters[0]
+    assert cluster.evidence_anchor_id == "evid_4_first_party_plus_independent"
+    assert cluster.independent_publisher_count == 0
+    assert cluster.independence_denied_by_registry is True
+
+    inputs = to_ranking_inputs(cluster, items_by_id)
+    evidence_phrase = brief_module._evidence_level_phrase(inputs)
+    assert evidence_phrase == (
+        brief_module._EVIDENCE_LEVEL_4_FIRST_PARTY_PLUS_INDEPENDENT_UNCOUNTABLE_PHRASE
+    )
+    assert "independent" not in evidence_phrase
+    assert "third-party" in evidence_phrase
+
+
+def test_denied_independence_does_not_over_tighten_a_genuine_two_publisher_cluster() -> (
+    None
+):
+    """Regression guard for the F1 fix's own risk: two GENUINELY independent
+    (non-denied) publishers must still reach 'high' -- F1 must not
+    over-tighten the legitimate two-publisher case while closing the
+    registry-denial gap. Two independent_implementation members from two
+    distinct, non-denied publishers, no first-party member at all --
+    independent_publisher_count == 2 clears 'high' on its own, with no
+    _CORROBORATED_ANCHORS membership required."""
+    item_a = _make_item(
+        item_id="genuine-two-pub-a",
+        publisher_id="genuine-lab-a",
+        subject_entity_ids=["genuine-vendor"],
+        title="Genuine Two Publisher Corroboration Event",
+        summary_normalized="lab a reproduced the vendor's reported numbers independently",
+        stable_reference="https://example.com/genuine-lab-a/reproduction",
+        evidence_type="independent_implementation",
+    )
+    item_b = _make_item(
+        item_id="genuine-two-pub-b",
+        publisher_id="genuine-lab-b",
+        subject_entity_ids=["genuine-vendor"],
+        title="Genuine Two Publisher Corroboration Event",
+        summary_normalized="lab b ran a separate benchmark covering different metrics entirely",
+        stable_reference="https://example.org/genuine-lab-b/benchmark",
+        evidence_type="benchmark_with_methodology",
+    )
+    items_by_id = {item_a.item_id: item_a, item_b.item_id: item_b}
+    clusters = cluster_items([item_a, item_b])
+    assert len(clusters) == 1
+    cluster = clusters[0]
+    assert cluster.evidence_anchor_id == "evid_4_independent_rigorous_alone"
+    assert cluster.independent_publisher_count == 2
+    assert cluster.independence_denied_by_registry is False
+
+    inputs = to_ranking_inputs(cluster, items_by_id)
+    claim = build_claim_assessment(
+        inputs, independent_publisher_count=cluster.independent_publisher_count
+    )
+    assert claim.claim_class == "fact"
+    assert claim.confidence == "high"
+    assert "cross-source corroboration is present" in claim.confidence_reason
+
+
+def test_denied_independence_does_not_over_tighten_a_genuine_corroborated_anchor() -> None:
+    """Second regression guard: evid_4_first_party_plus_independent with a
+    COUNTABLE (non-denied) independent leg must still reach 'high' -- this is
+    the exact legitimate case F1's added independent_publisher_count >= 1
+    conjunct must not kill. Mirrors the existing
+    test_confidence_first_party_plus_independent_is_high (hand-built
+    RankingInputs) but goes through the real cluster.py pipeline instead."""
+    first_party_artifact = _make_item(
+        item_id="genuine-corrob-first-party",
+        publisher_id="genuine-corrob-vendor",
+        subject_entity_ids=["genuine-corrob-vendor"],
+        title="Genuine Corroborated Anchor Event",
+        summary_normalized="the vendor published its own benchmark with full methodology",
+        stable_reference="https://example.com/genuine-corrob-vendor/benchmark",
+        evidence_type="benchmark_with_methodology",
+    )
+    independent_analysis = _make_item(
+        item_id="genuine-corrob-analysis",
+        publisher_id="genuine-corrob-analyst",
+        subject_entity_ids=["genuine-corrob-vendor"],
+        title="Genuine Corroborated Anchor Event",
+        summary_normalized="an analyst wrote an independent analysis of the vendor benchmark",
+        stable_reference="https://example.org/genuine-corrob-analyst/analysis",
+        evidence_type="independent_analysis",
+    )
+    items_by_id = {
+        first_party_artifact.item_id: first_party_artifact,
+        independent_analysis.item_id: independent_analysis,
+    }
+    clusters = cluster_items([first_party_artifact, independent_analysis])
+    assert len(clusters) == 1
+    cluster = clusters[0]
+    assert cluster.evidence_anchor_id == "evid_4_first_party_plus_independent"
+    assert cluster.independent_publisher_count == 1
+    assert cluster.independence_denied_by_registry is False
+
+    inputs = to_ranking_inputs(cluster, items_by_id)
+    claim = build_claim_assessment(
+        inputs, independent_publisher_count=cluster.independent_publisher_count
+    )
+    assert claim.claim_class == "fact"
+    assert claim.confidence == "high"
+    assert "cross-source corroboration is present" in claim.confidence_reason
 
 
 # --- confidence explainability -----------------------------------------------

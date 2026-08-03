@@ -341,6 +341,50 @@ def test_idempotency_skip_does_not_mask_a_different_window_same_week_label_run(
     assert third_outcome.wrote is False
 
 
+# --- R2 (2026-08-01 post-merge-gate round): brief_version/ ------------------
+# --- confidence_rubric_version recorded additively, never in run identity --
+
+
+def test_manifest_records_brief_version_and_confidence_rubric_version() -> None:
+    from content_machine.intelligence.brief import BRIEF_VERSION
+    from content_machine.intelligence.tiers import CONFIDENCE_RUBRIC_VERSION
+
+    result = _run()
+    assert result.manifest.brief_version == BRIEF_VERSION
+    assert result.manifest.confidence_rubric_version == CONFIDENCE_RUBRIC_VERSION
+    assert result.manifest.brief_version == result.brief.brief_version
+    assert result.manifest.confidence_rubric_version == result.brief.confidence_rubric_version
+
+
+def test_run_id_and_input_fingerprint_unaffected_by_version_markers() -> None:
+    """R1/R2 requirement: brief_version/confidence_rubric_version must never
+    enter compute_run_id/compute_input_fingerprint -- verified here by
+    checking that run_id/input_fingerprint depend only on the six documented
+    compute_run_id inputs, none of which is either version marker."""
+    import inspect
+
+    from content_machine.intelligence import weekly as weekly_module
+
+    sig = inspect.signature(weekly_module.compute_run_id)
+    assert set(sig.parameters) == {
+        "week_label",
+        "input_fingerprint",
+        "code_version",
+        "profile_version",
+        "window_start",
+        "window_end",
+    }
+    # Two runs with identical compute_run_id inputs must produce the same
+    # run_id/input_fingerprint even though brief_version/
+    # confidence_rubric_version are present (and identical) on both --
+    # this is a smoke check that nothing upstream silently changed
+    # compute_run_id's signature to fold either marker in.
+    first = _run()
+    second = _run()
+    assert first.manifest.run_id == second.manifest.run_id
+    assert first.manifest.input_fingerprint == second.manifest.input_fingerprint
+
+
 # ------------------------------ full run_weekly integration -----------------
 
 
@@ -444,6 +488,42 @@ def test_write_creates_all_eight_core_outputs(tmp_path: Path) -> None:
     assert set(outcome.files_written) == set(weekly_module.OUTPUT_FILENAMES)
     for name in weekly_module.OUTPUT_FILENAMES:
         assert (output_dir / name).exists()
+
+
+# --- Fable ruling 2026-08-01 (Part A): item_topic_map -----------------------
+
+
+def test_item_topic_map_covers_every_member_id_across_every_cluster() -> None:
+    """item_topic_map (WeeklyRunResult, Part A) must map EVERY item_id that
+    appears as a member_id of ANY cluster this run produced -- including
+    clusters that end up discarded below the Top N -- to that cluster's own
+    topic_id. Built from cluster.cluster_items directly here (independent of
+    run_weekly's own construction) so this pins the CONTRACT, not just
+    round-trips the implementation."""
+    from content_machine.intelligence.cluster import cluster_items
+    from content_machine.intelligence.weekly import filter_signals_to_window, resolve_window
+
+    result = _run()
+    window = resolve_window(W28_REFERENCE_DATE, TIMEZONE)
+    windowed = filter_signals_to_window(_signals(), window, TIMEZONE)
+    clusters = cluster_items(windowed)
+
+    expected = {item_id: c.topic_id for c in clusters for item_id in c.member_ids}
+    assert result.item_topic_map == expected
+    assert expected  # sanity: the fixture window has real clusters
+
+
+def test_item_topic_map_is_never_written_to_any_output_file(tmp_path: Path) -> None:
+    """item_topic_map lives on WeeklyRunResult ONLY (Part A ruling): it must
+    never leak into brief.json, topics.jsonl, run-manifest.json, or any
+    other output -- raw item_ids paired with topic_ids are not part of any
+    documented output schema."""
+    result = _run()
+    output_dir = tmp_path / "out"
+    write_weekly_run_outputs(result, output_dir)
+    for name in weekly_module.OUTPUT_FILENAMES:
+        on_disk = (output_dir / name).read_text(encoding="utf-8")
+        assert "item_topic_map" not in on_disk
 
 
 # --- v0.2 (Opus orchestrator, Gate C; ADR 0004 D8): movements.md/discarded.jsonl
@@ -673,3 +753,210 @@ def test_regenerate_flag_is_required_to_redo_a_completed_run(tmp_path: Path) -> 
     assert skipped.wrote is False
     assert skipped.skipped_reason is not None
     assert "regenerate" in skipped.skipped_reason.lower()
+
+
+# --- R1 (2026-08-01 post-merge-gate round, ADR 0009): the idempotency skip --
+# --- must verify its premise (byte-compare), not assume it from run_id -----
+
+
+def test_clean_skip_is_not_flagged_stale(tmp_path: Path) -> None:
+    """The ordinary case: nothing on disk has drifted from what current code
+    would produce. The skip is silent (stale=False, stale_files=[]), and the
+    skipped_reason text is UNCHANGED from before this round (ticket R1:
+    "all equal -> today's clean skip, message unchanged")."""
+    result = _run()
+    output_dir = tmp_path / "out"
+    write_weekly_run_outputs(result, output_dir)
+
+    outcome = write_weekly_run_outputs(result, output_dir, regenerate=False)
+    assert outcome.wrote is False
+    assert outcome.stale is False
+    assert outcome.stale_files == []
+    assert outcome.skipped_reason is not None
+    assert outcome.skipped_reason == (
+        f"a completed run with run_id={result.manifest.run_id} already exists in "
+        f"{output_dir}; pass --regenerate to redo it"
+    )
+
+
+def test_two_genuine_reruns_with_different_execution_timestamps_is_a_silent_skip(
+    tmp_path: Path,
+) -> None:
+    """Q1 (2026-08-01 QA blocker, "R1 cries wolf on every rerun"): the exact
+    defect QA reproduced against the real CLI with two `runner.invoke` calls
+    1.1s apart -- reproduced here directly against `run_weekly`/
+    `write_weekly_run_outputs` instead, with TWO GENUINELY SEPARATE
+    `WeeklyRunResult` objects (never the SAME in-memory result object
+    written twice, which is what `test_clean_skip_is_not_flagged_stale`
+    above does and is exactly why QA found it could not catch this: two
+    calls against the same in-memory object make identical content true by
+    construction, no matter what `execution_timestamp` is). Each result here
+    is built by its own independent `_run()` call with its OWN
+    `execution_timestamp`, mirroring two separate `weekly-run` CLI
+    invocations a minute apart -- same code, same inputs, nothing else
+    changed. Before Q1's fix, `execution_timestamp` alone (captured fresh on
+    every CLI invocation, `cli/main.py`) always differed between the two, so
+    the RAW byte-compare ALWAYS flagged `run-manifest.json` as stale on
+    every routine rerun -- defeating R1's entire purpose. The second,
+    genuinely independent invocation must be a SILENT, non-stale skip."""
+    output_dir = tmp_path / "out"
+
+    first_result = _run(execution_timestamp="2026-07-12T18:00:00-03:00")
+    first_outcome = write_weekly_run_outputs(first_result, output_dir)
+    assert first_outcome.wrote is True
+
+    # A second, independently-built result for the identical run (same
+    # signals, profile, week_label, reference_date, timezone, code_version)
+    # -- only execution_timestamp differs, as it genuinely would across two
+    # real CLI invocations.
+    second_result = _run(execution_timestamp="2026-07-12T18:01:07-03:00")
+    assert second_result.manifest.run_id == first_result.manifest.run_id
+    assert (
+        second_result.manifest.execution_timestamp != first_result.manifest.execution_timestamp
+    )
+
+    second_outcome = write_weekly_run_outputs(second_result, output_dir, regenerate=False)
+    assert second_outcome.wrote is False
+    assert second_outcome.stale is False
+    assert second_outcome.stale_files == []
+    assert second_outcome.skipped_reason is not None
+    assert "stale" not in second_outcome.skipped_reason.lower()
+
+    # The on-disk manifest still records the FIRST run's real
+    # execution_timestamp verbatim -- Q1 changes only the COMPARISON, never
+    # what actually landed on disk.
+    on_disk_manifest = json.loads((output_dir / "run-manifest.json").read_text(encoding="utf-8"))
+    assert on_disk_manifest["execution_timestamp"] == "2026-07-12T18:00:00-03:00"
+
+
+def test_manifest_comparison_ignores_execution_timestamp_but_nothing_else(tmp_path: Path) -> None:
+    """Unit-level companion to the CLI-shaped test above: exercises
+    `weekly._manifest_content_differs` directly. Only `execution_timestamp`
+    is ignored -- any OTHER field changing (e.g. `signal_count`, standing in
+    here for a genuine semantic drift) must still be detected, so Q1's fix
+    cannot be satisfied by a comparison that ignores too much."""
+    result = _run()
+    output_dir = tmp_path / "out"
+    write_weekly_run_outputs(result, output_dir)
+    on_disk = (output_dir / "run-manifest.json").read_text(encoding="utf-8")
+
+    # Only execution_timestamp differs -> NOT differing.
+    staged_same_except_timestamp = json.dumps(
+        {**json.loads(on_disk), "execution_timestamp": "2099-01-01T00:00:00-03:00"}
+    )
+    assert (
+        weekly_module._manifest_content_differs(on_disk, staged_same_except_timestamp) is False
+    )
+
+    # A genuinely different field (signal_count) -> still differing, even
+    # though execution_timestamp is untouched.
+    staged_genuinely_different = json.dumps({**json.loads(on_disk), "signal_count": 999})
+    assert weekly_module._manifest_content_differs(on_disk, staged_genuinely_different) is True
+
+    # Malformed on-disk content must still compare as differing against a
+    # well-formed staged manifest.
+    assert weekly_module._manifest_content_differs("not json at all", on_disk) is True
+
+
+def test_unicode_decode_error_on_corrupt_on_disk_file_counts_as_differing(
+    tmp_path: Path,
+) -> None:
+    """F2 (2026-08-01 Fable blocker, "verify, don't assume"): a corrupt or
+    non-UTF-8 on-disk file must count as DIFFERING (the same treatment as a
+    missing file), never crash the skip path with an unhandled
+    UnicodeDecodeError -- `read_text(encoding="utf-8")` raises
+    `UnicodeDecodeError` (a `ValueError`, not an `OSError`) for invalid
+    UTF-8 bytes."""
+    result = _run()
+    output_dir = tmp_path / "out"
+    write_weekly_run_outputs(result, output_dir)
+
+    # Corrupt brief.md with invalid UTF-8 bytes (a lone continuation byte).
+    (output_dir / "brief.md").write_bytes(b"\xff\xfe not valid utf-8 \x80\x81")
+
+    outcome = write_weekly_run_outputs(result, output_dir, regenerate=False)
+    assert outcome.wrote is False
+    assert outcome.stale is True
+    assert "brief.md" in outcome.stale_files
+
+
+def test_stale_on_disk_run_is_detected_and_still_skipped(tmp_path: Path) -> None:
+    """Simulates exactly the headline defect this round fixes: an on-disk
+    run whose run_id still matches (nothing about the INPUTS changed), but
+    whose rendered brief.md no longer matches what CURRENT code renders
+    (e.g. a rendering-semantics change never bumped code_version). The skip
+    must still happen -- never write without --regenerate -- but it must be
+    flagged stale, with the differing filename(s) named, so the caller can
+    warn instead of silently serving a stale run."""
+    result = _run()
+    output_dir = tmp_path / "out"
+    write_weekly_run_outputs(result, output_dir)
+
+    # Simulate drift: current code would render different brief.md content
+    # for the SAME run_id/manifest (as if BRIEF_VERSION/rendering changed
+    # without a code_version bump) by directly corrupting the on-disk file
+    # -- this is exactly what a stale historical output directory looks
+    # like from write_weekly_run_outputs' point of view.
+    brief_md_path = output_dir / "brief.md"
+    original_brief_md = brief_md_path.read_text(encoding="utf-8")
+    brief_md_path.write_text("this is stale, pre-fix content\n", encoding="utf-8")
+
+    outcome = write_weekly_run_outputs(result, output_dir, regenerate=False)
+    assert outcome.wrote is False
+    assert outcome.stale is True
+    assert outcome.stale_files == ["brief.md"]
+    assert outcome.skipped_reason is not None
+    assert "regenerate" in outcome.skipped_reason.lower()
+    assert "stale" in outcome.skipped_reason.lower()
+    assert "brief.md" in outcome.skipped_reason
+
+    # Never overwritten without --regenerate: the tampered content is still
+    # there, byte for byte.
+    assert brief_md_path.read_text(encoding="utf-8") == "this is stale, pre-fix content\n"
+    assert brief_md_path.read_text(encoding="utf-8") != original_brief_md
+
+
+def test_stale_detection_lists_every_differing_file_not_just_one(tmp_path: Path) -> None:
+    result = _run()
+    output_dir = tmp_path / "out"
+    write_weekly_run_outputs(result, output_dir)
+
+    (output_dir / "brief.md").write_text("stale\n", encoding="utf-8")
+    (output_dir / "movements.md").write_text("stale\n", encoding="utf-8")
+
+    outcome = write_weekly_run_outputs(result, output_dir, regenerate=False)
+    assert outcome.wrote is False
+    assert outcome.stale is True
+    assert outcome.stale_files == ["brief.md", "movements.md"]
+
+
+def test_regenerate_bypasses_the_byte_compare_and_redoes_the_write(tmp_path: Path) -> None:
+    """--regenerate never needs the byte-compare -- it always redoes the
+    write, so a stale on-disk run is repaired, not just flagged."""
+    result = _run()
+    output_dir = tmp_path / "out"
+    write_weekly_run_outputs(result, output_dir)
+
+    original_brief_md = (output_dir / "brief.md").read_text(encoding="utf-8")
+    (output_dir / "brief.md").write_text("stale\n", encoding="utf-8")
+
+    outcome = write_weekly_run_outputs(result, output_dir, regenerate=True)
+    assert outcome.wrote is True
+    assert (output_dir / "brief.md").read_text(encoding="utf-8") == original_brief_md
+
+
+def test_stale_check_never_touches_run_id_or_input_fingerprint(tmp_path: Path) -> None:
+    """R1/R2 requirement: the byte-compare and its stale flag must never
+    feed back into run_id/input_fingerprint computation -- re-running
+    run_weekly on the exact same inputs after a stale on-disk mutation must
+    still compute the identical run_id."""
+    result = _run()
+    output_dir = tmp_path / "out"
+    write_weekly_run_outputs(result, output_dir)
+    (output_dir / "brief.md").write_text("stale\n", encoding="utf-8")
+
+    write_weekly_run_outputs(result, output_dir, regenerate=False)
+
+    recomputed = _run()
+    assert recomputed.manifest.run_id == result.manifest.run_id
+    assert recomputed.manifest.input_fingerprint == result.manifest.input_fingerprint

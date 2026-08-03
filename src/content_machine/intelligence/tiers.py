@@ -60,6 +60,25 @@ from content_machine.intelligence.models import (
 
 TOP_N = 10
 
+# R2 (2026-08-01, post-merge-gate round): a version marker OWNED BY THIS
+# MODULE'S CONFIDENCE SEMANTICS -- distinct from ranking.RUBRIC_VERSION (the
+# six-dimension scoring rubric, which this module never touches) and from
+# brief.BRIEF_VERSION (the rendered-document schema). Bumped whenever
+# ``_assess_confidence``'s corroboration semantics change -- as they did
+# across the Part B / Part C / round-3 Fable rulings folded into that
+# function (see its docstring) -- even when no ``WeeklyBrief`` field or
+# rendered-Markdown template changes as a result. Recorded ADDITIVELY on
+# both ``brief.WeeklyBrief.confidence_rubric_version`` and
+# ``weekly.RunManifest.confidence_rubric_version``; deliberately EXCLUDED
+# from ``weekly.compute_run_id``/``compute_input_fingerprint`` (Fable
+# ruling 2026-08-01, R1/R2: semantics must never enter run identity, since
+# that would silently un-guard every historical output directory and make
+# past run_ids non-recomputable). Its job is purely diagnostic: when
+# ``write_weekly_run_outputs``'s idempotency-skip byte-compare (R1) finds a
+# stale on-disk run, the manifest delta on this field is the human-readable
+# "why" that complements the byte-level "that".
+CONFIDENCE_RUBRIC_VERSION = "gate-b-tiers-2"
+
 _TIER_LABELS: dict[TierName, str] = {
     "tier_1": "Must Understand",
     "tier_2": "Should Know",
@@ -107,8 +126,20 @@ def _classify_claim_class(inputs: RankingInputs) -> tuple[ClaimClass, str]:
     ``fact`` reuses ``has_direct_artifact_or_independent_source`` (Founder
     decision D3) unchanged -- that fact is already exactly "the change is
     attested by an artifact": a first-party or non-subject authoritative
-    source, a self-published rigorous artifact, or genuine independent
-    corroboration.
+    artifact, a self-published rigorous artifact, or evidence from at least
+    one publisher structurally independent of the subject.
+
+    Fable ruling 2026-08-01 (reversing an earlier "it's just a disjunction"
+    classification): the fourth disjunct of ``has_direct_artifact_or_
+    independent_source`` is ``independent_publisher_count > 0`` --
+    ``has_genuine_independent_evidence`` in ``cluster.py`` -- and that is
+    independent EVIDENCE, not independent CORROBORATION: a single source
+    suffices, no second source is required. For the anchor
+    ``evid_4_independent_rigorous_alone``, the first three disjuncts
+    (first-party authoritative, non-subject authoritative, first-party
+    artifact) are all false by construction, so this fourth disjunct is the
+    ONLY one that holds -- and only under the "evidence" reading. Calling it
+    "corroboration" here would be false for exactly that anchor.
 
     Everything else is ``hypothesis`` -- rumor, isolated uncorroborated
     secondary news (D2), or any evidentiary basis that does not establish the
@@ -133,8 +164,8 @@ def _classify_claim_class(inputs: RankingInputs) -> tuple[ClaimClass, str]:
                 "has_direct_artifact_or_independent_source=True "
                 f"(evidence_anchor_id={inputs.evidence_anchor_id}): the change is attested "
                 "by a first-party or non-subject authoritative artifact, a self-published "
-                "rigorous artifact, or genuine independent corroboration (Founder decision "
-                "D3)."
+                "rigorous artifact, or evidence from at least one publisher structurally "
+                "independent of the subject (Founder decision D3)."
             ),
         )
     return (
@@ -151,46 +182,158 @@ def _classify_claim_class(inputs: RankingInputs) -> tuple[ClaimClass, str]:
     )
 
 
+# Fable ruling 2026-08-01 (Part B, "independence must stop being rendered as
+# corroboration"): the evidence anchors that, on their own, already establish
+# TWO distinct sources -- a first-party artifact plus independent evidence, or
+# an authoritative source plus independent analysis plus independent rigor.
+# ``evid_4_independent_rigorous_alone`` is deliberately NOT a member: it is
+# reached by a SINGLE independent source, zero corroboration.
+_CORROBORATED_ANCHORS = frozenset(
+    {
+        "evid_5_authoritative_plus_analysis_plus_independent_rigor",
+        "evid_4_first_party_plus_independent",
+    }
+)
+
+
+def has_cross_source_corroboration(
+    evidence_anchor_id: str, independent_publisher_count: int
+) -> bool:
+    """Whether a topic has genuine cross-source corroboration -- the exact
+    predicate ``_assess_confidence`` uses internally to gate ``high``
+    confidence for fact claims (Fable ruling 2026-08-01, Part B / round-3
+    final recheck). Public (not a private helper) so callers OUTSIDE this
+    module -- specifically ``brief.py``'s executive-summary and
+    content-opportunity single-source disclosures (G1/G3, product review
+    round 4) -- can ask the SAME question this module already answers
+    internally, instead of re-deriving or approximating it from
+    ``independent_publisher_count`` alone. That would be wrong: a topic
+    reached via ``evid_4_first_party_plus_independent`` with
+    ``independent_publisher_count == 1`` (a first-party leg plus one
+    independent leg) IS genuinely cross-source corroborated even though its
+    independent-publisher count alone is only 1 -- counting it as
+    "single-sourced" would contradict its own ``high``-confidence
+    classification a few lines away in the same rendered document."""
+    return independent_publisher_count >= 2 or (
+        evidence_anchor_id in _CORROBORATED_ANCHORS and independent_publisher_count >= 1
+    )
+
+
 def _assess_confidence(
-    claim_class: ClaimClass, inputs: RankingInputs
+    claim_class: ClaimClass, inputs: RankingInputs, independent_publisher_count: int
 ) -> tuple[ConfidenceLevel, str]:
     """Deterministic confidence, built only from ``evidence_level``,
-    ``has_independent_evidence``, and whether ``claim_class == "fact"`` -- no
-    new inputs invented. A non-``fact`` claim (hypothesis or marketing) is
-    always ``low`` confidence, regardless of evidence_level: an unestablished
-    or self-serving claim does not become more trustworthy just because its
-    evidence_level happens to be high (e.g. a marketing_risk topic can still
-    reach evidence_level 3+, see D4/hardening)."""
+    ``has_independent_evidence``, ``independent_publisher_count``, and
+    whether ``claim_class == "fact"`` -- no new inputs invented. A non-
+    ``fact`` claim (hypothesis or marketing) is always ``low`` confidence,
+    regardless of evidence_level: an unestablished or self-serving claim does
+    not become more trustworthy just because its evidence_level happens to be
+    high (e.g. a marketing_risk topic can still reach evidence_level 3+, see
+    D4/hardening).
+
+    Fable ruling 2026-08-01 (Part B): ``evidence_level >= 4`` alone does NOT
+    imply cross-source corroboration -- the anchor
+    ``evid_4_independent_rigorous_alone`` reaches evidence_level 4 with a
+    SINGLE source. ``high`` confidence now additionally requires
+    ``has_cross_source_corroboration`` (either a corroborating evidence
+    anchor, or two-or-more distinct independent publishers). A single-source
+    independent topic is capped at ``medium`` and says so explicitly, rather
+    than being rendered as "genuine independent corroboration is present".
+
+    Fable ruling 2026-08-01 (round 3, final recheck defect): a
+    ``_CORROBORATED_ANCHORS`` member alone is NOT sufficient -- both anchors
+    in that set are reached by a FIRST-PARTY leg plus a SECOND, independent
+    leg, and it is the independent leg that must actually be countable.
+    ``cluster._evidence_level_and_marketing_risk`` sets
+    ``has_independent_rigorous``/``has_independent_analysis`` off the raw
+    evidence_type/publisher check alone -- it does not consult
+    ``_is_independent``/``may_supply_independence`` -- so a Gate E0.3
+    registry-denied member (``may_supply_independence=False``) can still
+    drive the cluster to ``evid_4_first_party_plus_independent`` while
+    contributing ZERO to ``independent_publisher_count``. Requiring
+    ``independent_publisher_count >= 1`` alongside the anchor closes that
+    gap: the anchor alone no longer manufactures a second source out of a
+    leg the registry has explicitly forbidden from supplying independence."""
+    cross_source_corroborated = has_cross_source_corroboration(
+        inputs.evidence_anchor_id, independent_publisher_count
+    )
     if claim_class != "fact":
         return (
             "low",
             f"claim_class={claim_class} (not 'fact'): confidence is low regardless of "
             "evidence_level.",
         )
-    if inputs.evidence_level >= 4 and inputs.has_independent_evidence:
+    if inputs.evidence_level >= 4 and cross_source_corroborated:
         return (
             "high",
             (
                 f"claim_class=fact, evidence_level={inputs.evidence_level} >= 4 AND "
-                "has_independent_evidence=True: genuine independent corroboration is "
-                "present."
+                f"cross-source corroboration is present (evidence_anchor_id="
+                f"{inputs.evidence_anchor_id}, independent_publisher_count="
+                f"{independent_publisher_count}): at least two distinct sources "
+                "support the claim."
             ),
         )
+    if inputs.has_independent_evidence and independent_publisher_count == 1:
+        return (
+            "medium",
+            (
+                f"claim_class=fact, evidence_level={inputs.evidence_level}, "
+                f"independent_publisher_count=1: single-source independent evidence "
+                "-- one publisher structurally independent of the subject, on its "
+                "own. No second, distinct source supports the claim; confidence is "
+                "capped at medium."
+            ),
+        )
+    # Fable ruling 2026-08-01 (follow-up, Part C): this catch-all used to say
+    # "no second, distinct source supports the claim" unconditionally -- FALSE
+    # whenever independent_publisher_count >= 2 (e.g. two independent_analysis
+    # items from different publishers, no first-party member --
+    # evid_3_independent_only, evidence_level 3). This branch is reached
+    # ONLY because evidence_level is below the high-confidence bar (the
+    # independent_publisher_count >= 1 single-source case is branch (c)
+    # above, and count >= 2 already reaches 'high' whenever evidence_level
+    # also clears >= 4 -- see the corroboration check above). The text below
+    # is therefore true whatever independent_publisher_count is, and asserts
+    # nothing about single-sourcing.
+    #
+    # Fable ruling 2026-08-01 (round 3, final recheck defect): the text
+    # ALSO used to say "evidence_level is below the >= 4 bar that high
+    # confidence requires" unconditionally -- FALSE once the anchor +
+    # independent_publisher_count >= 1 corroboration check above was
+    # introduced, because this branch is now also reached at evidence_level
+    # == 4 whenever cross-source corroboration is absent (e.g. a Gate E0.3
+    # registry-denied member drove the anchor to
+    # evid_4_independent_rigorous_alone or evid_4_first_party_plus_independent
+    # without supplying a countable independent publisher). The wording below
+    # names the real, two-part bar (level AND corroboration) instead of
+    # asserting which part failed, so it stays true at level 4 without
+    # corroboration and at any level below 4.
     return (
         "medium",
         (
             f"claim_class=fact, evidence_level={inputs.evidence_level}, "
-            f"has_independent_evidence={inputs.has_independent_evidence}: attested by an "
-            "artifact but not (yet) independently corroborated at the high-confidence bar."
+            f"has_independent_evidence={inputs.has_independent_evidence}, "
+            f"independent_publisher_count={independent_publisher_count}: "
+            "does not meet the high-confidence bar (evidence_level >= 4 together with "
+            "cross-source corroboration)."
         ),
     )
 
 
-def build_claim_assessment(inputs: RankingInputs) -> ClaimAssessment:
+def build_claim_assessment(
+    inputs: RankingInputs, *, independent_publisher_count: int
+) -> ClaimAssessment:
     """Build the full M4 claim assessment (classification + confidence) for
-    one topic's ``RankingInputs``. Pure and deterministic."""
+    one topic's ``RankingInputs``. Pure and deterministic.
+
+    ``independent_publisher_count`` is threaded in directly from the topic's
+    ``TopicCluster`` (never added to ``RankingInputs`` itself -- see
+    ``build_tiered_topic``, the only caller within this module)."""
     claim_class, claim_reason = _classify_claim_class(inputs)
-    confidence, confidence_reason = _assess_confidence(claim_class, inputs)
+    confidence, confidence_reason = _assess_confidence(
+        claim_class, inputs, independent_publisher_count
+    )
     return ClaimAssessment(
         claim_class=claim_class,
         claim_class_reason=claim_reason,
@@ -316,10 +459,62 @@ def _recommend_action(
             "corroborated -- read in full.",
         )
     if claim_class == "fact" and confidence == "medium":
+        # F7 (round 7, product review -- "structurally the same construction
+        # P1 spent a round removing from the line directly above"): the old
+        # text, "claim_class=fact, confidence=medium: attested by an
+        # artifact but lacking a second, distinct supporting source -- save
+        # for later review.", said the action word twice (the recommended
+        # action itself, plus "save for later review" inside its own
+        # reason), embedded two raw key=value diagnostic tokens in
+        # reader-facing prose, and buried the operative caveat behind a
+        # colon that opens an explanatory scope with the limitation
+        # (`"but lacking..."`) sitting inside it -- the exact P1 defect
+        # (see brief._human_evidence_sentence's docstring). Rewritten as two
+        # plain clauses, no key=value tokens, no colon-opened scope, and the
+        # deferral instruction stated once (not restated with the action
+        # word again) -- see ADR 0007's "Study Queue / Tier 2 action,
+        # revisited (round 7)" decision for how this reason now also
+        # coexists with the Study Queue's own light-study line for the SAME
+        # topic.
+        #
+        # F9 (round 8, this branch, Fable + product review): round 7's
+        # rewrite was STILL a constant -- this function takes no
+        # corroboration input, so the text asserted "no second, independent
+        # source corroborates it yet" for every fact/medium topic
+        # regardless of the real state. That is false whenever
+        # independent_publisher_count >= 2 (two independent, corroborating
+        # sources DO exist and DO corroborate -- has_cross_source_
+        # corroboration is True) -- and even then, further corroboration
+        # alone could never lift the topic to 'high', because in that state
+        # it is the evidence_level >= 4 bar that failed, not the
+        # corroboration bar. "Attested by an artifact" is additionally
+        # wrong for authoritative-source-only fact states.
+        #
+        # Fable's two options (see ADR 0007 Round 8): (a) cause-neutral
+        # two-part-bar wording that presumes neither cause, or (b) branch on
+        # the corroboration predicate threaded at the tiers join (the P4
+        # single_sourced plumbing pattern, never through RankingInputs).
+        # Chosen: (a) -- this function is deliberately a pure function of
+        # (tier, claim_class, confidence) only (see its own docstring); (b)
+        # would thread independent_publisher_count/
+        # has_cross_source_corroboration through _build_tier_assignment and
+        # every brief.py call site that renders a Tier 2/light-study reason,
+        # a materially larger edit for a wording-truthfulness ticket to make
+        # unreviewed, mirroring round 5's own reasoning for rejecting the
+        # gate-on-action alternative. The two-part bar
+        # ("evidence_level >= 4 together with cross-source corroboration")
+        # mirrors the exact phrase this module's own catch-all
+        # confidence_reason already uses (see _assess_confidence, Part C) --
+        # true regardless of WHICH conjunct failed, so it never presumes
+        # missing corroboration. "Save the deeper follow-up" (not "hold it")
+        # also closes the scope defect product review flagged: the referent
+        # is now explicit, so brief._light_study_reason's paraphrase of this
+        # same deferral is accurate rather than corrective.
         return (
             "save",
-            "claim_class=fact, confidence=medium: attested by an artifact but not "
-            "independently corroborated -- save for later review.",
+            "Attested by an artifact, but confidence has not reached the high bar "
+            "(evidence_level >= 4 together with cross-source corroboration) -- save the "
+            "deeper follow-up for later review as the evidence picture develops.",
         )
     if claim_class == "hypothesis" and tier == "tier_2":
         return (
@@ -403,7 +598,9 @@ def build_tiered_topic(
     """Build the full M4 view of one already-ranked topic. ``rank`` must be
     the topic's position (1-indexed) in the final, already tie-broken order
     produced by ``ranking.rank_topics`` -- this function never re-sorts."""
-    claim = build_claim_assessment(inputs)
+    claim = build_claim_assessment(
+        inputs, independent_publisher_count=cluster.independent_publisher_count
+    )
     tier_assignment = _build_tier_assignment(rank, anchor, inputs, breakdown, claim)
     return TieredTopic(
         rank=rank,
